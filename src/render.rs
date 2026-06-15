@@ -7,6 +7,7 @@ use bevy::render::render_resource::BlendState;
 use bevy_egui::input::egui_wants_any_pointer_input;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
+use crate::elk::{Elk, elk_color};
 use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_BROWSE, MAX_GRASS, MAX_POOP, MAX_WATER};
 
 const TILE_SIZE: f32 = 16.0;
@@ -28,6 +29,8 @@ impl Plugin for RenderPlugin {
                     sync_poop,
                     sync_browse,
                     apply_camera,
+                    sync_elk_transform,
+                    sync_elk_color,
                 ),
             );
     }
@@ -233,6 +236,33 @@ fn sync_browse(grid: Res<Grid>, mut dots: Query<(&BrowseDot, &mut Transform)>) {
     for (dot, mut transform) in &mut dots {
         let b = grid.browse(dot.index) / MAX_BROWSE;
         transform.scale = Vec3::splat(b);
+    }
+}
+
+/// World-space centre of a cell, derived from grid constants.
+fn cell_pos(cell: usize) -> Vec2 {
+    let col = (cell % GRID_WIDTH) as f32;
+    let row = (cell / GRID_WIDTH) as f32;
+    Vec2::new(
+        (col - GRID_WIDTH as f32 / 2.0 + 0.5) * TILE_SIZE,
+        (row - GRID_HEIGHT as f32 / 2.0 + 0.5) * TILE_SIZE,
+    )
+}
+
+/// Slide each elk sprite from its previous cell to its current one across the tick.
+fn sync_elk_transform(time: Res<Time<Fixed>>, mut elk: Query<(&Elk, &mut Transform)>) {
+    let t = time.overstep_fraction();
+    for (elk, mut transform) in &mut elk {
+        let pos = cell_pos(elk.prev_cell).lerp(cell_pos(elk.cell), t);
+        transform.translation.x = pos.x;
+        transform.translation.y = pos.y;
+    }
+}
+
+/// Recolour each elk sprite from the `grazing` flag the simulation sets.
+fn sync_elk_color(mut elk: Query<(&Elk, &mut Sprite)>) {
+    for (elk, mut sprite) in &mut elk {
+        sprite.color = elk_color(elk.slot as usize, elk.grazing);
     }
 }
 

@@ -13,7 +13,7 @@ use bevy_egui::EguiPlugin;
 mod field;
 #[path = "../grid.rs"]
 mod grid;
-#[path = "../elk.rs"]
+#[path = "../elk/mod.rs"]
 mod elk;
 #[path = "../render.rs"]
 mod render;
@@ -22,7 +22,7 @@ mod ui;
 #[path = "../river.rs"]
 mod river;
 
-use crate::elk::ElkPlugin;
+use crate::elk::ElkSimPlugin;
 use crate::grid::GridPlugin;
 use crate::river::RiverPlugin;
 use crate::ui::UiPlugin;
@@ -51,6 +51,6 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkPlugin, RiverPlugin))
+        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, RiverPlugin))
         .run();
 }
