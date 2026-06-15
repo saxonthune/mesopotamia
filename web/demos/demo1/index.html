@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Demo 1 — Grazing on the river</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 1.5rem;
+      font: 16px/1.6 system-ui, sans-serif;
+      background: #11140f; color: #e6e6dc;
+    }
+    .wrap { max-width: 72rem; margin-inline: auto; }
+    a.back { color: #6b9; text-decoration: none; font-size: 0.9rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0.5rem 0 1rem; }
+    #stage {
+      position: relative;
+      width: 100%; aspect-ratio: 8 / 3;
+      background: #0a0c08; border: 1px solid #2c3322; border-radius: 8px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    #loading {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: #9aa08c; font-size: 0.95rem;
+    }
+    .desc { max-width: 46rem; }
+    .desc h2 { font-weight: 600; font-size: 1.05rem; }
+    .desc p { color: #c9ccc0; }
+    .controls { color: #9aa08c; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="../../">← all demos</a>
+    <h1>Demo 1 — Grazing on the river</h1>
+
+    <div id="stage">
+      <div id="loading">Loading simulation…</div>
+      <canvas id="game-canvas"></canvas>
+    </div>
+
+    <div class="desc">
+      <h2>What's going on</h2>
+      <p>
+        A river is generated procedurally: white noise is smoothed into a cost
+        field, then a least-cost path is carved bank-to-bank, giving a meandering
+        channel of substantial width. Distance from the water sets each tile's
+        grass carrying capacity — lush at the banks, barren far away.
+      </p>
+      <p>
+        Elk spawn in packs on the left and migrate rightward under a pressure
+        that grows over time. They steer by a boids-like blend of separation,
+        cohesion, and the grass gradient. Grazing converts grass into energy and,
+        after digestion, into poop that fertilizes wherever the elk has wandered —
+        closing an ecological loop between water, grass, and herd.
+      </p>
+      <p class="controls">
+        Drag (middle/right mouse) or two-finger trackpad to pan · scroll or pinch
+        to zoom · use the on-screen panels to tune growth, herd behavior, and
+        simulation speed.
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    import init from './demo1.js';
+    init()
+      .then(() => { document.getElementById('loading')?.remove(); })
+      .catch((err) => {
+        const el = document.getElementById('loading');
+        if (el) el.textContent = 'Failed to load: ' + err;
+        console.error(err);
+      });
+  </script>
+</body>
+</html>

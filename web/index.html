@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mesopotamia — Demos</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; padding: 3rem 1.5rem;
+      font: 16px/1.6 system-ui, sans-serif;
+      background: #11140f; color: #e6e6dc;
+      max-width: 46rem; margin-inline: auto;
+    }
+    h1 { font-weight: 600; letter-spacing: -0.02em; }
+    p.lede { color: #9aa08c; }
+    ul.demos { list-style: none; padding: 0; }
+    ul.demos li { margin: 1rem 0; }
+    a.demo {
+      display: block; padding: 1rem 1.25rem;
+      background: #1a1e15; border: 1px solid #2c3322; border-radius: 8px;
+      text-decoration: none; color: inherit;
+    }
+    a.demo:hover { border-color: #4a7; }
+    a.demo .title { font-weight: 600; }
+    a.demo .desc { color: #9aa08c; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Mesopotamia</h1>
+  <p class="lede">
+    An artistic visualization of debt-bubble and ecological-flow dynamics,
+    built in Rust + Bevy and compiled to WebAssembly.
+  </p>
+  <ul class="demos">
+    <li>
+      <a class="demo" href="demos/demo1/">
+        <div class="title">Demo 1 — Grazing on the river</div>
+        <div class="desc">
+          A procedurally generated river feeds grass; elk herds migrate, graze,
+          and fertilize the land they cross.
+        </div>
+      </a>
+    </li>
+  </ul>
+</body>
+</html>
