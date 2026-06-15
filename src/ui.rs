@@ -43,6 +43,7 @@ fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f3
 
 /// The docked bottom panel: a tab bar with always-visible speed controls, and a
 /// scrolling content area paged by the selected tab.
+#[allow(clippy::too_many_arguments)]
 fn control_panel(
     mut contexts: EguiContexts,
     mut state: ResMut<UiState>,
@@ -336,7 +337,9 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {
     ui.label("browse & crossing");
     slider(ui, &mut p.browse_energy, 0.0..=0.1, "energy / browse bite");
     slider(ui, &mut p.browse_bite, 0.0..=1.0, "browse / bite");
-    slider(ui, &mut p.water_cost, 0.0..=5.0, "water crossing cost");
+    slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
+    slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
+    slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");
     slider(ui, &mut p.mig_growth, 0.0..=0.01, "migration growth / tick");
 }
 

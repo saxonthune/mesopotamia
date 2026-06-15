@@ -69,7 +69,7 @@ pub struct Elk {
 
 /// Drives the herd lifecycle: spaces spawns into waves and keeps the headcount
 /// near a target that itself grows over time.
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct Spawner {
     /// Ticks until the next wave is allowed.
     cooldown: u32,
@@ -77,12 +77,6 @@ pub struct Spawner {
     next_pack: u8,
     /// Total ticks elapsed; drives the growth of the spawn rules.
     elapsed: u32,
-}
-
-impl Default for Spawner {
-    fn default() -> Self {
-        Self { cooldown: 0, next_pack: 0, elapsed: 0 }
-    }
 }
 
 /// A spawned cohort's lifetime record, keyed by its hex `code`. Retained after
@@ -230,7 +224,7 @@ fn spawn_waves(
         let victim = order
             .iter()
             .copied()
-            .find(|c| cohorts.get(c).map_or(true, |co| co.alive == 0));
+            .find(|c| cohorts.get(c).is_none_or(|co| co.alive == 0));
         let Some(code) = victim else { break };
         order.retain(|&c| c != code);
         cohorts.remove(&code);
@@ -319,9 +313,11 @@ pub struct ElkParams {
     pub energy_per_bite: f32,
     pub energy_drain: f32, // energy lost per tick; reaching 0 starves the elk
     pub mig_growth: f32,   // per-tick growth of migration pressure (0 → 1 ramp)
-    pub water_cost: f32,   // step penalty for entering water — fording is costly
-    pub browse_bite: f32,  // browse stripped per graze — a big bite
-    pub browse_energy: f32, // energy from a browse bite — concentrated forage
+    pub water_cost: f32,     // step penalty for entering water — fording is costly
+    pub ford_discount: f32,  // fraction of water_cost paid on a ford (0 → free, 1 → full cost)
+    pub swim_drain: f32,     // energy drained when entering deep non-ford water
+    pub browse_bite: f32,    // browse stripped per graze — a big bite
+    pub browse_energy: f32,  // energy from a browse bite — concentrated forage
 }
 
 impl Default for ElkParams {
@@ -345,10 +341,19 @@ impl Default for ElkParams {
             energy_drain: 0.004,
             mig_growth: 0.0015,
             water_cost: 2.0,
+            ford_discount: 0.1,
+            swim_drain: 0.01,
             browse_bite: 0.34,
             browse_energy: 0.05,
         }
     }
+}
+
+/// Step cost for entering a water cell. On a ford the cost is reduced by
+/// `ford_discount`; off a ford it is the raw water-level × cost (today's behaviour).
+pub fn step_water_penalty(water: f32, is_ford: bool, water_cost: f32, ford_discount: f32) -> f32 {
+    let base = water * water_cost;
+    if is_ford { base * ford_discount } else { base }
 }
 
 /// Unit vector in `v`'s direction, or zero if `v` is ~zero.
@@ -455,11 +460,16 @@ fn herd_move(
         let mut cells: [Option<usize>; 4] = [None; 4];
         for (k, &(dx, dy)) in steps.iter().enumerate() {
             if let Some(next) = grid.step(elk.cell, dx, dy) {
-                // Fording is costly — deep water repels, a shallow ford less so. This
+                // Fording is costly — deep water repels, a ford less so. This
                 // is what turns a crossing into a decision: a herd only steps into
                 // water when the forage drive beyond outweighs the penalty.
                 scores[k] = desire.dot(Vec2::new(dx as f32, dy as f32))
-                    - grid.water(next) * params.water_cost;
+                    - step_water_penalty(
+                        grid.water(next),
+                        grid.is_ford(next),
+                        params.water_cost,
+                        params.ford_discount,
+                    );
                 cells[k] = Some(next);
             }
         }
@@ -484,6 +494,13 @@ fn herd_move(
                 break;
             }
             pick -= weights[k];
+        }
+
+        // Swim energy cost: crossing deep non-ford water is a lasting risk beyond
+        // the step-score penalty — the elk arrives tired.
+        let water = grid.water(elk.cell);
+        if water > 0.0 && !grid.is_ford(elk.cell) {
+            elk.energy = (elk.energy - params.swim_drain * water).max(0.0);
         }
     }
 }
@@ -572,6 +589,40 @@ pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── step_water_penalty ────────────────────────────────────────────────────
+
+    // On a ford the penalty collapses to nearly zero regardless of water depth.
+    #[test]
+    fn ford_penalty_is_near_zero() {
+        let cost = step_water_penalty(1.0, true, 2.0, 0.1);
+        assert!(cost < 0.25, "ford should be nearly free, got {cost}");
+    }
+
+    // Off a ford the penalty is identical to today's plain water × cost.
+    #[test]
+    fn non_ford_penalty_equals_water_times_cost() {
+        let cost = step_water_penalty(0.7, false, 2.0, 0.1);
+        assert!((cost - 0.7 * 2.0).abs() < 1e-6);
+    }
+
+    // Metamorphic: penalty off a ford is monotone increasing in water level.
+    #[test]
+    fn penalty_monotone_in_water() {
+        let low = step_water_penalty(0.2, false, 2.0, 0.1);
+        let high = step_water_penalty(0.8, false, 2.0, 0.1);
+        assert!(high > low);
+    }
+
+    // Deep non-ford water costs strictly more than a shallow tributary.
+    #[test]
+    fn deep_non_ford_beats_shallow_tributary() {
+        let tributary = step_water_penalty(0.1, false, 2.0, 0.1); // shallow
+        let deep = step_water_penalty(1.0, false, 2.0, 0.1);      // main channel
+        assert!(deep > tributary);
+    }
+
+    // ── cross_desire ─────────────────────────────────────────────────────────
 
     // Example scenario — a lead herd: fresh grass both ahead (+x) and across (+y).
     // Advancing along +x is as good as crossing and costs nothing, so it stays.

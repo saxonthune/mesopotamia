@@ -33,6 +33,9 @@ pub struct Grid {
     /// Browse carrying capacity — high on dry steppe, zero in/near water and off
     /// the shrub clumps. Authored on the first browse-growth tick.
     browse_cap: Vec<f32>,
+    /// Ford mask: true on cells authored as periodic shallow crossings along the
+    /// main channel centerline. Read by Phase B to apply the crossing discount.
+    ford: Vec<bool>,
 }
 
 /// How fast grass regrows under the reaction-diffusion model: a cell gains
@@ -82,6 +85,7 @@ impl Grid {
             soil: vec![1.0; width * height],
             browse: vec![0.0; width * height],
             browse_cap: vec![0.0; width * height],
+            ford: vec![false; width * height],
         }
     }
 
@@ -158,6 +162,16 @@ impl Grid {
         self.water[index] = value.clamp(0.0, MAX_WATER);
     }
 
+    // Phase B (water-as-barrier-fords) reads this to apply the crossing discount.
+    #[allow(dead_code)]
+    pub fn is_ford(&self, index: usize) -> bool {
+        self.ford[index]
+    }
+
+    pub fn set_ford(&mut self, index: usize, value: bool) {
+        self.ford[index] = value;
+    }
+
     pub fn browse(&self, index: usize) -> f32 {
         self.browse[index]
     }
@@ -207,8 +221,8 @@ fn seed_soil(mut grid: ResMut<Grid>) {
     let mut rng = StdRng::seed_from_u64(SOIL_SEED);
     let noise = field::value_noise(grid.width(), grid.height(), SOIL_PASSES, &mut rng);
     let patch = field::normalize(&noise);
-    for index in 0..grid.len() {
-        grid.set_soil(index, SOIL_FLOOR + (1.0 - SOIL_FLOOR) * patch[index]);
+    for (index, &p) in patch.iter().enumerate() {
+        grid.set_soil(index, SOIL_FLOOR + (1.0 - SOIL_FLOOR) * p);
     }
 }
 
@@ -255,10 +269,10 @@ fn seed_browse_cap(grid: &mut Grid) {
         BROWSE_PASSES,
         &mut rng,
     ));
-    for i in 0..grid.len() {
+    for (i, &p) in patch.iter().enumerate() {
         // Dryness: far from water → 1, beside it → 0. Browse wants the steppe.
         let dry = 1.0 - grid.water_prox[i];
-        let cap = if grid.water[i] > 0.0 || patch[i] < BROWSE_THRESHOLD {
+        let cap = if grid.water[i] > 0.0 || p < BROWSE_THRESHOLD {
             0.0
         } else {
             dry * MAX_BROWSE
