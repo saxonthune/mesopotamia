@@ -33,7 +33,20 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
-| doc01.01 | `01-exploratory.md` | Product vision — emergent agent-based simulation of ancient Mesopotamian debt and ecological cycles, the historical arc it dramatizes, and architecture/visualization directions | product, simulation, abm, history, vision | — | doc03.01.00, doc03.01.01 | — |
+| doc01.01 | `01-exploratory.md` | Product vision — emergent agent-based simulation of ancient Mesopotamian debt and ecological cycles, the historical arc it dramatizes, and architecture/visualization directions | product, simulation, abm, history, vision | — | doc01.02.01.00, doc03.01.00, doc03.01.01 | — |
+
+### Research Sessions
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc01.02.00 | `02-research/00-index.md` | Session-scoped research that informs the product but is not tied to a buildable milestone — each session is a subgroup, each deep-research pass a doc | research, sessions, index | — | — | — |
+| doc01.02.01.00 | `02-research/01-mesopotamian-political-economy/00-index.md` | Research session mapping which Mesopotamian economic/ecological variables cycle vs. accumulate until accumulation breaks the cycle — the loop-vs-accumulator thesis behind the simulation | research, mesopotamia, political-economy, debt, ecology, loop-vs-accumulator | doc01.01 | — | — |
+| doc01.02.01.01 | `02-research/01-mesopotamian-political-economy/01-pass1-debt-and-salinization.md` | Deep-research pass 1: verbatim verified findings on debt-cancellation cycles, the agrarian/commercial debt split, fixed interest, and salinization as a managed-vs-accumulating stress | research, deep-research, debt, jubilee, salinization, silver, loop-vs-accumulator | — | — | — |
+| doc01.02.01.02 | `02-research/01-mesopotamian-political-economy/02-pass2-jubilee-politics-and-land-tenure.md` | Deep-research pass 2: verbatim verified findings on the political triggers and legitimacy of debt jubilees, polity as oikos mosaic, the Gelb/Diakonoff land-tenure debate, collapse dynamics, and population as a cycling variable | research, deep-research, jubilee, polity, land-tenure, collapse, population, loop-vs-accumulator | — | — | — |
+| doc01.02.01.03 | `02-research/01-mesopotamian-political-economy/03-debt-motives-trade-and-salinization.md` | Why individuals took on debt, how Old Assyrian trade and commoditization worked, and the physical irrigation-to-salt mechanism with the Jacobsen/Adams vs. Powell debate | research, mesopotamia, debt, trade, karum, salinization, loop-vs-accumulator | — | — | — |
+| doc01.02.01.04 | `02-research/01-mesopotamian-political-economy/04-household-pastoralists-husbandry-and-resources.md` | Whether the household/oikos is the fundamental political unit, pastoral-settled integration (Mari, dimorphic nomadism, the Amorite question), Ur III institutional herding at scale, and the resource/luxury circuits — all-Sonnet pass with single-vote verify. | research, mesopotamia, household, pastoralism, husbandry, trade, loop-vs-accumulator | — | — | — |
+| doc01.02.01.05 | `02-research/01-mesopotamian-political-economy/05-silver-yields-ecology-and-karum-generalizability.md` | The carried-over open threads: silver lifecycle, the technological ratchet/yield evidence, deforestation, carrying capacity, life-cycle/dowry debt, the wheat-to-barley salinity proxy (Powell critique), and whether the Old Assyrian karum/naruqqum model generalizes — Sonnet pipeline with an Opus synthesis merge. | research, mesopotamia, silver, yields, ecology, karum, loop-vs-accumulator | — | — | — |
 
 ## 02-design — System
 
@@ -75,9 +88,13 @@ Quick lookup for file-path→doc mapping:
 | `bfs` | doc03.01.06 |
 | `boids` | doc03.01.05 |
 | `cargo` | doc03.01.02 |
+| `collapse` | doc01.02.01.02 |
 | `conventions` | doc00.03 |
+| `debt` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.03 |
+| `deep-research` | doc01.02.01.01, doc01.02.01.02 |
 | `dijkstra` | doc03.01.06 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
+| `ecology` | doc01.02.01.00, doc01.02.01.05 |
 | `ecs` | doc03.01.00, doc03.01.01, doc03.01.03, doc03.01.04, doc03.01.05 |
 | `eulerian` | doc03.01.04 |
 | `exploration` | doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
@@ -88,26 +105,42 @@ Quick lookup for file-path→doc mapping:
 | `grid` | doc03.01.00, doc03.01.01 |
 | `herd` | doc03.01.05 |
 | `history` | doc01.01 |
-| `index` | doc00.00, doc03.00 |
+| `household` | doc01.02.01.04 |
+| `husbandry` | doc01.02.01.04 |
+| `index` | doc00.00, doc01.02.00, doc03.00 |
+| `jubilee` | doc01.02.01.01, doc01.02.01.02 |
+| `karum` | doc01.02.01.03, doc01.02.01.05 |
 | `lagrangian` | doc03.01.04 |
+| `land-tenure` | doc01.02.01.02 |
 | `layout` | doc03.01.02 |
+| `loop-vs-accumulator` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
 | `maintenance` | doc00.02 |
+| `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
 | `meta` | doc00.00, doc00.01 |
 | `migration` | doc03.01.05 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
 | `noise` | doc03.01.06 |
 | `partition` | doc03.01.04 |
+| `pastoralism` | doc01.02.01.04 |
 | `pathfinding` | doc03.01.06 |
 | `philosophy` | doc00.02 |
+| `political-economy` | doc01.02.01.00 |
+| `polity` | doc01.02.01.02 |
+| `population` | doc01.02.01.02 |
 | `procgen` | doc03.01.06 |
 | `product` | doc01.01 |
-| `research` | doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
+| `research` | doc01.02.00, doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
 | `retrieval` | doc00.04 |
 | `river` | doc03.01.06 |
+| `salinization` | doc01.02.01.01, doc01.02.01.03 |
 | `scale` | doc03.01.05 |
+| `sessions` | doc01.02.00 |
+| `silver` | doc01.02.01.01, doc01.02.01.05 |
 | `simulation` | doc01.01, doc03.01.00, doc03.01.01 |
 | `spatial` | doc03.01.03, doc03.01.04 |
 | `storage` | doc03.01.03 |
 | `structure` | doc03.01.02 |
 | `theory` | doc00.01 |
+| `trade` | doc01.02.01.03, doc01.02.01.04 |
 | `vision` | doc01.01 |
+| `yields` | doc01.02.01.05 |
