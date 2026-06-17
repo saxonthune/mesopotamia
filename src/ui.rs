@@ -349,6 +349,7 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {
     slider(ui, &mut p.grass, 0.0..=3.0, "grass-seeking");
     slider(ui, &mut p.social, 0.0..=3.0, "social foraging");
     slider(ui, &mut p.migration, 0.0..=2.0, "migration (fallback)");
+    slider(ui, &mut p.quiet, 0.05..=3.0, "migration crossover (quiet)");
     ui.separator();
     ui.label("perception (cells)");
     slider(ui, &mut p.sep_radius, 1.0..=10.0, "separation radius");

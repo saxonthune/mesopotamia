@@ -6,7 +6,7 @@ mod metabolism;
 
 pub use components::{Cohort, Elk, ElkParams, Herds, Packs, Spawner};
 #[allow(unused_imports)]
-pub use movement::{cross_desire, step_water_penalty};
+pub use movement::{combine_drives, cross_desire, migration_residual, step_water_penalty, Drives};
 pub(crate) use color::elk_color;
 
 use bevy::prelude::*;

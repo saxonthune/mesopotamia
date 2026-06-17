@@ -20,6 +20,74 @@ fn norm(v: Vec2) -> Vec2 {
     if len > 1e-6 { v / len } else { Vec2::ZERO }
 }
 
+/// Residual weight on the migration pull, in (0, 1]. Migration is a *fallback*:
+/// it fills in only as the natural drives fall quiet. `quiet` is the crossover —
+/// the `natural_strength` at which migration is at half weight. Pure and tiny so
+/// the fade's shape is a one-line swap and the tests below still hold.
+pub fn migration_residual(natural_strength: f32, quiet: f32) -> f32 {
+    1.0 / (1.0 + natural_strength / quiet.max(1e-6))
+}
+
+/// The five weighted contribution vectors that sum into an elk's step desire,
+/// kept separate so the migration-vs-natural split is legible and testable.
+pub struct Drives {
+    pub sep: Vec2,
+    pub coh: Vec2,
+    pub grass: Vec2,
+    pub social: Vec2,
+    pub migration: Vec2,
+}
+
+impl Drives {
+    /// The combined desire vector — what `herd_move` steers by.
+    pub fn total(&self) -> Vec2 {
+        self.sep + self.coh + self.grass + self.social + self.migration
+    }
+
+    /// Fraction of total pull effort that is the migration ("magic") force, in
+    /// [0, 1]: |migration| over the sum of all five component magnitudes. 0 when
+    /// nothing pulls. Opposing drives that cancel still count toward the total.
+    #[allow(dead_code)] // sampled per-tick by ui-declarative-panels-graphs and balancing-param-sweep
+    pub fn migration_share(&self) -> f32 {
+        let sum = self.sep.length()
+            + self.coh.length()
+            + self.grass.length()
+            + self.social.length()
+            + self.migration.length();
+        if sum > 1e-6 {
+            self.migration.length() / sum
+        } else {
+            0.0
+        }
+    }
+}
+
+/// Combine the raw per-drive direction accumulators into weighted contributions.
+/// `sep`/`coh`/`grass_dir`/`social` are the un-normalized accumulators built in
+/// `herd_move`; `pressure` is the pack's migration pressure; `energy` is the elk's
+/// energy (hunger sharpens the food drives). Migration is residual — it scales by
+/// how quiet the naturals are.
+pub fn combine_drives(
+    sep: Vec2,
+    coh: Vec2,
+    grass_dir: Vec2,
+    social: Vec2,
+    params: &ElkParams,
+    pressure: f32,
+    energy: f32,
+) -> Drives {
+    let hunger = 1.0 - energy;
+    let appetite = 0.25 + 0.75 * hunger;
+    let sep = norm(sep) * params.separation;
+    let coh = norm(coh) * params.cohesion;
+    let grass = norm(grass_dir) * (params.grass * appetite);
+    let social = norm(social) * (params.social * appetite);
+    let natural_strength = sep.length() + coh.length() + grass.length() + social.length();
+    let migration = Vec2::X
+        * (params.migration * pressure * migration_residual(natural_strength, params.quiet));
+    Drives { sep, coh, grass, social, migration }
+}
+
 /// Two-phase boids-on-a-lattice. Phase 1 snapshots every elk's position and
 /// pack; phase 2 builds a desire vector from four *normalized* drives —
 /// separation, cohesion, grass-gradient, and the migration fallback — then
@@ -105,13 +173,11 @@ pub(super) fn herd_move(
         // Combine normalized drives. Hunger sharpens the pull toward food —
         // both grass directly and other elk already feeding — so a fed herd
         // drifts while a starving one bolts toward the nearest feast.
-        let hunger = 1.0 - elk.energy;
-        let appetite = 0.25 + 0.75 * hunger;
-        let desire = norm(sep) * params.separation
-            + norm(coh) * params.cohesion
-            + norm(grass_dir) * (params.grass * appetite)
-            + norm(social) * (params.social * appetite)
-            + Vec2::X * (params.migration * packs.migration[slot as usize]);
+        // Migration is a residual: it fills in only as the natural drives fall quiet.
+        let drives = combine_drives(
+            sep, coh, grass_dir, social, &params, packs.migration[slot as usize], elk.energy,
+        );
+        let desire = drives.total();
 
         // Score each valid step, then softmax for a weighted-random pick.
         let mut scores = [f32::NEG_INFINITY; 4];
@@ -184,6 +250,182 @@ pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn default_params() -> ElkParams {
+        ElkParams::default()
+    }
+
+    // ── migration_residual ────────────────────────────────────────────────────
+
+    // At natural_strength = 0 the residual is exactly 1: migration is unattenuated.
+    #[test]
+    fn residual_is_one_when_drives_silent() {
+        assert!((migration_residual(0.0, 1.0) - 1.0).abs() < 1e-6);
+    }
+
+    // At natural_strength == quiet the residual is 0.5 (the crossover definition).
+    #[test]
+    fn residual_is_half_at_crossover() {
+        assert!((migration_residual(2.0, 2.0) - 0.5).abs() < 1e-6);
+        assert!((migration_residual(0.5, 0.5) - 0.5).abs() < 1e-6);
+    }
+
+    // Metamorphic: residual is strictly decreasing in natural_strength.
+    // A stronger natural drive must always attenuate migration more.
+    #[test]
+    fn residual_strictly_decreasing_in_natural_strength() {
+        let quiet = 1.0;
+        let r_low = migration_residual(0.5, quiet);
+        let r_mid = migration_residual(1.0, quiet);
+        let r_high = migration_residual(5.0, quiet);
+        assert!(r_low > r_mid, "residual must fall as natural_strength rises");
+        assert!(r_mid > r_high);
+    }
+
+    // Residual tends toward near-zero for very large natural_strength.
+    #[test]
+    fn residual_vanishes_for_strong_naturals() {
+        assert!(migration_residual(1000.0, 1.0) < 0.01);
+    }
+
+    // ── Drives::total and migration_share ─────────────────────────────────────
+
+    // Sanity: total() equals the component sum on hand-picked inputs.
+    #[test]
+    fn drives_total_is_component_sum() {
+        let d = Drives {
+            sep: Vec2::new(1.0, 0.0),
+            coh: Vec2::new(0.0, 1.0),
+            grass: Vec2::new(-0.5, 0.0),
+            social: Vec2::ZERO,
+            migration: Vec2::new(0.3, 0.0),
+        };
+        let expected = Vec2::new(0.8, 1.0);
+        assert!((d.total() - expected).length() < 1e-6);
+    }
+
+    // migration_share is 0 when all drives are zero.
+    #[test]
+    fn migration_share_is_zero_when_idle() {
+        let d = Drives {
+            sep: Vec2::ZERO,
+            coh: Vec2::ZERO,
+            grass: Vec2::ZERO,
+            social: Vec2::ZERO,
+            migration: Vec2::ZERO,
+        };
+        assert_eq!(d.migration_share(), 0.0);
+    }
+
+    // ── combine_drives (metamorphic) ─────────────────────────────────────────
+
+    // Metamorphic: raising params.migration raises migration_share.
+    // A bigger migration weight must contribute a larger fraction of total pull.
+    #[test]
+    fn migration_share_rises_with_migration_param() {
+        let mut p_lo = default_params();
+        p_lo.migration = 0.1;
+        let mut p_hi = default_params();
+        p_hi.migration = 1.5;
+
+        let sep = Vec2::new(1.0, 0.5);
+        let coh = Vec2::new(-0.5, 1.0);
+        let grass = Vec2::new(0.3, 0.8);
+        let social = Vec2::ZERO;
+        let pressure = 0.8;
+        let energy = 0.5;
+
+        let lo = combine_drives(sep, coh, grass, social, &p_lo, pressure, energy);
+        let hi = combine_drives(sep, coh, grass, social, &p_hi, pressure, energy);
+        assert!(
+            hi.migration_share() > lo.migration_share(),
+            "higher migration param must raise migration_share"
+        );
+    }
+
+    // Metamorphic: raising pressure raises migration_share.
+    // Higher pack pressure amplifies the migration term.
+    #[test]
+    fn migration_share_rises_with_pressure() {
+        let p = default_params();
+        let sep = Vec2::new(1.0, 0.0);
+        let coh = Vec2::new(0.0, 1.0);
+        let grass = Vec2::new(0.5, 0.5);
+        let social = Vec2::ZERO;
+        let energy = 0.5;
+
+        let lo = combine_drives(sep, coh, grass, social, &p, 0.1, energy);
+        let hi = combine_drives(sep, coh, grass, social, &p, 1.0, energy);
+        assert!(
+            hi.migration_share() > lo.migration_share(),
+            "higher pressure must raise migration_share"
+        );
+    }
+
+    // Metamorphic: stronger natural weights reduce migration_share via the residual.
+    // Scaling up separation, cohesion, grass, and social weights shrinks migration's share
+    // because the residual attenuates it. This replaces the old constant-migration relation.
+    #[test]
+    fn migration_share_falls_as_natural_weights_grow() {
+        let mut p_weak = default_params();
+        p_weak.separation = 0.1;
+        p_weak.cohesion = 0.1;
+        p_weak.grass = 0.1;
+        p_weak.social = 0.1;
+
+        let mut p_strong = default_params();
+        p_strong.separation = 3.0;
+        p_strong.cohesion = 3.0;
+        p_strong.grass = 3.0;
+        p_strong.social = 3.0;
+
+        let sep = Vec2::new(1.0, 0.5);
+        let coh = Vec2::new(-0.5, 1.0);
+        let grass = Vec2::new(0.3, 0.8);
+        let social = Vec2::new(0.2, 0.1);
+        let pressure = 1.0;
+        let energy = 0.5;
+
+        let weak = combine_drives(sep, coh, grass, social, &p_weak, pressure, energy);
+        let strong = combine_drives(sep, coh, grass, social, &p_strong, pressure, energy);
+        assert!(
+            weak.migration_share() > strong.migration_share(),
+            "stronger natural drives must reduce migration_share via residual"
+        );
+    }
+
+    // Metamorphic: a hungrier elk (lower energy) raises the grass+social share.
+    // Hunger sharpens appetite, amplifying food drives relative to migration.
+    #[test]
+    fn hunger_raises_food_drive_share() {
+        let p = default_params();
+        let sep = Vec2::new(1.0, 0.0);
+        let coh = Vec2::new(0.0, 1.0);
+        let grass = Vec2::new(0.5, 0.5);
+        let social = Vec2::new(0.3, 0.0);
+        let pressure = 1.0;
+
+        let well_fed = combine_drives(sep, coh, grass, social, &p, pressure, 1.0); // energy=1
+        let starving = combine_drives(sep, coh, grass, social, &p, pressure, 0.0); // energy=0
+
+        let food_share_fed = (well_fed.grass.length() + well_fed.social.length())
+            / (well_fed.sep.length()
+                + well_fed.coh.length()
+                + well_fed.grass.length()
+                + well_fed.social.length()
+                + well_fed.migration.length());
+        let food_share_starving = (starving.grass.length() + starving.social.length())
+            / (starving.sep.length()
+                + starving.coh.length()
+                + starving.grass.length()
+                + starving.social.length()
+                + starving.migration.length());
+
+        assert!(
+            food_share_starving > food_share_fed,
+            "hunger must raise the food-drive share"
+        );
+    }
 
     // ── step_water_penalty ────────────────────────────────────────────────────
 

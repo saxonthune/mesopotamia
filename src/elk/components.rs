@@ -93,6 +93,7 @@ pub struct ElkParams {
     pub grass: f32,     // attraction up the grass gradient
     pub social: f32,    // attraction toward elk seen grazing (local enhancement)
     pub migration: f32, // weight of the far-edge fallback pull
+    pub quiet: f32,     // migration-residual crossover: natural_strength at half migration weight
     pub sep_radius: f32,
     pub coh_radius: f32,
     pub grass_radius: f32,
@@ -116,7 +117,11 @@ impl Default for ElkParams {
             cohesion: 0.6,
             grass: 1.4,
             social: 0.8,
-            migration: 0.35,
+            // Raised from 0.35 to 0.7 so that at typical natural_strength ≈ 2.0 (all drives
+            // active, well-fed herd) the effective pull is ~0.35 — matching the old constant.
+            // quiet = 2.0 sets the crossover there; balancing-param-sweep tunes both properly.
+            migration: 0.7,
+            quiet: 2.0,
             sep_radius: 3.0,
             coh_radius: 9.0,
             grass_radius: 5.0,
