@@ -64,9 +64,13 @@ fn main() {
 
 `tests/macro_sim.rs` uses `ElkSimPlugin` directly, with no render dependency, to run the population, grass, and migration invariants headlessly.
 
+## Sim State
+
+A `Sim` state (`Generating` → `Running`) lives in `src/sim.rs`. World generation runs in `OnEnter(Sim::Generating)` and transitions to `Running` once the grid is built. Grid and elk `FixedUpdate` systems are gated on `Running`. A regenerate draws a fresh `WorldSeed` and transitions back to `Generating`, which clears the grid (worldgen) and despawns all elk + resets their lifecycle resources (`OnExit(Running)`) — preserving the tuned `ElkParams`, `GrowthRate`, and `Fertility` across regenerates.
+
 ## Schedules
 
-Simulation systems (growth, movement, grazing) run on `FixedUpdate` so the world steps at a fixed rate independent of framerate, in the order the tick defines (doc03.01.01). Rendering — camera setup and reflecting grid and elk state into sprites — runs on `Startup` and `Update`.
+Simulation systems (growth, movement, grazing) run on `FixedUpdate` so the world steps at a fixed rate independent of framerate, in the order the tick defines (doc03.01.01). These systems are gated on `Sim::Running` so they are silent during world generation. Rendering — camera setup and reflecting grid and elk state into sprites — runs on `Startup` and `Update`.
 
 ## Cargo
 

@@ -291,6 +291,8 @@ fn control_panel(
     mut fertility: ResMut<Fertility>,
     mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
+    mut world_seed: ResMut<crate::worldgen::WorldSeed>,
+    mut next_state: ResMut<NextState<crate::sim::Sim>>,
     herds: Res<Herds>,
     history: Res<History>,
     drive_samples: Res<DriveSamples>,
@@ -305,6 +307,11 @@ fn control_panel(
                 ui.selectable_value(&mut state.tab, Tab::Herds, "Herds");
                 ui.separator();
                 speed_inline(ui, time.as_mut());
+                ui.separator();
+                if ui.button("⟳ regenerate").on_hover_text(format!("seed {:#018x}", world_seed.0)).clicked() {
+                    world_seed.0 = rand::random();
+                    next_state.set(crate::sim::Sim::Generating);
+                }
             });
             ui.separator();
             // The panel height is user-set by dragging its top border; the

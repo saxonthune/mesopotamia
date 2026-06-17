@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 
 use crate::field;
+use crate::sim::Sim;
 
 pub const GRID_WIDTH: usize = 256;
 pub const GRID_HEIGHT: usize = 108;
@@ -225,6 +226,13 @@ impl Grid {
     pub fn total_shrubs(&self) -> f32 {
         self.shrubs.iter().sum()
     }
+
+    /// Clear all per-cell state back to a freshly-constructed world, preserving
+    /// dimensions. World generation calls this before re-stamping, so regeneration
+    /// starts from a clean substrate instead of layering onto the previous world.
+    pub fn reset(&mut self) {
+        *self = Self::new(self.width, self.height);
+    }
 }
 
 pub struct GridPlugin;
@@ -238,7 +246,7 @@ impl Plugin for GridPlugin {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
             .init_resource::<GrowthRate>()
             .init_resource::<Fertility>()
-            .add_systems(FixedUpdate, (growth, grow_shrubs, fertilize));
+            .add_systems(FixedUpdate, (growth, grow_shrubs, fertilize).run_if(in_state(Sim::Running)));
     }
 }
 
@@ -293,6 +301,33 @@ mod tests {
         grid.set_grass(0, 0.5);
         grid.set_grass(3, 0.25);
         assert!((grid.total_grass() - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn reset_clears_all_per_cell_state() {
+        let mut grid = Grid::new(4, 4);
+        // Mutate several fields.
+        grid.set_grass(0, 0.8);
+        grid.add_poop(1, 0.5);
+        grid.set_water(2, 1.0);
+        grid.set_water_prox(3, 0.3);
+        grid.set_soil(4, 0.2);
+
+        grid.reset();
+
+        // Grass is cleared.
+        assert!((grid.total_grass()).abs() < 1e-6);
+        // Poop is cleared.
+        assert!((grid.poop(1)).abs() < 1e-6);
+        // Water is cleared.
+        assert!((grid.water(2)).abs() < 1e-6);
+        // water_prox resets to 1.0 (Grid::new default).
+        assert!((grid.water_prox(3) - 1.0).abs() < 1e-6);
+        // soil resets to 1.0.
+        assert!((grid.soil(4) - 1.0).abs() < 1e-6);
+        // Dimensions are preserved.
+        assert_eq!(grid.width(), 4);
+        assert_eq!(grid.height(), 4);
     }
 }
 

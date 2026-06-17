@@ -15,6 +15,8 @@ pub(crate) use color::elk_color;
 
 use bevy::prelude::*;
 
+use crate::sim::Sim;
+
 pub struct ElkSimPlugin;
 
 pub const PACK_COUNT: usize = 8;
@@ -29,6 +31,7 @@ impl Plugin for ElkSimPlugin {
             .init_resource::<ElkParams>()
             .init_resource::<Herds>()
             .add_systems(Update, spawn::tally_herds)
+            .add_systems(OnExit(Sim::Running), spawn::teardown)
             .add_systems(
                 FixedUpdate,
                 (
@@ -39,7 +42,7 @@ impl Plugin for ElkSimPlugin {
                     metabolism::migrate_pressure,
                     spawn::spawn_waves,
                     spawn::cull,
-                ),
+                ).run_if(in_state(Sim::Running)),
             );
     }
 }

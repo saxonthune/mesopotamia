@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::grid::{GRID_HEIGHT, GRID_WIDTH};
 
-use super::components::{Cohort, Elk, Herds, Packs, Spawner, MAX_COHORTS};
+use super::components::{Cohort, DriveSample, DriveSamples, Elk, Herds, Packs, Spawner, MAX_COHORTS};
 use super::color::elk_color;
 
 const TILE_SIZE: f32 = 16.0;
@@ -114,6 +114,26 @@ pub(super) fn spawn_waves(
 
     spawner.next_pack = (slot + 1) % super::PACK_COUNT as u8;
     spawner.cooldown = WAVE_INTERVAL;
+}
+
+/// On leaving `Running` (a regenerate), despawn every elk and reset the herd
+/// lifecycle resources so the new world starts from an empty range. The tuned
+/// `ElkParams` are deliberately left untouched.
+pub(super) fn teardown(
+    mut commands: Commands,
+    elk: Query<Entity, With<Elk>>,
+    mut spawner: ResMut<Spawner>,
+    mut herds: ResMut<Herds>,
+    mut packs: ResMut<Packs>,
+    mut drive_samples: ResMut<DriveSamples>,
+) {
+    for e in &elk {
+        commands.entity(e).despawn();
+    }
+    *spawner = Spawner::default();
+    *herds = Herds::default();
+    *packs = Packs::new();
+    drive_samples.per_slot = vec![DriveSample::default(); super::PACK_COUNT];
 }
 
 /// Despawns any elk that has lingered at the far edge long enough to count as

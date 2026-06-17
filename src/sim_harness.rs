@@ -1,10 +1,12 @@
 use bevy::app::ScheduleRunnerPlugin;
 use bevy::prelude::*;
+use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
-use crate::elk::{DriveSamples, Elk, ElkParams, ElkSimPlugin, Herds};
+use crate::elk::{DriveSamples, Elk, ElkParams, ElkSimPlugin, Herds, Spawner};
 use crate::grid::{Grid, GridPlugin};
+use crate::sim::SimStatePlugin;
 use crate::worldgen::WorldgenPlugin;
 
 const HZ: f64 = 10.0;
@@ -16,8 +18,13 @@ pub fn make_app() -> App {
     app.add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_once()))
         .insert_resource(Time::<Fixed>::from_hz(HZ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
-        .add_plugins((GridPlugin, ElkSimPlugin, WorldgenPlugin));
+        .add_plugins(StatesPlugin)
+        .add_plugins((GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin));
     app
+}
+
+pub fn spawner_elapsed(world: &World) -> u32 {
+    world.get_resource::<Spawner>().unwrap().elapsed
 }
 
 pub fn elk_count(world: &mut World) -> usize {

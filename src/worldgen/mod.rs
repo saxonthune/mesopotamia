@@ -15,6 +15,7 @@ use rand::{Rng, SeedableRng};
 
 use crate::grid::Grid;
 use crate::river::{generate_water, RiverSpec};
+use crate::sim::Sim;
 
 pub struct WorldgenPlugin;
 
@@ -24,7 +25,7 @@ impl Plugin for WorldgenPlugin {
         // entropy. A binary or a future regenerate control can overwrite the
         // `WorldSeed` resource before `generate_world` runs to pin or replay a world.
         app.insert_resource(WorldSeed(rand::random()))
-            .add_systems(Startup, generate_world);
+            .add_systems(OnEnter(Sim::Generating), generate_world);
     }
 }
 
@@ -63,7 +64,8 @@ impl WorldSpec {
 /// The world-generation orchestrator. The call order *is* the contract: soil and
 /// vegetation both read the water field, so the water layer runs first, then they
 /// follow — explicitly, in sequence, rather than via scheduling side effects.
-fn generate_world(mut grid: ResMut<Grid>, seed: Res<WorldSeed>) {
+fn generate_world(mut grid: ResMut<Grid>, seed: Res<WorldSeed>, mut next: ResMut<NextState<Sim>>) {
+    grid.reset();
     // Log the seed so a world worth keeping can be replayed by pinning this value.
     info!("worldgen master seed = {:#018x}", seed.0);
     let spec = WorldSpec::from_seed(seed.0);
@@ -80,4 +82,6 @@ fn generate_world(mut grid: ResMut<Grid>, seed: Res<WorldSeed>) {
 
     // 4. Vegetation — shrub capacity on the dry ground away from water.
     vegetation::seed_shrub_cap(&mut grid, spec.shrub_seed);
+
+    next.set(Sim::Running);
 }

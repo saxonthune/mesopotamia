@@ -3,6 +3,7 @@ pub mod grid;
 pub mod elk;
 pub mod render;
 pub mod settings;
+pub mod sim;
 pub mod ui;
 pub mod river;
 pub mod worldgen;
