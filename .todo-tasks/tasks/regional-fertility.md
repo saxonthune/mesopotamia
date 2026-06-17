@@ -10,8 +10,19 @@ zones to give herds a reason to prefer one part of the map. This phase layers a
 second, much-lower-frequency macro-octave on top of the existing fine patches so
 the world has genuine regional character.
 
-This phase is independent of the river phases (different concept, different
-files). It triages against live `grid.rs`/`field.rs` code on trunk.
+This is phase 1 of a 2-phase chain (regional-fertility → river-confluence). It is
+independent of the river work (different files), so it triages against live
+`grid.rs`/`field.rs` code.
+
+## Agent execution notes (READ FIRST)
+
+- **Run every cargo/build command in the FOREGROUND and let it block to
+  completion.** Do NOT launch it as a background command and poll with
+  `sleep`/`tail` — this sandbox BLOCKS that pattern, and you have no polling
+  tool, so you will strand yourself and lose your work. Builds are fast here
+  because the Verification commands point at a pre-warmed shared target dir.
+- Commit after each logical unit of work (you are headless; uncommitted work is
+  lost). Verify with `git log --oneline -3` before finishing.
 
 ## Do NOT
 
@@ -20,14 +31,15 @@ files). It triages against live `grid.rs`/`field.rs` code on trunk.
 - Do NOT seed the macro field from the same `SOIL_SEED` — use a distinct seed so
   the coarse regions are uncorrelated with the fine patches.
 - Do NOT seed from the clock — `StdRng` only.
-- Do NOT touch river/water generation or elk/movement.
+- Do NOT touch river/water generation (`src/river/`) or elk/movement.
 
 ## Plan
 
 ### 1. Add the macro-octave constants
 
-In `src/grid.rs`, near the existing soil constants, add:
-- `MACRO_SEED: u64` — distinct from `SOIL_SEED`/`BROWSE_SEED`/`RIVER_SEED`.
+In `src/grid.rs`, near the existing soil constants (`SOIL_SEED`, `SOIL_PASSES`,
+`SOIL_FLOOR`), add:
+- `MACRO_SEED: u64` — distinct from `SOIL_SEED`/`BROWSE_SEED` and from the river seed.
 - `MACRO_PASSES: usize` — much larger than `SOIL_PASSES` (e.g. `14`) so features
   span large regions of the 256×108 grid.
 - `MACRO_FLOOR: f32` (e.g. `0.4`) — the sparsest region still carries this
@@ -56,24 +68,25 @@ Add a focused test (in a `grid.rs` `#[cfg(test)]` module, or extend an existing
 one) that builds a grid, runs `seed_soil`, and asserts the soil field has broad
 regional spread — e.g. the mean soil of the left third differs from the mean soil
 of the right third by more than a small epsilon for the default seed, OR simply
-that `min < some threshold < max` with substantial range. Keep it deterministic.
+that `min < threshold < max` with substantial range. Keep it deterministic.
 
 ## Files to Modify
 
-- `src/grid.rs` — macro constants, the blend in `seed_soil`, the regional-spread
-  test.
+- `src/grid.rs` — macro constants, the blend in `seed_soil`, the regional-spread test.
 
 ## Verification
 
+Run these in the FOREGROUND (see Agent execution notes). The `CARGO_TARGET_DIR`
+points at a pre-warmed shared target so compiles take seconds, not minutes.
+
 ```bash
-cargo test --lib
-cargo test --test macro_sim
-cargo build --bin mesopotamia
+CARGO_TARGET_DIR=/home/saxon/.cache/mesopotamia-shared-target cargo test --lib
+CARGO_TARGET_DIR=/home/saxon/.cache/mesopotamia-shared-target cargo test --test macro_sim
 ```
 
 ## Out of Scope
 
-- River variety / confluence (phases A, B).
+- River variety / confluence (the river phases).
 - Changing the `capacity` formula shape (still `water_prox · soil · MAX_GRASS`).
 - Elk/movement changes.
 
@@ -81,9 +94,9 @@ cargo build --bin mesopotamia
 
 - Lowering overall fertility reduces total carrying capacity. The macro_sim grass
   floor is `2% of Σ capacity` and the crossing budget scales with width, so both
-  track the change automatically — but run them: if grazing balance shifts enough
-  to collapse or explode the population, raise `MACRO_FLOOR` rather than weakening
-  the regional contrast.
+  track the change automatically — but run macro_sim: if grazing balance shifts
+  enough to collapse or explode the population, raise `MACRO_FLOOR` rather than
+  weakening the regional contrast.
 - `value_noise` + `normalize` are pure and already tested in `field.rs`; this
   phase only adds the domain blend.
 
@@ -93,4 +106,5 @@ cargo build --bin mesopotamia
   `MACRO_FLOOR`) multiplicatively over the existing fine soil patches; `soil`
   and `capacity` stay in [0, 1] / [0, MAX_GRASS].
 - `capacity(index) = water_prox · soil · MAX_GRASS` is unchanged in shape.
-- No river, water, browse, or elk behavior is changed.
+- No river (`src/river/`), water, browse, or elk behavior is changed — the
+  river-confluence phase can rely on `src/river/` being exactly as it is on trunk.
