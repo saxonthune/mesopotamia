@@ -6,6 +6,7 @@
 //! generation. Adding a layer means adding a module and one line to `generate_world`.
 
 mod soil;
+mod soil_type;
 mod vegetation;
 
 use bevy::prelude::*;
@@ -47,6 +48,9 @@ fn generate_world(mut grid: ResMut<Grid>) {
     // 2. Soil — static fertility patches multiplied by a coarse regional octave.
     soil::seed_soil(&mut grid);
 
-    // 3. Vegetation — browse (shrub) capacity on the dry ground away from water.
+    // 3. Soil type — riparian/steppe gradient derived from water proximity.
+    soil_type::seed_soil_type(&mut grid);
+
+    // 4. Vegetation — browse (shrub) capacity on the dry ground away from water.
     vegetation::seed_browse_cap(&mut grid);
 }

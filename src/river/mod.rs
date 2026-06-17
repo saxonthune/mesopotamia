@@ -18,8 +18,9 @@ use rand::{Rng, SeedableRng};
 
 use crate::grid::Grid;
 
+use crate::field;
 use cost::{carve, cost_field, lerp};
-use raster::{rasterize, stamp_fords};
+use raster::{stamp_main_channel, tag_shallows_as_fords};
 use spec::{PEN_HIGH, PEN_LOW, RIVER_SEED};
 
 /// Generate the full water field from `spec` — the world-gen *water layer*. Stamps
@@ -92,7 +93,9 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         };
 
         let cl = carve(grid, &cost, entry, goal, Some((&spec.heading, penalty_i)));
-        rasterize(grid, &cl, spec.radius, spec.core, 1.0);
+        let mut riffle_rng = StdRng::seed_from_u64(RIVER_SEED ^ ((i as u64 + 1) << 16));
+        let profile = field::normalize(&field::value_noise(cl.len(), 1, spec.riffle_passes, &mut riffle_rng));
+        stamp_main_channel(grid, &cl, &profile, spec);
         mains.push(cl);
     }
 
@@ -102,7 +105,7 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
     features::place_lakes(grid, &cost, spec);
     let tribs = features::carve_tributaries(grid, &cost, &mut rng, spec, &mains);
 
-    stamp_fords(grid, &mains, spec.radius, spec.ford_spacing, spec.ford_depth);
+    tag_shallows_as_fords(grid, spec.riffle_ford_threshold);
 
     prox::compute_water_prox(grid, spec.water_reach);
 
@@ -133,11 +136,11 @@ mod tests {
         generate_water(&mut g, &spec);
         for i in 0..g.len() {
             if g.is_ford(i) {
+                let w = g.water(i);
                 assert!(
-                    g.water(i) <= spec.ford_depth + f32::EPSILON,
-                    "ford cell {i} has water {} > ford_depth {}",
-                    g.water(i),
-                    spec.ford_depth
+                    w > 0.0 && w <= spec.riffle_ford_threshold + f32::EPSILON,
+                    "ford cell {i} has water {w} outside (0, {}]",
+                    spec.riffle_ford_threshold
                 );
             }
         }
@@ -266,18 +269,13 @@ mod tests {
         let mut g = Grid::new(128, 96);
         let (mains, tribs) = generate_water(&mut g, &spec);
 
-        // We expect the default number of tributaries to have been carved.
-        assert_eq!(
-            tribs.len(),
-            spec.tributaries,
-            "expected {} tributaries",
-            spec.tributaries
-        );
+        assert!(!tribs.is_empty(), "expected at least one tributary to be carved");
 
         // Build a flat set of all main-centerline cells for O(1) lookup.
         let main_cells: std::collections::HashSet<usize> =
             mains.iter().flatten().copied().collect();
 
+        let max_len = 4 * spec.trib_length as usize;
         for (i, tcl) in tribs.iter().enumerate() {
             assert!(!tcl.is_empty(), "tributary {i} centerline is empty");
 
@@ -286,6 +284,12 @@ mod tests {
             assert!(
                 main_cells.contains(&confluence),
                 "tributary {i} confluence cell {confluence} is not on any main centerline"
+            );
+
+            assert!(
+                tcl.len() <= max_len,
+                "tributary {i} is too long: {} cells (max {max_len}); long-stream bug detected",
+                tcl.len()
             );
         }
     }
@@ -341,5 +345,26 @@ mod tests {
             deep_with > deep_none,
             "expected lakes to add deep water cells: with_lakes={deep_with}, no_lakes={deep_none}"
         );
+    }
+
+    #[test]
+    fn river_has_riffles_and_pools() {
+        let spec = RiverSpec::default();
+        let mut g = Grid::new(128, 96);
+        let (mains, _) = generate_water(&mut g, &spec);
+
+        let all_main_cells: std::collections::HashSet<usize> =
+            mains.iter().flatten().copied().collect();
+
+        const EPS: f32 = 0.05;
+        let has_riffle = all_main_cells
+            .iter()
+            .any(|&i| g.water(i) <= spec.riffle_depth + EPS);
+        let has_pool = all_main_cells.iter().any(|&i| g.water(i) >= 0.9);
+        let has_ford = (0..g.len()).any(|i| g.is_ford(i));
+
+        assert!(has_riffle, "expected at least one riffle-shallow cell on a main channel");
+        assert!(has_pool, "expected at least one pool-deep cell on a main channel");
+        assert!(has_ford, "expected at least one ford-tagged cell");
     }
 }

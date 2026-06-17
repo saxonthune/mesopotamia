@@ -55,9 +55,10 @@ pub(super) fn place_lakes(grid: &mut Grid, cost: &[u32], spec: &RiverSpec) {
     }
 }
 
-/// Tributaries: shallow feeders that branch off a main channel at a confluence.
-/// Each feeder's goal is a cell sampled from a main centerline (by construction
-/// it must join the main river), carved with plain least-cost (no heading bias).
+/// Tributaries: short feeders spaced along each main channel. For each main,
+/// steps every `trib_spacing` positions along the interior (skipping first/last
+/// ~10%), picks a source offset ~`trib_length` cells to one lateral side and
+/// slightly upstream, and carves a short feeder to that confluence point.
 pub(super) fn carve_tributaries(
     grid: &mut Grid,
     cost: &[u32],
@@ -71,32 +72,44 @@ pub(super) fn carve_tributaries(
     }
     let width = grid.width();
     let height = grid.height();
-    let upper_half = height / 2;
-    for _ in 0..spec.tributaries {
-        let main_idx = rng.random_range(0..mains.len());
-        let main_len = mains[main_idx].len();
 
-        // Confluence from the interior: exclude first/last ~10% of the path.
+    for main in mains {
+        let main_len = main.len();
         let skip = (main_len / 10).max(1);
-        let lo = skip;
-        let hi = main_len.saturating_sub(skip);
-        if lo >= hi {
+        let interior = &main[skip..main_len.saturating_sub(skip)];
+        if interior.is_empty() {
             continue;
         }
-        let conf_pos = rng.random_range(lo..hi);
-        let confluence = mains[main_idx][conf_pos]; // usize is Copy
 
-        // Source on a side edge (left or right), upper portion of the map.
-        let source_row = rng.random_range(0..upper_half.max(1));
-        let source = if rng.random::<bool>() {
-            source_row * width // left edge, col 0
-        } else {
-            source_row * width + (width - 1) // right edge
-        };
+        for confluence_idx in interior.iter().copied().step_by(spec.trib_spacing.max(1)) {
+            let conf_col = (confluence_idx % width) as isize;
+            let conf_row = (confluence_idx / width) as isize;
 
-        let tcl = carve(grid, cost, source, confluence, None);
-        rasterize(grid, &tcl, spec.trib_radius, spec.core, spec.trib_depth);
-        tribs.push(tcl);
+            // Offset the source slightly upstream (smaller row) and laterally.
+            let half = spec.trib_length / 2;
+            let src_row = (conf_row - half).clamp(0, height as isize - 1);
+
+            // Pick left or right side with the seeded rng; try the other if off-grid.
+            let left_col = conf_col - spec.trib_length;
+            let right_col = conf_col + spec.trib_length;
+            let prefer_left: bool = rng.random();
+            let src_col = if prefer_left {
+                if left_col >= 0 { left_col } else if right_col < width as isize { right_col } else { continue }
+            } else {
+                if right_col < width as isize { right_col } else if left_col >= 0 { left_col } else { continue }
+            };
+
+            let source = src_row as usize * width + src_col as usize;
+
+            // Skip if the candidate source already sits in water.
+            if grid.water(source) > 0.0 {
+                continue;
+            }
+
+            let tcl = carve(grid, cost, source, confluence_idx, None);
+            rasterize(grid, &tcl, spec.trib_radius, spec.core, spec.trib_depth);
+            tribs.push(tcl);
+        }
     }
     tribs
 }

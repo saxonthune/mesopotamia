@@ -34,6 +34,10 @@ pub struct Grid {
     /// Ford mask: true on cells authored as periodic shallow crossings along the
     /// main channel centerline. Read by Phase B to apply the crossing discount.
     ford: Vec<bool>,
+    /// Soil-type gradient: 0 = dry steppe, 1 = moist riparian. Derived from the
+    /// water-proximity field after the water layer runs. Drives two-tone dirt render
+    /// and a gentle browse-capacity nudge away from the riparian band.
+    soil_type: Vec<f32>,
 }
 
 /// How fast grass regrows under the reaction-diffusion model: a cell gains
@@ -84,6 +88,7 @@ impl Grid {
             browse: vec![0.0; width * height],
             browse_cap: vec![0.0; width * height],
             ford: vec![false; width * height],
+            soil_type: vec![0.0; width * height],
         }
     }
 
@@ -182,6 +187,14 @@ impl Grid {
 
     pub fn set_ford(&mut self, index: usize, value: bool) {
         self.ford[index] = value;
+    }
+
+    pub fn soil_type(&self, index: usize) -> f32 {
+        self.soil_type[index]
+    }
+
+    pub fn set_soil_type(&mut self, index: usize, value: f32) {
+        self.soil_type[index] = value.clamp(0.0, 1.0);
     }
 
     pub fn browse(&self, index: usize) -> f32 {

@@ -30,10 +30,12 @@ pub(super) fn seed_browse_cap(grid: &mut Grid) {
     for (i, &p) in patch.iter().enumerate() {
         // Dryness: far from water → 1, beside it → 0. Browse wants the steppe.
         let dry = 1.0 - grid.water_prox(i);
+        // Gentle nudge: riparian cells (soil_type → 1) slightly suppress browse.
+        let steppe = 1.0 - 0.5 * grid.soil_type(i);
         let cap = if grid.water(i) > 0.0 || p < BROWSE_THRESHOLD {
             0.0
         } else {
-            dry * MAX_BROWSE
+            dry * steppe * MAX_BROWSE
         };
         grid.set_browse_cap(i, cap);
     }

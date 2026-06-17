@@ -212,8 +212,11 @@ fn apply_camera(
 
 fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
     for (tile, mut sprite) in &mut tiles {
+        let steppe_dirt = Vec3::new(0.80, 0.72, 0.52);   // pale dry
+        let riparian_dirt = Vec3::new(0.45, 0.38, 0.26); // dark moist
+        let dirt = steppe_dirt.lerp(riparian_dirt, grid.soil_type(tile.index));
+
         let h = grid.grass(tile.index) / MAX_GRASS;
-        let dirt = Vec3::new(0.76, 0.68, 0.48); // tan bare ground
         let green = Vec3::new(0.2, 0.7, 0.3);
         let c = dirt.lerp(green, h);
 

@@ -35,11 +35,11 @@ pub struct RiverSpec {
     /// Drives both the smoothing-pass count (wavelength) and the directional-
     /// penalty weight — one intuitive control instead of two separate dials.
     pub bendiness: f32,
-    /// Shallow feeders that branch off the main channels at a confluence.
-    pub tributaries: usize,
-    /// Main-channel raster radius (cells from centerline to bank).
-    pub radius: isize,
-    /// Full-depth core radius (≤ radius; cells within get max water).
+    /// Cells between successive feeders along a main centerline.
+    pub trib_spacing: usize,
+    /// Lateral source offset / nominal feeder length in cells.
+    pub trib_length: isize,
+    /// Full-depth core radius (cells within the centerline that get max water).
     pub core: isize,
     /// BFS reach for the water-proximity carrying-capacity field.
     pub water_reach: u32,
@@ -48,8 +48,16 @@ pub struct RiverSpec {
     pub oxbow_count: usize,
     pub oxbow_radius: isize,
     pub oxbow_depth: f32,
-    pub ford_spacing: usize,
-    pub ford_depth: f32,
+    /// Water level at a full riffle (shallow end of the depth range).
+    pub riffle_depth: f32,
+    /// Bank radius at a riffle (wide).
+    pub riffle_radius: isize,
+    /// Bank radius at a pool (narrow).
+    pub pool_radius: isize,
+    /// Water cells at or below this level are tagged as fordable crossings.
+    pub riffle_ford_threshold: f32,
+    /// 1-D smoothing passes for the per-river riffle/pool profile.
+    pub riffle_passes: usize,
     /// Fractional jitter applied to each river's drift: drift_i = drift * (1 ± spread).
     pub drift_spread: f32,
     /// Additive jitter on each river's bendiness (clamped to [0, 1]).
@@ -73,8 +81,8 @@ impl Default for RiverSpec {
             heading: Heading::Down,
             drift: 0.25,
             bendiness: 0.5,
-            tributaries: 2,
-            radius: 3,
+            trib_spacing: 24,
+            trib_length: 12,
             core: 1,
             water_reach: 8,
             trib_radius: 1,
@@ -82,8 +90,11 @@ impl Default for RiverSpec {
             oxbow_count: 2,
             oxbow_radius: 1,
             oxbow_depth: 0.3,
-            ford_spacing: 20,
-            ford_depth: 0.3,
+            riffle_depth: 0.3,
+            riffle_radius: 4,
+            pool_radius: 2,
+            riffle_ford_threshold: 0.45,
+            riffle_passes: 6,
             drift_spread: 0.2,
             bendiness_spread: 0.2,
             lake_count: 3,

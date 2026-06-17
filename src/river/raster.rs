@@ -1,7 +1,8 @@
-//! Stamping carved centerlines into the grid's water field, plus the periodic
-//! ford bands that cross each main channel.
+//! Stamping carved centerlines into the grid's water field.
 
 use crate::grid::Grid;
+use super::spec::RiverSpec;
+use super::cost::lerp;
 
 /// Stamp water values around each centerline cell. `max_depth` scales the level:
 /// 1.0 gives a full-depth main channel; lower values produce shallow streams/pools.
@@ -32,52 +33,26 @@ pub(super) fn rasterize(
     }
 }
 
-/// Returns every `spacing`-th element of `centerline` by position (0, spacing, 2*spacing, …).
-pub(super) fn ford_indices(centerline: &[usize], spacing: usize) -> Vec<usize> {
-    centerline.iter().copied().step_by(spacing).collect()
-}
-
-/// Stamp periodic shallow crossing bands (horizontal, perpendicular to flow)
-/// along EACH main centerline, marking the cells as fords.
-pub(super) fn stamp_fords(
+/// Stamp a main channel with varying depth and width driven by a riffle/pool `profile`.
+/// `profile[t]` in [0,1]: 0 = full riffle (shallow + wide), 1 = full pool (deep + narrow).
+pub(super) fn stamp_main_channel(
     grid: &mut Grid,
-    mains: &[Vec<usize>],
-    radius: isize,
-    spacing: usize,
-    depth: f32,
+    centerline: &[usize],
+    profile: &[f32],
+    spec: &RiverSpec,
 ) {
-    for main_cl in mains {
-        for &ford_center in &ford_indices(main_cl, spacing) {
-            for dx in -radius..=radius {
-                if let Some(cell) = grid.step(ford_center, dx, 0) {
-                    grid.set_water(cell, depth);
-                    grid.set_ford(cell, true);
-                }
-            }
-        }
+    for (t, &center) in centerline.iter().enumerate() {
+        let p = profile[t];
+        let depth = lerp(spec.riffle_depth, 1.0, p);
+        let radius = lerp(spec.riffle_radius as f32, spec.pool_radius as f32, p).round() as isize;
+        rasterize(grid, &[center], radius, spec.core, depth);
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ford_indices_returns_every_nth_cell() {
-        let cl: Vec<usize> = (10..110).collect(); // 100 elements: 10..109
-        let fords = ford_indices(&cl, 25);
-        assert_eq!(fords, vec![10, 35, 60, 85]);
-    }
-
-    #[test]
-    fn ford_indices_empty_centerline() {
-        assert!(ford_indices(&[], 10).is_empty());
-    }
-
-    #[test]
-    fn ford_indices_spacing_larger_than_len() {
-        let cl = vec![7usize, 8, 9];
-        let fords = ford_indices(&cl, 10);
-        assert_eq!(fords, vec![7]); // only position 0
+/// Tag every water cell at or below `threshold` as a fordable crossing.
+pub(super) fn tag_shallows_as_fords(grid: &mut Grid, threshold: f32) {
+    for i in 0..grid.len() {
+        let w = grid.water(i);
+        grid.set_ford(i, w > 0.0 && w <= threshold);
     }
 }
