@@ -3,15 +3,87 @@ use rand::Rng;
 
 use crate::grid::Grid;
 
-use super::components::{DriveSample, DriveSamples, Elk, ElkParams, Packs};
+use super::components::{DriveSample, DriveSamples, Elk, ElkParams, LastDecision, Packs, ProbeSeed};
+use super::ledger::EnergyFlows;
 
 const OTHER_PACK_SEP: f32 = 0.5; // mild push from foreign packs
+
+/// Labeled view of a weighted decomposition — each entry is (label, vector).
+pub trait Decomposable {
+    fn contributions(&self) -> Vec<(&'static str, Vec2)>;
+}
+
+/// One candidate step evaluated by the softmax decision.
+pub struct StepEval {
+    pub step: (isize, isize),
+    pub score: f32,
+    pub penalty: f32,
+    pub weight: f32,
+}
+
+/// Full per-elk, per-tick decision record captured by `herd_move`.
+pub struct Decision {
+    pub drives: Drives,
+    pub options: Vec<StepEval>,
+    /// Index into `options` of the chosen step; None when hemmed in.
+    pub chosen: Option<usize>,
+    pub temperature: f32,
+}
+
+impl Default for Decision {
+    fn default() -> Self {
+        Decision {
+            drives: Drives {
+                sep: Vec2::ZERO,
+                coh: Vec2::ZERO,
+                grass: Vec2::ZERO,
+                social: Vec2::ZERO,
+                migration: Vec2::ZERO,
+            },
+            options: Vec::new(),
+            chosen: None,
+            temperature: 0.0,
+        }
+    }
+}
 
 /// Step cost for entering a water cell. On a ford the cost is reduced by
 /// `ford_discount`; off a ford it is the raw water-level × cost (today's behaviour).
 pub fn step_water_penalty(water: f32, is_ford: bool, water_cost: f32, ford_discount: f32) -> f32 {
     let base = water * water_cost;
     if is_ford { base * ford_discount } else { base }
+}
+
+/// Grass-gradient field at `cell`: the pull-toward-forage vector that `herd_move`
+/// steers by, as a pure function of the grid and params. Nearby rich cells weigh
+/// more; cells beyond `grass_radius` are ignored. Returns a raw (un-normalized)
+/// direction vector — magnitude reflects how strongly forage pulls from each direction.
+pub fn grass_gradient(cell: usize, grid: &Grid, params: &ElkParams) -> Vec2 {
+    let gr = params.grass_radius.ceil() as isize;
+    let mut dir = Vec2::ZERO;
+    for dy in -gr..=gr {
+        for dx in -gr..=gr {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            if let Some(n) = grid.step(cell, dx, dy) {
+                let off = Vec2::new(dx as f32, dy as f32);
+                let dist = off.length();
+                if dist > params.grass_radius {
+                    continue;
+                }
+                dir += off / dist * (grid.forage(n) / dist);
+            }
+        }
+    }
+    dir
+}
+
+/// Water-penalty field at `cell`: the step cost an elk would pay to enter this
+/// cell, sampled for overlay rendering. Thin wrapper so grid sampling does not
+/// have to repeat the ford/cost arithmetic.
+pub fn cell_water_penalty(cell: usize, grid: &Grid, params: &ElkParams) -> f32 {
+    step_water_penalty(grid.water(cell), grid.is_ford(cell), params.water_cost, params.ford_discount)
 }
 
 /// Unit vector in `v`'s direction, or zero if `v` is ~zero.
@@ -62,6 +134,18 @@ impl Drives {
     }
 }
 
+impl Decomposable for Drives {
+    fn contributions(&self) -> Vec<(&'static str, Vec2)> {
+        vec![
+            ("sep",       self.sep),
+            ("coh",       self.coh),
+            ("grass",     self.grass),
+            ("social",    self.social),
+            ("migration", self.migration),
+        ]
+    }
+}
+
 /// Combine the raw per-drive direction accumulators into weighted contributions.
 /// `sep`/`coh`/`grass_dir`/`social` are the un-normalized accumulators built in
 /// `herd_move`; `pressure` is the pack's migration pressure; `energy` is the elk's
@@ -96,13 +180,15 @@ pub(super) fn herd_move(
     grid: Res<Grid>,
     packs: Res<Packs>,
     params: Res<ElkParams>,
-    mut elk_q: Query<&mut Elk>,
+    mut elk_q: Query<(&mut Elk, &mut LastDecision)>,
     mut samples: ResMut<DriveSamples>,
+    mut flows: ResMut<EnergyFlows>,
+    mut probe_seed: Option<ResMut<ProbeSeed>>,
 ) {
     // Phase 1: snapshot (col, row, slot, grazing) for every elk, in query order.
     let snapshot: Vec<(f32, f32, u8, bool)> = elk_q
         .iter()
-        .map(|elk| {
+        .map(|(elk, _)| {
             let (col, row) = grid.col_row(elk.cell);
             (col as f32, row as f32, elk.slot, elk.grazing)
         })
@@ -110,11 +196,9 @@ pub(super) fn herd_move(
 
     // Phase 2: decide and write, reading neighbours only from the snapshot.
     let mut acc = vec![DriveSample::default(); super::PACK_COUNT];
-    let mut rng = rand::rng();
     let steps: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-    let gr = params.grass_radius.ceil() as isize;
 
-    for (i, mut elk) in elk_q.iter_mut().enumerate() {
+    for (i, (mut elk, mut last_decision)) in elk_q.iter_mut().enumerate() {
         // Where the elk starts this tick becomes the render interpolation's
         // origin; if it doesn't move below, prev == cell and the sprite holds still.
         elk.prev_cell = elk.cell;
@@ -153,24 +237,9 @@ pub(super) fn herd_move(
         }
         let coh = if coh_n > 0.0 { coh_sum / coh_n - pos } else { Vec2::ZERO };
 
-        // Field drive: steer up the grass gradient, near and rich grass weighing
-        // most. As a herd eats a hole, this points outward to fresh forage.
-        let mut grass_dir = Vec2::ZERO;
-        for dy in -gr..=gr {
-            for dx in -gr..=gr {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
-                if let Some(n) = grid.step(elk.cell, dx, dy) {
-                    let off = Vec2::new(dx as f32, dy as f32);
-                    let dist = off.length();
-                    if dist > params.grass_radius {
-                        continue;
-                    }
-                    grass_dir += off / dist * (grid.forage(n) / dist);
-                }
-            }
-        }
+        // Field drive: steer up the grass gradient. Extracted to `grass_gradient`
+        // so the same field can be sampled on arbitrary cells for the overlay.
+        let grass_dir = grass_gradient(elk.cell, &grid, &params);
 
         // Combine normalized drives. Hunger sharpens the pull toward food —
         // both grass directly and other elk already feeding — so a fed herd
@@ -190,28 +259,39 @@ pub(super) fn herd_move(
         acc[s].count += 1;
 
         let desire = drives.total();
+        // Move drives into a local so it can be placed into the Decision record.
+        let decision_drives = drives;
 
         // Score each valid step, then softmax for a weighted-random pick.
         let mut scores = [f32::NEG_INFINITY; 4];
         let mut cells: [Option<usize>; 4] = [None; 4];
+        let mut penalties = [0.0_f32; 4];
         for (k, &(dx, dy)) in steps.iter().enumerate() {
             if let Some(next) = grid.step(elk.cell, dx, dy) {
                 // Fording is costly — deep water repels, a ford less so. This
                 // is what turns a crossing into a decision: a herd only steps into
                 // water when the forage drive beyond outweighs the penalty.
-                scores[k] = desire.dot(Vec2::new(dx as f32, dy as f32))
-                    - step_water_penalty(
-                        grid.water(next),
-                        grid.is_ford(next),
-                        params.water_cost,
-                        params.ford_discount,
-                    );
+                let penalty = step_water_penalty(
+                    grid.water(next),
+                    grid.is_ford(next),
+                    params.water_cost,
+                    params.ford_discount,
+                );
+                scores[k] = desire.dot(Vec2::new(dx as f32, dy as f32)) - penalty;
+                penalties[k] = penalty;
                 cells[k] = Some(next);
             }
         }
         let max = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         if !max.is_finite() {
-            continue; // hemmed in (corner with no valid step)
+            // Hemmed in — write an empty Decision so the UI can show the state.
+            last_decision.0 = Decision {
+                drives: decision_drives,
+                options: Vec::new(),
+                chosen: None,
+                temperature: params.temperature,
+            };
+            continue;
         }
         let mut weights = [0.0_f32; 4];
         for k in 0..4 {
@@ -220,23 +300,55 @@ pub(super) fn herd_move(
             }
         }
 
+        // Build the per-candidate record before the pick so chosen maps into options.
+        let mut options = Vec::with_capacity(4);
+        for (k, &(dx, dy)) in steps.iter().enumerate() {
+            if scores[k].is_finite() {
+                options.push(StepEval {
+                    step: (dx, dy),
+                    score: scores[k],
+                    penalty: penalties[k],
+                    weight: weights[k],
+                });
+            }
+        }
+
         // The max-scored step always has weight 1, so total >= 1 (no div-by-0).
         let total: f32 = weights.iter().sum();
-        let mut pick = rng.random_range(0.0..total);
+        // Use the persistent probe RNG (same state across ticks) for
+        // determinism, or the thread RNG for normal simulation runs.
+        let mut pick = if let Some(ref mut ps) = probe_seed {
+            ps.rng().random_range(0.0..total)
+        } else {
+            rand::rng().random_range(0.0..total)
+        };
+        let mut option_counter = 0usize;
+        let mut chosen_k: Option<usize> = None;
         for k in 0..4 {
             let Some(next) = cells[k] else { continue };
             if pick < weights[k] {
                 elk.cell = next;
+                chosen_k = Some(option_counter);
                 break;
             }
             pick -= weights[k];
+            option_counter += 1;
         }
+
+        last_decision.0 = Decision {
+            drives: decision_drives,
+            options,
+            chosen: chosen_k,
+            temperature: params.temperature,
+        };
 
         // Swim energy cost: crossing deep non-ford water is a lasting risk beyond
         // the step-score penalty — the elk arrives tired.
         let water = grid.water(elk.cell);
         if water > 0.0 && !grid.is_ford(elk.cell) {
+            let before_swim = elk.energy;
             elk.energy = (elk.energy - params.swim_drain * water).max(0.0);
+            flows.swim += before_swim - elk.energy;
         }
     }
 
@@ -280,6 +392,33 @@ pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 
 mod tests {
     use super::*;
     use super::super::components::DriveSample;
+
+    // ── Decomposable ─────────────────────────────────────────────────────────
+
+    // Labels returned by contributions() must match DRIVE_COLORS order in ui.rs:
+    // sep, coh, grass, social, migration.
+    #[test]
+    fn decomposable_labels_match_drive_colors_order() {
+        let d = Drives {
+            sep: Vec2::X, coh: Vec2::Y, grass: Vec2::X, social: Vec2::Y, migration: Vec2::X,
+        };
+        let labels: Vec<&str> = d.contributions().iter().map(|(l, _)| *l).collect();
+        assert_eq!(labels, ["sep", "coh", "grass", "social", "migration"]);
+    }
+
+    // total() must equal the vector sum of contributions().
+    #[test]
+    fn decomposable_sum_equals_total() {
+        let d = Drives {
+            sep: Vec2::new(1.0, 0.0),
+            coh: Vec2::new(0.0, 1.0),
+            grass: Vec2::new(-0.5, 0.0),
+            social: Vec2::ZERO,
+            migration: Vec2::new(0.3, 0.0),
+        };
+        let sum = d.contributions().into_iter().map(|(_, v)| v).fold(Vec2::ZERO, |a, b| a + b);
+        assert!((sum - d.total()).length() < 1e-6);
+    }
 
     // ── DriveSample::migration_share ─────────────────────────────────────────
 
@@ -519,6 +658,57 @@ mod tests {
         let tributary = step_water_penalty(0.1, false, 2.0, 0.1); // shallow
         let deep = step_water_penalty(1.0, false, 2.0, 0.1);      // main channel
         assert!(deep > tributary);
+    }
+
+    // ── grass_gradient ────────────────────────────────────────────────────────
+
+    fn flat_grid(w: usize, h: usize, forage: f32) -> super::super::super::grid::Grid {
+        let mut g = crate::grid::Grid::new(w, h);
+        for i in 0..g.len() {
+            g.set_grass(i, forage);
+        }
+        g
+    }
+
+    // A fully uniform forage field has zero gradient — no direction to pull.
+    // Grid is 21x21 so the center cell's full radius-5 neighbourhood is in bounds.
+    #[test]
+    fn gradient_zero_on_flat_forage() {
+        let grid = flat_grid(21, 21, 0.5);
+        let params = default_params();
+        let center = 10 * 21 + 10;
+        let g = grass_gradient(center, &grid, &params);
+        assert!(g.length() < 1e-4, "flat forage must yield zero gradient, got {g:?}");
+    }
+
+    // The gradient points toward the richer cell (+x direction).
+    #[test]
+    fn gradient_points_toward_richer_forage() {
+        let mut grid = crate::grid::Grid::new(21, 21);
+        let center = 10 * 21 + 10;
+        let right = center + 1; // col+1, same row
+        grid.set_grass(right, 1.0);
+        let params = default_params();
+        let g = grass_gradient(center, &grid, &params);
+        assert!(g.x > 0.0, "gradient must point toward richer forage (+x), got {g:?}");
+        assert!(g.x.abs() > g.y.abs(), "gradient must be predominantly rightward");
+    }
+
+    // Raising a neighbour's forage raises the gradient magnitude (metamorphic).
+    #[test]
+    fn gradient_magnitude_rises_with_neighbor_forage() {
+        let mut grid = crate::grid::Grid::new(21, 21);
+        let center = 10 * 21 + 10;
+        let right = center + 1;
+        let params = default_params();
+
+        grid.set_grass(right, 0.3);
+        let low = grass_gradient(center, &grid, &params).length();
+
+        grid.set_grass(right, 0.9);
+        let high = grass_gradient(center, &grid, &params).length();
+
+        assert!(high > low, "richer forage must raise gradient magnitude");
     }
 
     // ── cross_desire ─────────────────────────────────────────────────────────

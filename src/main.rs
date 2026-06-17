@@ -4,6 +4,7 @@ use bevy_egui::EguiPlugin;
 
 use mesopotamia::grid::GridPlugin;
 use mesopotamia::elk::ElkSimPlugin;
+use mesopotamia::overlay::OverlayPlugin;
 use mesopotamia::settings::{self, UserSettings};
 use mesopotamia::sim::SimStatePlugin;
 use mesopotamia::ui::UiPlugin;
@@ -24,7 +25,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin))
+        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
         .insert_resource(settings);
 
     // Maximizing is a runtime request and only meaningful natively; on the web

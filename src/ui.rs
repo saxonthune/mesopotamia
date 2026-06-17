@@ -2,7 +2,8 @@ use bevy::prelude::*;
 use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
-use crate::elk::{Elk, ElkParams, Herds, DriveSamples};
+use crate::elk::{Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples};
+use crate::events::EventLog;
 use crate::grid::{Fertility, Grid, GrowthRate};
 use crate::history::History;
 use crate::render::{cell_world_pos, CameraSettings, WorldCamera};
@@ -25,12 +26,37 @@ impl Plugin for UiPlugin {
     }
 }
 
+/// A toggleable field overlay rendered in the world view. `ALL` drives the
+/// toggle row; `HashSet<Overlay>` on `UiState` is the source of truth for
+/// which overlays are active. Off by default — pure view state, no sim effect.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Overlay {
+    GrassGradient,
+    WaterPenalty,
+    DeathSites,
+}
+
+impl Overlay {
+    pub const ALL: [Overlay; 3] = [Overlay::GrassGradient, Overlay::WaterPenalty, Overlay::DeathSites];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Overlay::GrassGradient => "grass gradient",
+            Overlay::WaterPenalty => "water penalty",
+            Overlay::DeathSites => "death sites",
+        }
+    }
+}
+
 #[derive(Resource, Default)]
-struct UiState {
+pub struct UiState {
     tab: Tab,
     selected: Option<u32>, // hex code of the herd shown in the details pane;
     // persists on a dead/migrated cohort until the user picks another.
+    selected_elk: Option<Entity>, // the specific elk entity last picked by world click
     visible: std::collections::HashSet<Graph>, // overview graphs toggled on in the top bar
+    pub overlays: std::collections::HashSet<Overlay>, // field overlays active in the world view
+    histogram_metric: usize, // index into ELK_METRICS for the distribution histogram
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
@@ -47,15 +73,17 @@ enum Tab {
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Graph {
     Biomass,
+    Histogram,
 }
 
 impl Graph {
-    const ALL: [Graph; 1] = [Graph::Biomass];
+    const ALL: [Graph; 2] = [Graph::Biomass, Graph::Histogram];
 
     /// The toggle-button label.
     fn label(self) -> &'static str {
         match self {
             Graph::Biomass => "biomass",
+            Graph::Histogram => "histogram",
         }
     }
 }
@@ -226,6 +254,8 @@ fn graphs_bar(
     mut contexts: EguiContexts,
     mut state: ResMut<UiState>,
     history: Res<History>,
+    elk: Query<&Elk>,
+    event_log: Res<EventLog>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
@@ -235,32 +265,63 @@ fn graphs_bar(
             for g in Graph::ALL {
                 let on = state.visible.contains(&g);
                 if ui.selectable_label(on, g.label()).clicked() {
-                    if on {
-                        state.visible.remove(&g);
-                    } else {
-                        state.visible.insert(g);
-                    }
+                    if on { state.visible.remove(&g); } else { state.visible.insert(g); }
+                }
+            }
+            ui.separator();
+            ui.label("overlays:");
+            for ov in Overlay::ALL {
+                let on = state.overlays.contains(&ov);
+                if ui.selectable_label(on, ov.label()).clicked() {
+                    if on { state.overlays.remove(&ov); } else { state.overlays.insert(ov); }
                 }
             }
         });
     });
 
-    // Each toggled-on graph floats in its own window, draggable over the game.
+    // Biomass-type graphs: live in their own floating windows.
     for g in Graph::ALL {
         if state.visible.contains(&g) {
-            egui::Window::new(g.label())
-                .default_size([360.0, 200.0])
-                // The top-bar toggle already shows/hides the graph, so the
-                // window's own collapse arrow is redundant.
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    // The plot fills the window's remaining height, so dragging
-                    // the window's edge resizes the graph vertically as well as
-                    // horizontally. The window title already names the graph.
-                    render_plot(ui, graph_plot(g, &history, ui.available_height()));
-                });
+            if let Graph::Biomass = g {
+                egui::Window::new(g.label())
+                    .default_size([360.0, 200.0])
+                    // The top-bar toggle already shows/hides the graph, so the
+                    // window's own collapse arrow is redundant.
+                    .collapsible(false)
+                    .show(ctx, |ui| {
+                        render_plot(ui, graph_plot(g, &history, ui.available_height()));
+                    });
+            }
         }
     }
+
+    // Histogram window: needs live elk data and mutable metric selection.
+    if state.visible.contains(&Graph::Histogram) {
+        let mut sel = state.histogram_metric;
+        egui::Window::new(Graph::Histogram.label())
+            .default_size([360.0, 200.0])
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    for (i, m) in crate::metrics::ELK_METRICS.iter().enumerate() {
+                        ui.selectable_value(&mut sel, i, m.name);
+                    }
+                });
+                render_histogram(ui, &elk, sel);
+            });
+        state.histogram_metric = sel;
+    }
+
+    // Recent-events window: visible when the DeathSites overlay is active.
+    if state.overlays.contains(&Overlay::DeathSites) {
+        egui::Window::new("recent deaths")
+            .default_size([300.0, 200.0])
+            .collapsible(false)
+            .show(ctx, |ui| {
+                render_event_list(ui, &event_log);
+            });
+    }
+
     Ok(())
 }
 
@@ -277,7 +338,72 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
                 ("shrubs", &history.shrub_mass),
             ],
         },
+        Graph::Histogram => unreachable!("Histogram is rendered by render_histogram, not graph_plot"),
     }
+}
+
+/// Draw a bar-chart histogram of `metric_idx` across all live elk.
+/// Bins the selected metric into 20 equal-width buckets over [0, 1].
+fn render_histogram(ui: &mut egui::Ui, elk: &Query<&Elk>, metric_idx: usize) {
+    use egui_plot::{Bar, BarChart, Plot};
+
+    let Some(metric) = crate::metrics::ELK_METRICS.get(metric_idx) else { return; };
+
+    const BINS: usize = 20;
+    let mut counts = [0u32; BINS];
+    let mut n = 0u32;
+    for e in elk {
+        let v = (metric.extract)(e).clamp(0.0, 1.0);
+        let bin = ((v * BINS as f32) as usize).min(BINS - 1);
+        counts[bin] += 1;
+        n += 1;
+    }
+
+    if n == 0 {
+        ui.label("no elk");
+        return;
+    }
+
+    let bin_w = 1.0 / BINS as f64;
+    let bars: Vec<Bar> = counts
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| {
+            Bar::new(i as f64 * bin_w + bin_w / 2.0, c as f64).width(bin_w)
+        })
+        .collect();
+
+    Plot::new("elk_histogram")
+        .height(ui.available_height().max(80.0))
+        .allow_scroll(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_boxed_zoom(false)
+        .show(ui, |plot_ui| {
+            plot_ui.bar_chart(BarChart::new(metric.name, bars));
+        });
+}
+
+/// Show a scrollable list of the most recent starvation events: tick, cell, energy.
+fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
+    if event_log.recent.is_empty() {
+        ui.weak("no starvation events yet");
+        return;
+    }
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for event in event_log.recent.iter().rev().take(50) {
+            let kind = match event.kind {
+                crate::events::EventKind::Starved => "starved",
+            };
+            let step = event.chosen_step
+                .map(|(dx, dy)| format!(" step({dx:+},{dy:+})"))
+                .unwrap_or_default();
+            ui.label(format!(
+                "tick {}  cell {}  {kind}  e={:.3}{step}",
+                event.tick, event.cell, event.energy
+            ));
+        }
+    });
 }
 
 /// The docked bottom panel: a tab bar with always-visible speed controls, and a
@@ -296,6 +422,7 @@ fn control_panel(
     herds: Res<Herds>,
     history: Res<History>,
     drive_samples: Res<DriveSamples>,
+    last_decisions: Query<&LastDecision>,
 ) -> Result {
     egui::TopBottomPanel::bottom("control_panel")
         .resizable(true)
@@ -326,7 +453,7 @@ fn control_panel(
                     Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut())))]).width(300.0),
                     Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                 ]),
-                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history, &drive_samples),
+                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history, &drive_samples, &last_decisions),
             });
         });
     Ok(())
@@ -335,7 +462,7 @@ fn control_panel(
 /// The Herds tab: a scrollable list of herd cards on the left; clicking one
 /// shows its full details in the scrollable pane on the right. The selection
 /// persists on a dead/migrated cohort until the user picks another.
-fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History, drive_samples: &DriveSamples) {
+fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History, drive_samples: &DriveSamples, last_decisions: &Query<&LastDecision>) {
     let alive: Vec<u32> = herds
         .order
         .iter()
@@ -363,7 +490,7 @@ fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &H
                 .selected
                 .and_then(|c| herds.cohorts.get(&c).map(|co| (c, co)))
             {
-                Some((code, co)) => herd_details(ui, code, co, history, drive_samples),
+                Some((code, co)) => herd_details(ui, code, co, history, drive_samples, state.selected_elk, last_decisions),
                 None => {
                     ui.weak("select a herd");
                 }
@@ -422,6 +549,8 @@ fn herd_details(
     co: &crate::elk::Cohort,
     history: &History,
     drive_samples: &DriveSamples,
+    selected_elk: Option<Entity>,
+    last_decisions: &Query<&LastDecision>,
 ) {
     ui.heading(format!("pack {code:06x}"));
     ui.label(format!("status: {}", if co.alive > 0 { "alive" } else { "gone" }));
@@ -474,6 +603,41 @@ fn herd_details(
             }),
         ]);
     }
+
+    ui.separator();
+    match selected_elk.and_then(|e| last_decisions.get(e).ok()) {
+        Some(ld) => elk_decision_panel(ui, &ld.0),
+        None => { ui.weak("no elk selected — click one to inspect its decision"); }
+    }
+}
+
+fn elk_decision_panel(ui: &mut egui::Ui, decision: &Decision) {
+    ui.label("selected elk — last decision");
+
+    // Drive decomposition pie using Decomposable.
+    let contributions = decision.drives.contributions();
+    let pie_slices: Vec<(&str, f32, egui::Color32)> = contributions
+        .iter()
+        .zip(DRIVE_COLORS.iter())
+        .map(|((label, vec), &color)| (*label, vec.length(), color))
+        .collect();
+    ui.label("drive decomposition");
+    render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
+
+    // Step eval table.
+    let total_weight: f32 = decision.options.iter().map(|e| e.weight).sum();
+    ui.label(format!("step options (temperature {:.2}):", decision.temperature));
+    if decision.options.is_empty() {
+        ui.weak("hemmed in — no valid steps");
+    }
+    for (idx, eval) in decision.options.iter().enumerate() {
+        let prob = if total_weight > 1e-6 { eval.weight / total_weight } else { 0.0 };
+        let marker = if decision.chosen == Some(idx) { "→" } else { "  " };
+        ui.label(format!(
+            "{marker} ({:+},{:+})  score {:.2}  penalty {:.2}  prob {:.0}%",
+            eval.step.0, eval.step.1, eval.score, eval.penalty, prob * 100.0
+        ));
+    }
 }
 
 /// A left-click in the world selects the nearest elk's herd and opens the Herds
@@ -485,7 +649,7 @@ fn pick_herd(
     window: Single<&Window>,
     camera: Single<(&Camera, &GlobalTransform), With<WorldCamera>>,
     grid: Res<Grid>,
-    elk: Query<&Elk>,
+    elk: Query<(Entity, &Elk)>,
     mut state: ResMut<UiState>,
 ) -> Result {
     if !mouse.just_pressed(MouseButton::Left) {
@@ -508,15 +672,16 @@ fn pick_herd(
     // Nearest elk within a generous world-space radius (~6 tiles) picks the herd.
     const PICK_RADIUS: f32 = 96.0;
     let tol2 = PICK_RADIUS * PICK_RADIUS;
-    let mut best: Option<(u32, f32)> = None;
-    for elk in &elk {
+    let mut best: Option<(Entity, u32, f32)> = None;
+    for (entity, elk) in &elk {
         let d2 = (cell_world_pos(&grid, elk.cell) - world).length_squared();
-        if d2 <= tol2 && best.is_none_or(|(_, b)| d2 < b) {
-            best = Some((elk.code, d2));
+        if d2 <= tol2 && best.is_none_or(|(_, _, b)| d2 < b) {
+            best = Some((entity, elk.code, d2));
         }
     }
-    if let Some((code, _)) = best {
+    if let Some((entity, code, _)) = best {
         state.selected = Some(code);
+        state.selected_elk = Some(entity);
         state.tab = Tab::Herds;
     }
     Ok(())

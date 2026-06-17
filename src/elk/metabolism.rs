@@ -1,8 +1,10 @@
 use bevy::prelude::*;
 
+use crate::events::{Event, EventKind, EventLog};
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams, Herds, Packs};
+use super::components::{Elk, ElkParams, Herds, LastDecision, Packs, Spawner};
+use super::ledger::EnergyFlows;
 
 const POOP_PER_GRAZE: f32 = 0.3;
 const DIGEST_TICKS: u32 = 20;
@@ -31,13 +33,20 @@ fn worthwhile_bite(grid: &Grid, cell: usize, params: &ElkParams) -> Option<f32> 
     grass_bite(grid.grass(cell), grid.capacity(cell), params.bite, params.graze_floor)
 }
 
-pub(super) fn graze(mut grid: ResMut<Grid>, params: Res<ElkParams>, mut elk: Query<&mut Elk>) {
+pub(super) fn graze(
+    mut grid: ResMut<Grid>,
+    params: Res<ElkParams>,
+    mut elk: Query<&mut Elk>,
+    mut flows: ResMut<EnergyFlows>,
+) {
     for mut elk in &mut elk {
         if grid.shrubs(elk.cell) > 0.05 {
             // Shrubs first: a big, concentrated bite that strips the shrub and
             // pays more energy than grass — the reward for crossing dry ground.
             grid.eat_shrubs(elk.cell, params.shrub_bite);
+            let before = elk.energy;
             elk.energy = (elk.energy + params.shrub_energy).min(1.0);
+            flows.intake += elk.energy - before;
             elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true;
         } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
@@ -46,7 +55,9 @@ pub(super) fn graze(mut grid: ResMut<Grid>, params: Res<ElkParams>, mut elk: Que
             // worth biting, so the elk moves on instead of camping a patch and
             // sipping its regrowth forever.
             grid.grow_grass(elk.cell, -bitten);
+            let before = elk.energy;
             elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
+            flows.intake += elk.energy - before;
             elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true; // raise the beacon other elk forage toward
         } else {
@@ -78,14 +89,28 @@ pub(super) fn metabolize(
     mut commands: Commands,
     params: Res<ElkParams>,
     mut herds: ResMut<Herds>,
-    mut elk: Query<(Entity, &mut Elk)>,
+    spawner: Res<Spawner>,
+    mut event_log: ResMut<EventLog>,
+    mut elk: Query<(Entity, &mut Elk, Option<&LastDecision>)>,
+    mut flows: ResMut<EnergyFlows>,
 ) {
-    for (entity, mut elk) in &mut elk {
+    for (entity, mut elk, last_decision) in &mut elk {
+        flows.drain += params.energy_drain;
         elk.energy -= params.energy_drain;
         if elk.energy <= 0.0 {
+            flows.deaths_energy += elk.energy;
             if let Some(c) = herds.cohorts.get_mut(&elk.code) {
                 c.deaths += 1;
             }
+            let chosen_step = last_decision
+                .and_then(|ld| ld.0.chosen.and_then(|i| ld.0.options.get(i).map(|e| e.step)));
+            event_log.push(Event {
+                tick: spawner.elapsed as u64,
+                cell: elk.cell,
+                kind: EventKind::Starved,
+                energy: elk.energy,
+                chosen_step,
+            });
             commands.entity(entity).despawn();
         }
     }

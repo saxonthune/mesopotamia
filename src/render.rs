@@ -10,7 +10,7 @@ use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 use crate::elk::{Elk, elk_color};
 use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_WATER};
 
-const TILE_SIZE: f32 = 16.0;
+pub const TILE_SIZE: f32 = 16.0;
 
 pub struct RenderPlugin;
 

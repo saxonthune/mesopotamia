@@ -1,6 +1,8 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
+use super::movement::Decision;
+
 pub(crate) const MAX_COHORTS: usize = 64;
 
 #[derive(Component)]
@@ -28,6 +30,11 @@ pub struct Elk {
     pub at_edge: u32,
 }
 
+/// The decision record written by `herd_move` each tick. Present on every elk;
+/// overwritten in place to avoid per-tick archetype moves.
+#[derive(Component)]
+pub struct LastDecision(pub Decision);
+
 /// Drives the herd lifecycle: spaces spawns into waves and keeps the headcount
 /// near a target that itself grows over time.
 #[derive(Resource, Default)]
@@ -50,6 +57,7 @@ pub struct Cohort {
     pub peak: u32,       // largest the cohort ever was
     pub deaths: u32,     // starvations
     pub departures: u32, // migrations off the far edge
+    pub spawned: u32, // total elk created in this cohort's wave
 }
 
 /// Registry of every (recent) cohort, keyed by hex code. `order` is spawn order,
@@ -138,6 +146,23 @@ impl DriveSample {
     pub fn migration_share(&self) -> f32 {
         let sum = self.sep + self.coh + self.grass + self.social + self.migration;
         if sum > 1e-6 { self.migration / sum } else { 0.0 }
+    }
+}
+
+/// When present, `herd_move` uses this persistent RNG for deterministic picks
+/// instead of the thread RNG. The `SmallRng` state evolves across ticks so
+/// consecutive ticks produce different random values. Absent in normal runs.
+#[derive(Resource)]
+pub struct ProbeSeed(rand::rngs::SmallRng);
+
+impl ProbeSeed {
+    pub fn new(seed: u64) -> Self {
+        use rand::SeedableRng;
+        Self(rand::rngs::SmallRng::seed_from_u64(seed))
+    }
+
+    pub fn rng(&mut self) -> &mut rand::rngs::SmallRng {
+        &mut self.0
     }
 }
 

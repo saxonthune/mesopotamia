@@ -3,7 +3,9 @@ use rand::Rng;
 
 use crate::grid::{GRID_HEIGHT, GRID_WIDTH};
 
-use super::components::{Cohort, DriveSample, DriveSamples, Elk, Herds, Packs, Spawner, MAX_COHORTS};
+use super::components::{Cohort, DriveSample, DriveSamples, Elk, Herds, LastDecision, Packs, Spawner, MAX_COHORTS};
+use super::ledger::EnergyFlows;
+use super::movement::Decision;
 use super::color::elk_color;
 
 const TILE_SIZE: f32 = 16.0;
@@ -41,6 +43,7 @@ fn spawn_pack(commands: &mut Commands, rng: &mut impl Rng, slot: u8, code: u32, 
                 grazing: false,
                 at_edge: 0,
             },
+            LastDecision(Decision::default()),
         ));
     }
 }
@@ -70,6 +73,7 @@ pub(super) fn spawn_waves(
     mut packs: ResMut<Packs>,
     mut herds: ResMut<Herds>,
     elk: Query<(), With<Elk>>,
+    mut flows: ResMut<EnergyFlows>,
 ) {
     spawner.elapsed += 1;
     if spawner.cooldown > 0 {
@@ -94,8 +98,9 @@ pub(super) fn spawn_waves(
     packs.migration[slot as usize] = 0.0;
     packs.growth[slot as usize] = rng.random_range(0.5..1.5);
 
-    herds.cohorts.insert(code, Cohort { slot, ..default() });
+    herds.cohorts.insert(code, Cohort { slot, spawned: size as u32, ..default() });
     herds.order.push(code);
+    flows.births += size as f32;
 
     // Prune the oldest *dead* cohorts once the registry grows past its cap;
     // never evict a living herd.
@@ -142,6 +147,7 @@ pub(super) fn cull(
     mut commands: Commands,
     mut herds: ResMut<Herds>,
     mut elk: Query<(Entity, &mut Elk)>,
+    mut flows: ResMut<EnergyFlows>,
 ) {
     for (entity, mut elk) in &mut elk {
         if elk.cell % GRID_WIDTH >= EDGE_COL {
@@ -150,6 +156,7 @@ pub(super) fn cull(
                 if let Some(c) = herds.cohorts.get_mut(&elk.code) {
                     c.departures += 1;
                 }
+                flows.departures_energy += elk.energy;
                 commands.entity(entity).despawn();
             }
         } else {

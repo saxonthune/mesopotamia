@@ -35,11 +35,12 @@ pub fn sample_history(
         history.migration_share.resize_with(n_slots, VecDeque::new);
     }
 
+    let energy_extract = crate::metrics::ELK_METRICS[0].extract;
     let mut total: u32 = 0;
     let mut energy_sum: f32 = 0.0;
     for e in &elk {
         total += 1;
-        energy_sum += e.energy;
+        energy_sum += energy_extract(e);
     }
 
     push_capped(&mut history.population, total as f32);

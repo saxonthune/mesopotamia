@@ -1,7 +1,10 @@
 pub mod field;
 pub mod grid;
 pub mod elk;
+pub mod events;
+pub mod metrics;
 pub mod render;
+pub mod overlay;
 pub mod settings;
 pub mod sim;
 pub mod ui;

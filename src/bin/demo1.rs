@@ -15,8 +15,14 @@ mod field;
 mod grid;
 #[path = "../elk/mod.rs"]
 mod elk;
+#[path = "../events.rs"]
+mod events;
+#[path = "../metrics.rs"]
+mod metrics;
 #[path = "../render.rs"]
 mod render;
+#[path = "../overlay.rs"]
+mod overlay;
 #[path = "../settings.rs"]
 mod settings;
 #[path = "../history.rs"]
@@ -32,6 +38,7 @@ mod worldgen;
 
 use crate::elk::ElkSimPlugin;
 use crate::grid::GridPlugin;
+use crate::overlay::OverlayPlugin;
 use crate::sim::SimStatePlugin;
 use crate::worldgen::WorldgenPlugin;
 use crate::settings::UserSettings;
@@ -64,7 +71,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin))
+        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
         .insert_resource(settings);
 
     // Maximizing is native-only; the canvas sizes the window on the web.

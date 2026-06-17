@@ -58,7 +58,6 @@ pinning test can show which drive gates the crossing.
 
 ```bash
 just test-fast
-just test-all
 ```
 
 ## Out of Scope
