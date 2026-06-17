@@ -73,12 +73,38 @@ fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, 
         .clamp(0.0, 1.0);
         let penalty_i = lerp(PEN_HIGH as f32, PEN_LOW as f32, bendiness_i) as u32;
 
-        // Drift the exit rightward by `drift_i * height` columns.
-        let exit_col = ((entry_col as f32 + drift_i * height as f32).round() as isize)
-            .clamp(0, width as isize - 1) as usize;
-        let exit_idx = (height - 1) * width + exit_col;
+        // Determine the carve goal: confluence cell on parent, or normal bottom exit.
+        let parent_idx = spec.confluence_pairs.iter().find_map(|&(child, parent)| {
+            if child == i { Some(parent) } else { None }
+        });
 
-        let cl = carve(grid, &cost, entry, exit_idx, Some((&spec.heading, penalty_i)));
+        let goal = if let Some(parent) = parent_idx {
+            // Child river: goal is a cell on the already-carved parent centerline
+            // in the lower portion of the map (row > 60% of height), mirroring
+            // the tributary confluence selection in features.rs.
+            let parent_cl = &mains[parent];
+            let lower_cutoff = height * 60 / 100;
+            let lower_cells: Vec<usize> = parent_cl
+                .iter()
+                .copied()
+                .filter(|&c| c / width > lower_cutoff)
+                .collect();
+            if lower_cells.is_empty() {
+                // Fallback: any cell on the parent centerline
+                let idx = rrng.random_range(0..parent_cl.len());
+                parent_cl[idx]
+            } else {
+                let idx = rrng.random_range(0..lower_cells.len());
+                lower_cells[idx]
+            }
+        } else {
+            // Normal river: exit at bottom edge with rightward drift.
+            let exit_col = ((entry_col as f32 + drift_i * height as f32).round() as isize)
+                .clamp(0, width as isize - 1) as usize;
+            (height - 1) * width + exit_col
+        };
+
+        let cl = carve(grid, &cost, entry, goal, Some((&spec.heading, penalty_i)));
         rasterize(grid, &cl, spec.radius, spec.core, 1.0);
         mains.push(cl);
     }
@@ -151,6 +177,8 @@ mod tests {
     }
 
     /// Assert each main channel runs top→bottom with rightward drift.
+    /// Child mains (in confluence_pairs) are exempt from the bottom-edge exit
+    /// assertion — they terminate on the parent centerline instead.
     #[test]
     fn rivers_flow_top_to_bottom() {
         let spec = RiverSpec::default();
@@ -172,20 +200,70 @@ mod tests {
             let exit_row = exit_idx / width;
 
             assert_eq!(entry_row, 0, "main {i} entry must be row 0, got {entry_row}");
-            assert_eq!(
-                exit_row,
-                height - 1,
-                "main {i} exit must be row {}, got {exit_row}",
-                height - 1
+
+            let is_child = spec.confluence_pairs.iter().any(|&(child, _)| child == i);
+            if is_child {
+                // Child main: exit cell must lie on the parent's centerline.
+                let parent = spec
+                    .confluence_pairs
+                    .iter()
+                    .find_map(|&(child, parent)| if child == i { Some(parent) } else { None })
+                    .unwrap();
+                let parent_cells: std::collections::HashSet<usize> =
+                    mains[parent].iter().copied().collect();
+                assert!(
+                    parent_cells.contains(&exit_idx),
+                    "child main {i} exit cell {exit_idx} (row {exit_row}) is not on parent {parent} centerline"
+                );
+            } else {
+                // Non-child main: must exit at bottom row with rightward drift.
+                assert_eq!(
+                    exit_row,
+                    height - 1,
+                    "main {i} exit must be row {}, got {exit_row}",
+                    height - 1
+                );
+
+                let entry_col = entry_idx % width;
+                let exit_col = exit_idx % width;
+
+                // Default drift = 0.25 * 96 = 24 columns rightward.
+                assert!(
+                    exit_col > entry_col,
+                    "main {i} should drift rightward: entry_col={entry_col}, exit_col={exit_col}"
+                );
+            }
+        }
+    }
+
+    /// Assert that each child main's exit cell lies on the declared parent's centerline.
+    #[test]
+    fn confluence_child_joins_parent() {
+        let spec = RiverSpec::default();
+        let width = 128usize;
+        let height = 96usize;
+        let mut g = Grid::new(width, height);
+        let (mains, _) = generate_river_inner(&mut g, &spec);
+
+        for &(child, parent) in &spec.confluence_pairs {
+            let child_cl = &mains[child];
+            assert!(!child_cl.is_empty(), "child {child} centerline is empty");
+
+            // cl[0] is the carve goal = confluence cell on the parent centerline.
+            let confluence = child_cl[0];
+            let parent_cells: std::collections::HashSet<usize> =
+                mains[parent].iter().copied().collect();
+            assert!(
+                parent_cells.contains(&confluence),
+                "child {child} exit cell {confluence} is not on parent {parent} centerline"
             );
 
-            let entry_col = entry_idx % width;
-            let exit_col = exit_idx % width;
-
-            // Default drift = 0.25 * 96 = 24 columns rightward.
+            // Confluence must be in the lower portion of the map (row > 60% of height).
+            let row = confluence / width;
+            let lower_cutoff = height * 60 / 100;
             assert!(
-                exit_col > entry_col,
-                "main {i} should drift rightward: entry_col={entry_col}, exit_col={exit_col}"
+                row > lower_cutoff,
+                "confluence at row {row} is not in lower portion (>{lower_cutoff} expected)"
             );
         }
     }

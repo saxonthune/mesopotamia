@@ -60,6 +60,10 @@ pub struct RiverSpec {
     pub lake_radius: isize,
     /// Full-depth core radius for each lake.
     pub lake_core: isize,
+    /// Confluence pairs `(child, parent)`: the child main merges into the parent
+    /// instead of running to the bottom edge. Requires `parent < child` so the
+    /// parent is already carved when the child is carved (mains carved in index order).
+    pub confluence_pairs: Vec<(usize, usize)>,
 }
 
 impl Default for RiverSpec {
@@ -85,6 +89,7 @@ impl Default for RiverSpec {
             lake_count: 3,
             lake_radius: 4,
             lake_core: 2,
+            confluence_pairs: vec![(1, 0)],
         }
     }
 }

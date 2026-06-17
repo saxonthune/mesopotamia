@@ -23,7 +23,7 @@ mod settings;
 mod history;
 #[path = "../ui.rs"]
 mod ui;
-#[path = "../river.rs"]
+#[path = "../river/mod.rs"]
 mod river;
 
 use crate::elk::ElkSimPlugin;

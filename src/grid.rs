@@ -137,6 +137,10 @@ impl Grid {
         self.water_prox[index] = value.clamp(0.0, 1.0);
     }
 
+    pub fn soil(&self, index: usize) -> f32 {
+        self.soil[index]
+    }
+
     pub fn set_soil(&mut self, index: usize, value: f32) {
         self.soil[index] = value.clamp(0.0, 1.0);
     }
@@ -197,6 +201,12 @@ const SOIL_SEED: u64 = 0x501;
 const SOIL_PASSES: usize = 6; // smoothing passes — higher = broader patches
 const SOIL_FLOOR: f32 = 0.35; // the poorest ground still carries this fraction
 
+// Macro (coarse) regional fertility octave — broad lush vs. sparse zones.
+// A distinct seed so coarse regions are uncorrelated with fine patches.
+const MACRO_SEED: u64 = 0xA7C3;
+const MACRO_PASSES: usize = 14; // many passes → features span large fractions of the map
+const MACRO_FLOOR: f32 = 0.4; // the sparsest region still carries this fraction
+
 // Browse (dry-ground shrubs). A separate seed and patch from soil/river so the
 // shrub clumps fall independently of where water and good grazing land are.
 const BROWSE_SEED: u64 = 0xB405E;
@@ -214,15 +224,23 @@ impl Plugin for GridPlugin {
     }
 }
 
-/// Author the static patchiness field (#1): low-frequency value noise mapped to a
-/// soil multiplier in [SOIL_FLOOR, 1]. Composing `field::value_noise` + `normalize`
-/// — the plugin only declares the rule; the algorithm lives in the service layer.
+/// Author the static patchiness field (#1): fine low-frequency value noise (soil
+/// patches) multiplied by a coarse macro-octave (regional lush/sparse zones).
+/// Both factors are in (0, 1] so `soil` stays in [0, 1]; `capacity` inherits the
+/// regional variation automatically.
 fn seed_soil(mut grid: ResMut<Grid>) {
     let mut rng = StdRng::seed_from_u64(SOIL_SEED);
     let noise = field::value_noise(grid.width(), grid.height(), SOIL_PASSES, &mut rng);
     let patch = field::normalize(&noise);
-    for (index, &p) in patch.iter().enumerate() {
-        grid.set_soil(index, SOIL_FLOOR + (1.0 - SOIL_FLOOR) * p);
+
+    let mut macro_rng = StdRng::seed_from_u64(MACRO_SEED);
+    let macro_noise = field::value_noise(grid.width(), grid.height(), MACRO_PASSES, &mut macro_rng);
+    let macro_patch = field::normalize(&macro_noise);
+
+    for (index, (&p, &m)) in patch.iter().zip(macro_patch.iter()).enumerate() {
+        let fine   = SOIL_FLOOR + (1.0 - SOIL_FLOOR) * p;
+        let region = MACRO_FLOOR + (1.0 - MACRO_FLOOR) * m;
+        grid.set_soil(index, fine * region);
     }
 }
 
@@ -289,5 +307,55 @@ fn fertilize(mut grid: ResMut<Grid>, fertility: Res<Fertility>) {
         }
         grid.add_poop(index, -consumed);
         grid.grow_grass(index, consumed * fertility.efficiency);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    /// `seed_soil` must produce a field with genuine regional spread — both the
+    /// macro octave and the fine patches are blended in, so the resulting soil has
+    /// a wide cell-level range and is bounded within [0, 1].
+    /// Uses fixed seeds → deterministic.
+    #[test]
+    fn soil_has_regional_spread() {
+        let mut grid = Grid::new(GRID_WIDTH, GRID_HEIGHT);
+
+        // Replicate the seed_soil logic inline so the test owns the grid directly.
+        let mut rng = StdRng::seed_from_u64(SOIL_SEED);
+        let noise = crate::field::value_noise(grid.width(), grid.height(), SOIL_PASSES, &mut rng);
+        let patch = crate::field::normalize(&noise);
+
+        let mut macro_rng = StdRng::seed_from_u64(MACRO_SEED);
+        let macro_noise = crate::field::value_noise(grid.width(), grid.height(), MACRO_PASSES, &mut macro_rng);
+        let macro_patch = crate::field::normalize(&macro_noise);
+
+        for (index, (&p, &m)) in patch.iter().zip(macro_patch.iter()).enumerate() {
+            let fine   = SOIL_FLOOR + (1.0 - SOIL_FLOOR) * p;
+            let region = MACRO_FLOOR + (1.0 - MACRO_FLOOR) * m;
+            grid.set_soil(index, fine * region);
+        }
+
+        let n = grid.len();
+        let min: f32 = (0..n).map(|i| grid.soil(i)).fold(f32::MAX, f32::min);
+        let max: f32 = (0..n).map(|i| grid.soil(i)).fold(f32::MIN, f32::max);
+
+        println!("soil range: min={min:.4} max={max:.4} spread={:.4}", max - min);
+
+        // Values must stay in [0, 1] (clamped by set_soil).
+        assert!(min >= 0.0 && max <= 1.0, "soil out of [0,1]: min={min} max={max}");
+
+        // The macro octave must produce substantial regional contrast: the cell-level
+        // spread must exceed 0.3 (with fine floor 0.35 and macro floor 0.4, the
+        // theoretical range is [0.14, 1.0]; in practice the normalised noise uses
+        // the full [0,1] range, so we expect a spread of at least 0.4).
+        assert!(
+            max - min > 0.3,
+            "regional spread too narrow: soil range = {:.4} (min={min:.4} max={max:.4})",
+            max - min
+        );
     }
 }
