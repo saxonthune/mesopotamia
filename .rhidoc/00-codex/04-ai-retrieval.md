@@ -7,7 +7,7 @@ deps: []
 
 # AI Retrieval Patterns
 
-How AI agents efficiently navigate a `.carta/` workspace. Inspired by legal AI retrieval-augmented generation (RAG) research — legal codes share the same challenge of finding all relevant authorities without reading everything.
+How AI agents efficiently navigate a `.rhidoc/` workspace. Inspired by legal AI retrieval-augmented generation (RAG) research — legal codes share the same challenge of finding all relevant authorities without reading everything.
 
 ## Two-Phase Search
 

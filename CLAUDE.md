@@ -4,9 +4,9 @@ An artistic game-engine visualization of debt-bubble and ecological-flow dynamic
 
 ## Read the Docs First
 
-This project keeps its specifications in a `.carta/` docs workspace. The docs are one of the project's two sources of truth — code is the concrete reality, docs are the declarative intent. Treat them as authoritative for *what the artifact is for and what it does*, and reconcile against code when the two disagree.
+This project keeps its specifications in a `.rhidoc/` docs workspace. The docs are one of the project's two sources of truth — code is the concrete reality, docs are the declarative intent. Treat them as authoritative for *what the artifact is for and what it does*, and reconcile against code when the two disagree.
 
-**Start every orientation at `.carta/MANIFEST.md`.** It is the machine-readable index — summaries, tags, and dependency refs for every doc. Read it, identify the docs relevant to the task, then read only those. Do not read the workspace top to bottom. The codex group (`00-codex/`) explains how the system works; `doc00.04` covers AI retrieval patterns and token budgets.
+**Start every orientation at `.rhidoc/MANIFEST.md`.** It is the machine-readable index — summaries, tags, and dependency refs for every doc. Read it, identify the docs relevant to the task, then read only those. Do not read the workspace top to bottom. The codex group (`00-codex/`) explains how the system works; `doc00.04` covers AI retrieval patterns and token budgets.
 
 ## Apply the Coding Patterns
 

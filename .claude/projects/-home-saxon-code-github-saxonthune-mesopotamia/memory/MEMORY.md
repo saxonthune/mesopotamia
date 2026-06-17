@@ -1,1 +1,0 @@
-- [carta renamed to rhidoc](carta-renamed-to-rhidoc.md) — docs CLI is now `rhidoc`, config is `.rhidoc.json`

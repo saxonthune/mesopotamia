@@ -7,7 +7,7 @@ deps: []
 
 # Codex
 
-This is the `.carta/` workspace for **mesopotamia**. It contains structured specifications that humans and AI agents can read, write, and reconcile against code.
+This is the `.rhidoc/` workspace for **mesopotamia**. It contains structured specifications that humans and AI agents can read, write, and reconcile against code.
 
 ## Reading Docs
 
@@ -17,18 +17,18 @@ This is the `.carta/` workspace for **mesopotamia**. It contains structured spec
 
 ## Managing Structure
 
-Use the `carta` CLI for structural operations:
+Use the `rhidoc` CLI for structural operations:
 
 ```bash
-carta create <group> <slug>     # add a doc
-carta delete <ref>              # remove with gap-closing
-carta move <ref> <dest>         # move/reorder
-carta punch <ref>               # expand file into directory
-carta flatten <ref>             # dissolve directory
-carta regenerate                # rebuild MANIFEST.md
+rhidoc create <group> <slug>     # add a doc
+rhidoc delete <ref>              # remove with gap-closing
+rhidoc move <ref> <dest>         # move/reorder
+rhidoc punch <ref>               # expand file into directory
+rhidoc flatten <ref>             # dissolve directory
+rhidoc regenerate                # rebuild MANIFEST.md
 ```
 
-Content changes are normal file edits. Run `carta regenerate` if you change frontmatter directly.
+Content changes are normal file edits. Run `rhidoc regenerate` if you change frontmatter directly.
 
 ## Contents
 

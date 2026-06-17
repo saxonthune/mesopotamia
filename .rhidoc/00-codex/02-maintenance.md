@@ -70,9 +70,9 @@ This loop applies whether you're working alone, with a team, or with an AI agent
 
 Git is the version system. No version numbers in documents.
 
-- File history: `git log --follow .carta/01-context/01-mission.md`
+- File history: `git log --follow .rhidoc/01-context/01-mission.md`
 - Point-in-time snapshots: use git tags (`git tag docs-v1.0`)
-- Blame for specific lines: `git blame .carta/02-system/01-overview.md`
+- Blame for specific lines: `git blame .rhidoc/02-system/01-overview.md`
 
 ## Adding a Document
 

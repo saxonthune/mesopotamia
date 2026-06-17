@@ -7,7 +7,7 @@ deps: []
 
 # About This Workspace
 
-This is the `.carta/` workspace for **mesopotamia**. It contains structured specifications that bridge the gap between what the artifact intends to be and what the code actually does.
+This is the `.rhidoc/` workspace for **mesopotamia**. It contains structured specifications that bridge the gap between what the artifact intends to be and what the code actually does.
 
 ## Two Sources of Truth
 
@@ -17,7 +17,7 @@ Every software project has exactly two sources of truth:
 
 2. **Docs** — the team's declarative intent. Docs describe what the artifact is for and what it does, in present tense. They are explicit and structured, not implicit assumptions or aspirations.
 
-Together, the two sources form opposite poles: intent and reality. Reconciliation is the mechanism for catching drift — Carta surfaces the gap between intent (docs) and reality (code), and the human decides which side moved.
+Together, the two sources form opposite poles: intent and reality. Reconciliation is the mechanism for catching drift — Rhidoc surfaces the gap between intent (docs) and reality (code), and the human decides which side moved.
 
 ## Why Specs
 
