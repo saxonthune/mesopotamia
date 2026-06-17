@@ -26,10 +26,10 @@ pub enum Heading {
 ///
 /// Could become a Bevy `Resource` later to expose knobs to the editor UI.
 pub struct RiverSpec {
-    /// Number of main rivers (default 2 — spaced for elk crossings).
+    /// Number of main rivers (default 3 — evenly spaced for elk crossings).
+    /// Entry columns are distributed across the width as width*(i+1)/(count+1),
+    /// so spacing tracks the grid size instead of a fixed column period.
     pub count: usize,
-    /// Columns between adjacent entry points on the entry edge.
-    pub period: usize,
     /// Primary flow direction (default `Down`: top-edge → bottom-edge).
     pub heading: Heading,
     /// Lateral lean: exit_col = entry_col + drift * height (default ~0.25).
@@ -58,8 +58,7 @@ pub struct RiverSpec {
 impl Default for RiverSpec {
     fn default() -> Self {
         Self {
-            count: 2,
-            period: 64,
+            count: 3,
             heading: Heading::Down,
             drift: 0.25,
             bendiness: 0.5,
@@ -102,13 +101,13 @@ fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, 
     let width = grid.width();
     let height = grid.height();
 
-    // Space `count` entry columns symmetrically across the top edge.
-    let span = spec.count.saturating_sub(1) * spec.period;
-    let start_col = width.saturating_sub(span) / 2;
-
     let mut mains: Vec<Vec<usize>> = Vec::new();
     for i in 0..spec.count {
-        let entry_col = (start_col + i * spec.period).min(width - 1);
+        // Distribute entry columns evenly across the interior, scale-free: the
+        // i-th of `count` rivers enters at width*(i+1)/(count+1), so the spacing
+        // tracks the grid width rather than a fixed column period and never
+        // lands on the very edge.
+        let entry_col = (width * (i + 1) / (spec.count + 1)).clamp(1, width - 2);
         let entry = entry_col; // row 0 → index = 0 * width + col = col
 
         // Drift the exit rightward by `drift * height` columns.
