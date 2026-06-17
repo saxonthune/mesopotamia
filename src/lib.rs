@@ -5,5 +5,6 @@ pub mod render;
 pub mod settings;
 pub mod ui;
 pub mod river;
+pub mod worldgen;
 pub mod sim_harness;
 pub mod history;

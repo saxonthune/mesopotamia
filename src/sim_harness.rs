@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::elk::{DriveSamples, Elk, ElkParams, ElkSimPlugin, Herds};
 use crate::grid::{Grid, GridPlugin};
-use crate::river::RiverPlugin;
+use crate::worldgen::WorldgenPlugin;
 
 const HZ: f64 = 10.0;
 const PERIOD: Duration = Duration::from_millis(100);
@@ -16,7 +16,7 @@ pub fn make_app() -> App {
     app.add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_once()))
         .insert_resource(Time::<Fixed>::from_hz(HZ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
-        .add_plugins((GridPlugin, ElkSimPlugin, RiverPlugin));
+        .add_plugins((GridPlugin, ElkSimPlugin, WorldgenPlugin));
     app
 }
 

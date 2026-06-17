@@ -25,10 +25,12 @@ mod history;
 mod ui;
 #[path = "../river/mod.rs"]
 mod river;
+#[path = "../worldgen/mod.rs"]
+mod worldgen;
 
 use crate::elk::ElkSimPlugin;
 use crate::grid::GridPlugin;
-use crate::river::RiverPlugin;
+use crate::worldgen::WorldgenPlugin;
 use crate::settings::UserSettings;
 use crate::ui::UiPlugin;
 use render::RenderPlugin;
@@ -59,7 +61,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, RiverPlugin))
+        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin))
         .insert_resource(settings);
 
     // Maximizing is native-only; the canvas sizes the window on the web.

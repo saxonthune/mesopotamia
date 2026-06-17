@@ -7,7 +7,7 @@ use mesopotamia::elk::ElkSimPlugin;
 use mesopotamia::settings::{self, UserSettings};
 use mesopotamia::ui::UiPlugin;
 use mesopotamia::render::RenderPlugin;
-use mesopotamia::river::RiverPlugin;
+use mesopotamia::worldgen::WorldgenPlugin;
 
 fn main() {
     let settings = UserSettings::load();
@@ -23,7 +23,7 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, RiverPlugin))
+        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin))
         .insert_resource(settings);
 
     // Maximizing is a runtime request and only meaningful natively; on the web

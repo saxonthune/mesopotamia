@@ -13,7 +13,6 @@ mod spec;
 
 pub use spec::{Heading, RiverSpec};
 
-use bevy::prelude::*;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -23,24 +22,12 @@ use cost::{carve, cost_field, lerp};
 use raster::{rasterize, stamp_fords};
 use spec::{PEN_HIGH, PEN_LOW, RIVER_SEED};
 
-pub struct RiverPlugin;
-
-impl Plugin for RiverPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, generate_river);
-    }
-}
-
-fn generate_river(mut grid: ResMut<Grid>) {
-    let spec = RiverSpec::default();
-    generate_river_inner(&mut grid, &spec);
-}
-
-/// Generate the full water field from `spec`. Returns `(mains, tribs)`: the
-/// carved centerline paths for the main rivers and tributary feeders, which
-/// tests use to assert structural invariants. The `generate_river` system
-/// discards the return value.
-fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
+/// Generate the full water field from `spec` — the world-gen *water layer*. Stamps
+/// rivers, tributaries, lakes, and ford bands onto the grid and computes the
+/// water-proximity capacity field. Returns `(mains, tribs)`: the carved centerline
+/// paths for the main rivers and tributary feeders, which tests use to assert
+/// structural invariants; the orchestrator discards the return value.
+pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
     let mut rng = StdRng::seed_from_u64(RIVER_SEED);
 
     // Smoothing passes from global bendiness — shared cost field for all channels.
@@ -132,8 +119,8 @@ mod tests {
         let spec = RiverSpec::default();
         let mut g1 = Grid::new(128, 96);
         let mut g2 = Grid::new(128, 96);
-        generate_river_inner(&mut g1, &spec);
-        generate_river_inner(&mut g2, &spec);
+        generate_water(&mut g1, &spec);
+        generate_water(&mut g2, &spec);
         let w1: Vec<f32> = (0..g1.len()).map(|i| g1.water(i)).collect();
         let w2: Vec<f32> = (0..g2.len()).map(|i| g2.water(i)).collect();
         assert_eq!(w1, w2, "same seed must produce identical water fields");
@@ -143,7 +130,7 @@ mod tests {
     fn fords_carry_low_water() {
         let spec = RiverSpec::default();
         let mut g = Grid::new(128, 96);
-        generate_river_inner(&mut g, &spec);
+        generate_water(&mut g, &spec);
         for i in 0..g.len() {
             if g.is_ford(i) {
                 assert!(
@@ -160,7 +147,7 @@ mod tests {
     fn main_channel_has_deep_water() {
         let spec = RiverSpec::default();
         let mut g = Grid::new(128, 96);
-        generate_river_inner(&mut g, &spec);
+        generate_water(&mut g, &spec);
         let deep_cells = (0..g.len()).filter(|&i| g.water(i) > 0.9).count();
         assert!(deep_cells > 0, "expected deep main-channel core cells");
     }
@@ -169,7 +156,7 @@ mod tests {
     fn water_levels_span_expected_range() {
         let spec = RiverSpec::default();
         let mut g = Grid::new(128, 96);
-        generate_river_inner(&mut g, &spec);
+        generate_water(&mut g, &spec);
         let max_water = (0..g.len()).map(|i| g.water(i)).fold(0.0f32, f32::max);
         let has_shallow = (0..g.len()).any(|i| g.water(i) > 0.0 && g.water(i) < 0.5);
         assert!(max_water > 0.9, "expected deep main-channel water, got max={max_water}");
@@ -185,7 +172,7 @@ mod tests {
         let width = 128usize;
         let height = 96usize;
         let mut g = Grid::new(width, height);
-        let (mains, _) = generate_river_inner(&mut g, &spec);
+        let (mains, _) = generate_water(&mut g, &spec);
 
         assert_eq!(mains.len(), spec.count, "should carve {} main channels", spec.count);
 
@@ -243,7 +230,7 @@ mod tests {
         let width = 128usize;
         let height = 96usize;
         let mut g = Grid::new(width, height);
-        let (mains, _) = generate_river_inner(&mut g, &spec);
+        let (mains, _) = generate_water(&mut g, &spec);
 
         for &(child, parent) in &spec.confluence_pairs {
             let child_cl = &mains[child];
@@ -277,7 +264,7 @@ mod tests {
     fn tributaries_join_a_main_channel() {
         let spec = RiverSpec::default();
         let mut g = Grid::new(128, 96);
-        let (mains, tribs) = generate_river_inner(&mut g, &spec);
+        let (mains, tribs) = generate_water(&mut g, &spec);
 
         // We expect the default number of tributaries to have been carved.
         assert_eq!(
@@ -315,7 +302,7 @@ mod tests {
         let width = 128usize;
         let height = 96usize;
         let mut g = Grid::new(width, height);
-        let (mains, _) = generate_river_inner(&mut g, &spec);
+        let (mains, _) = generate_water(&mut g, &spec);
 
         assert!(mains.len() >= 2, "need at least 2 rivers to compare");
 
@@ -344,8 +331,8 @@ mod tests {
 
         let mut g_with = Grid::new(128, 96);
         let mut g_none = Grid::new(128, 96);
-        generate_river_inner(&mut g_with, &spec_with);
-        generate_river_inner(&mut g_none, &spec_none);
+        generate_water(&mut g_with, &spec_with);
+        generate_water(&mut g_none, &spec_none);
 
         let deep_with = (0..g_with.len()).filter(|&i| g_with.water(i) >= 0.9).count();
         let deep_none = (0..g_none.len()).filter(|&i| g_none.water(i) >= 0.9).count();
