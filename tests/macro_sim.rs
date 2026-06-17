@@ -1,26 +1,9 @@
-use bevy::app::ScheduleRunnerPlugin;
 use bevy::prelude::*;
-use bevy::time::TimeUpdateStrategy;
-use mesopotamia::elk::{Elk, ElkSimPlugin, EDGE_COL, TARGET_POPULATION};
-use mesopotamia::grid::{Grid, GridPlugin, GRID_WIDTH};
-use mesopotamia::river::RiverPlugin;
-use std::time::Duration;
-
-const HZ: f64 = 10.0;
-const PERIOD: Duration = Duration::from_millis(100);
-
-fn make_app() -> App {
-    let mut app = App::new();
-    app.add_plugins(MinimalPlugins.set(ScheduleRunnerPlugin::run_once()))
-        .insert_resource(Time::<Fixed>::from_hz(HZ))
-        .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
-        .add_plugins((GridPlugin, ElkSimPlugin, RiverPlugin));
-    app
-}
+use mesopotamia::elk::{EDGE_COL, TARGET_POPULATION};
+use mesopotamia::grid::{Grid, GRID_WIDTH};
+use mesopotamia::sim_harness::{elk_count, make_app, max_col_reached};
 
 /// Build a headless app, step it `ticks` times, and return the final state.
-// Used by later tasks that will import this helper; keep it even though current
-// tests drive the loop manually to track metrics over time.
 #[allow(dead_code)]
 fn headless(ticks: u32) -> App {
     let mut app = make_app();
@@ -28,11 +11,6 @@ fn headless(ticks: u32) -> App {
         app.update();
     }
     app
-}
-
-fn elk_count(world: &mut World) -> usize {
-    let mut q = world.query::<&Elk>();
-    q.iter(world).count()
 }
 
 fn total_grass(world: &World) -> f32 {
@@ -48,12 +26,6 @@ fn total_capacity(world: &World) -> f32 {
     (0..grid.len()).map(|i| grid.capacity(i)).sum()
 }
 
-fn max_col_reached(world: &mut World) -> usize {
-    // Derive grid width without holding the &Grid borrow while the query borrows the world.
-    let grid_width = world.get_resource::<Grid>().unwrap().width();
-    let mut q = world.query::<&Elk>();
-    q.iter(world).map(|elk| elk.cell % grid_width).max().unwrap_or(0)
-}
 
 // ── Invariant 1: population stays above zero and below an explosion ceiling ──
 

@@ -19,6 +19,8 @@ mod elk;
 mod render;
 #[path = "../settings.rs"]
 mod settings;
+#[path = "../history.rs"]
+mod history;
 #[path = "../ui.rs"]
 mod ui;
 #[path = "../river.rs"]

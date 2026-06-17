@@ -2,8 +2,9 @@ use bevy::prelude::*;
 use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
-use crate::elk::{Elk, ElkParams, Herds};
+use crate::elk::{Elk, ElkParams, Herds, DriveSamples};
 use crate::grid::{Fertility, Grid, GrowthRate};
+use crate::history::History;
 use crate::render::{cell_world_pos, CameraSettings, WorldCamera};
 
 pub struct UiPlugin;
@@ -11,8 +12,9 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiState>()
+            .init_resource::<History>()
             // pick_herd (world click → select) runs before the panel draws it.
-            .add_systems(Update, pick_herd)
+            .add_systems(Update, (pick_herd, crate::history::sample_history))
             .add_systems(
                 EguiPrimaryContextPass,
                 // control_panel lays out the dock; set_camera_viewport then reads
@@ -41,22 +43,122 @@ fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f3
     ui.add(egui::Slider::new(value, range).text(label));
 }
 
-/// One self-contained control group: a heading and its body. The body is a
-/// closure so a panel is just a titled `&mut Ui` consumer — the immediate-mode
-/// analogue of a composed component.
+/// A labelled set of time-series read from `History` for line-graph rendering.
+struct PlotSpec<'a> {
+    /// `egui_plot::Plot` id — must be unique within the panel.
+    id: &'a str,
+    /// Each entry is (display name, ring-buffer reference).
+    series: Vec<(&'a str, &'a std::collections::VecDeque<f32>)>,
+}
+
+/// One slice of a pie chart: display label, magnitude, fill colour.
+struct PieSpec<'a> {
+    slices: Vec<(&'a str, f32, egui::Color32)>,
+}
+
+/// Declarative panel content. Add new variants here before `Custom` so the
+/// match in `render_items` stays exhaustive and easy to extend.
+#[allow(dead_code)]
+enum Item<'a> {
+    Slider { value: &'a mut f32, range: std::ops::RangeInclusive<f32>, label: &'a str },
+    Label(String),
+    Separator,
+    /// Line graph via egui_plot.
+    Plot(PlotSpec<'a>),
+    /// Pie chart drawn with egui's Painter.
+    Pie(PieSpec<'a>),
+    /// Progressive-disclosure group: a `CollapsingHeader` wrapping nested items.
+    Section { title: &'a str, items: Vec<Item<'a>>, default_open: bool },
+    /// Escape hatch for complex bodies that can't yet be expressed as items.
+    Custom(Box<dyn FnOnce(&mut egui::Ui) + 'a>),
+}
+
+/// Walk an item list and render each to `ui`. Recursive through `Section`.
+fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
+    for item in items {
+        match item {
+            Item::Slider { value, range, label } => slider(ui, value, range, label),
+            Item::Label(text) => { ui.label(text); }
+            Item::Separator => { ui.separator(); }
+            Item::Plot(spec) => render_plot(ui, spec),
+            Item::Pie(spec) => render_pie(ui, &spec.slices),
+            Item::Section { title, items, default_open } => {
+                egui::CollapsingHeader::new(title)
+                    .default_open(default_open)
+                    .show(ui, |ui| render_items(ui, items));
+            }
+            Item::Custom(f) => f(ui),
+        }
+    }
+}
+
+fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
+    use egui_plot::{Line, Plot, PlotPoints};
+    Plot::new(spec.id)
+        .height(80.0)
+        .allow_scroll(false)
+        .show(ui, |plot_ui| {
+            for (name, data) in spec.series {
+                let points: PlotPoints = data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &v)| [i as f64, v as f64])
+                    .collect();
+                plot_ui.line(Line::new(name, points));
+            }
+        });
+}
+
+fn render_pie(ui: &mut egui::Ui, slices: &[(&str, f32, egui::Color32)]) {
+    let total: f32 = slices.iter().map(|(_, v, _)| *v).sum();
+    if total < 1e-6 {
+        ui.label("no drive data");
+        return;
+    }
+
+    let size = 120.0f32;
+    let (resp, painter) = ui.allocate_painter(egui::vec2(size, size), egui::Sense::hover());
+    let center = resp.rect.center();
+    let radius = size * 0.45;
+
+    let mut start = -std::f32::consts::FRAC_PI_2;
+    for &(_, value, color) in slices {
+        let sweep = value / total * std::f32::consts::TAU;
+        let steps = ((sweep * radius / 2.0) as usize).max(3);
+        let mut pts: Vec<egui::Pos2> = Vec::with_capacity(steps + 2);
+        pts.push(center);
+        for k in 0..=steps {
+            let a = start + sweep * k as f32 / steps as f32;
+            pts.push(center + egui::vec2(a.cos(), a.sin()) * radius);
+        }
+        painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
+        start += sweep;
+    }
+
+    // Legend
+    for &(label, _, color) in slices {
+        ui.horizontal(|ui| {
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 0.0, color);
+            ui.label(label);
+        });
+    }
+}
+
+/// One self-contained control group: a heading and an ordered list of items.
 struct Panel<'a> {
     title: &'a str,
     /// Target column width — the flex-basis. Panels wrap to a new row when the
     /// current row can't fit another at its width.
     width: f32,
-    body: Box<dyn FnOnce(&mut egui::Ui) + 'a>,
+    items: Vec<Item<'a>>,
 }
 
 impl<'a> Panel<'a> {
     const DEFAULT_WIDTH: f32 = 240.0;
 
-    fn new(title: &'a str, body: impl FnOnce(&mut egui::Ui) + 'a) -> Self {
-        Self { title, width: Self::DEFAULT_WIDTH, body: Box::new(body) }
+    fn new(title: &'a str, items: Vec<Item<'a>>) -> Self {
+        Self { title, width: Self::DEFAULT_WIDTH, items }
     }
 
     /// Override the flex-basis for a wider/narrower group.
@@ -79,7 +181,7 @@ fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
                     egui::Frame::group(ui.style()).show(ui, |ui| {
                         ui.set_width(p.width);
                         ui.heading(p.title);
-                        (p.body)(ui);
+                        render_items(ui, p.items);
                     });
                 },
             );
@@ -99,6 +201,8 @@ fn control_panel(
     mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
     herds: Res<Herds>,
+    history: Res<History>,
+    drive_samples: Res<DriveSamples>,
 ) -> Result {
     egui::TopBottomPanel::bottom("control_panel")
         .resizable(true)
@@ -119,12 +223,12 @@ fn control_panel(
                 .auto_shrink([false, false])
                 .show(ui, |ui| match state.tab {
                 Tab::Sliders => panel_flow(ui, vec![
-                    Panel::new("Grass", |ui| grass_tab(ui, growth.as_mut(), fertility.as_mut())),
+                    Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut())),
                     // Behaviour carries the most rows, so give it a wider column.
-                    Panel::new("Behaviour", |ui| behaviour_tab(ui, elk_params.as_mut())).width(300.0),
-                    Panel::new("View", |ui| view_tab(ui, camera.as_mut())),
+                    Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut())))]).width(300.0),
+                    Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                 ]),
-                Tab::Herds => herds_view(ui, state.as_mut(), &herds),
+                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history, &drive_samples),
             });
         });
     Ok(())
@@ -133,7 +237,7 @@ fn control_panel(
 /// The Herds tab: a scrollable list of herd cards on the left; clicking one
 /// shows its full details in the scrollable pane on the right. The selection
 /// persists on a dead/migrated cohort until the user picks another.
-fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds) {
+fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History, drive_samples: &DriveSamples) {
     let alive: Vec<u32> = herds
         .order
         .iter()
@@ -161,7 +265,7 @@ fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds) {
                 .selected
                 .and_then(|c| herds.cohorts.get(&c).map(|co| (c, co)))
             {
-                Some((code, co)) => herd_details(ui, code, co),
+                Some((code, co)) => herd_details(ui, code, co, history, drive_samples),
                 None => {
                     ui.weak("select a herd");
                 }
@@ -206,7 +310,21 @@ fn herd_card(ui: &mut egui::Ui, code: u32, co: &crate::elk::Cohort, state: &mut 
     }
 }
 
-fn herd_details(ui: &mut egui::Ui, code: u32, co: &crate::elk::Cohort) {
+const DRIVE_COLORS: [egui::Color32; 5] = [
+    egui::Color32::from_rgb(70, 130, 180),  // sep   — steel blue
+    egui::Color32::from_rgb(60, 179, 113),  // coh   — medium sea green
+    egui::Color32::from_rgb(34, 139, 34),   // grass — forest green
+    egui::Color32::from_rgb(255, 165, 0),   // social — orange
+    egui::Color32::from_rgb(180, 60, 80),   // migration — crimson
+];
+
+fn herd_details(
+    ui: &mut egui::Ui,
+    code: u32,
+    co: &crate::elk::Cohort,
+    history: &History,
+    drive_samples: &DriveSamples,
+) {
     ui.heading(format!("pack {code:06x}"));
     ui.label(format!("status: {}", if co.alive > 0 { "alive" } else { "gone" }));
     ui.label(format!("slot: {}", co.slot));
@@ -219,6 +337,43 @@ fn herd_details(ui: &mut egui::Ui, code: u32, co: &crate::elk::Cohort) {
     ui.label(format!("peak: {}", co.peak));
     ui.label(format!("starved: {}", co.deaths));
     ui.label(format!("migrated out: {}", co.departures));
+    ui.separator();
+
+    // Drive-split pie for this herd's slot.
+    let slot = co.slot as usize;
+    if let Some(ds) = drive_samples.per_slot.get(slot) {
+        let pie_slices = vec![
+            ("sep",       ds.sep,       DRIVE_COLORS[0]),
+            ("coh",       ds.coh,       DRIVE_COLORS[1]),
+            ("grass",     ds.grass,     DRIVE_COLORS[2]),
+            ("social",    ds.social,    DRIVE_COLORS[3]),
+            ("migration", ds.migration, DRIVE_COLORS[4]),
+        ];
+        ui.label("drive split (this tick)");
+        render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
+    }
+
+    ui.separator();
+
+    // Population over time (all elk).
+    render_items(ui, vec![
+        Item::Label("population".to_string()),
+        Item::Plot(PlotSpec {
+            id: "pop_plot",
+            series: vec![("population", &history.population)],
+        }),
+    ]);
+
+    // Migration share for this slot over time.
+    if let Some(share_buf) = history.migration_share.get(slot) {
+        render_items(ui, vec![
+            Item::Label("migration share".to_string()),
+            Item::Plot(PlotSpec {
+                id: &format!("mig_share_{slot}"),
+                series: vec![("mig share", share_buf)],
+            }),
+        ]);
+    }
 }
 
 /// A left-click in the world selects the nearest elk's herd and opens the Herds
@@ -335,11 +490,19 @@ fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     }
 }
 
-fn grass_tab(ui: &mut egui::Ui, growth: &mut GrowthRate, fertility: &mut Fertility) {
-    slider(ui, &mut growth.intrinsic, -0.01..=0.1, "regrowth / tick");
-    slider(ui, &mut growth.spread, 0.0..=0.3, "spread from neighbours");
-    slider(ui, &mut fertility.rate, 0.0..=0.5, "poop → grass / tick");
-    slider(ui, &mut fertility.efficiency, 0.0..=1.0, "conversion efficiency");
+fn grass_items<'a>(growth: &'a mut GrowthRate, fertility: &'a mut Fertility) -> Vec<Item<'a>> {
+    vec![
+        Item::Slider { value: &mut growth.intrinsic, range: -0.01..=0.1, label: "regrowth / tick" },
+        Item::Slider { value: &mut growth.spread, range: 0.0..=0.3, label: "spread from neighbours" },
+        Item::Section {
+            title: "Fertility",
+            items: vec![
+                Item::Slider { value: &mut fertility.rate, range: 0.0..=0.5, label: "poop → grass / tick" },
+                Item::Slider { value: &mut fertility.efficiency, range: 0.0..=1.0, label: "conversion efficiency" },
+            ],
+            default_open: false,
+        },
+    ]
 }
 
 fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {

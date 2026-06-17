@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams, Packs};
+use super::components::{DriveSample, DriveSamples, Elk, ElkParams, Packs};
 
 const OTHER_PACK_SEP: f32 = 0.5; // mild push from foreign packs
 
@@ -97,6 +97,7 @@ pub(super) fn herd_move(
     packs: Res<Packs>,
     params: Res<ElkParams>,
     mut elk_q: Query<&mut Elk>,
+    mut samples: ResMut<DriveSamples>,
 ) {
     // Phase 1: snapshot (col, row, slot, grazing) for every elk, in query order.
     let snapshot: Vec<(f32, f32, u8, bool)> = elk_q
@@ -108,6 +109,7 @@ pub(super) fn herd_move(
         .collect();
 
     // Phase 2: decide and write, reading neighbours only from the snapshot.
+    let mut acc = vec![DriveSample::default(); super::PACK_COUNT];
     let mut rng = rand::rng();
     let steps: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
     let gr = params.grass_radius.ceil() as isize;
@@ -177,6 +179,16 @@ pub(super) fn herd_move(
         let drives = combine_drives(
             sep, coh, grass_dir, social, &params, packs.migration[slot as usize], elk.energy,
         );
+
+        // Accumulate magnitudes for the per-slot sample (pure read, no behaviour change).
+        let s = slot as usize;
+        acc[s].sep += drives.sep.length();
+        acc[s].coh += drives.coh.length();
+        acc[s].grass += drives.grass.length();
+        acc[s].social += drives.social.length();
+        acc[s].migration += drives.migration.length();
+        acc[s].count += 1;
+
         let desire = drives.total();
 
         // Score each valid step, then softmax for a weighted-random pick.
@@ -227,6 +239,23 @@ pub(super) fn herd_move(
             elk.energy = (elk.energy - params.swim_drain * water).max(0.0);
         }
     }
+
+    // Write per-slot means into the shared resource. Empty slots get zeroed samples.
+    for (slot_sample, a) in samples.per_slot.iter_mut().zip(acc.iter()) {
+        if a.count > 0 {
+            let n = a.count as f32;
+            *slot_sample = DriveSample {
+                sep: a.sep / n,
+                coh: a.coh / n,
+                grass: a.grass / n,
+                social: a.social / n,
+                migration: a.migration / n,
+                count: a.count,
+            };
+        } else {
+            *slot_sample = DriveSample::default();
+        }
+    }
 }
 
 /// The verifiable behavioural contract for river crossings (world-gen C): a herd's
@@ -250,6 +279,39 @@ pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::components::DriveSample;
+
+    // ── DriveSample::migration_share ─────────────────────────────────────────
+
+    // 0 when all magnitudes are zero (idle elk).
+    #[test]
+    fn drive_sample_share_is_zero_when_idle() {
+        let s = DriveSample::default();
+        assert_eq!(s.migration_share(), 0.0);
+    }
+
+    // Matches the doc02.02 definition: migration / sum_of_five.
+    #[test]
+    fn drive_sample_share_matches_manual_calculation() {
+        let s = DriveSample { sep: 1.0, coh: 1.0, grass: 1.0, social: 1.0, migration: 1.0, count: 1 };
+        // All equal → share is exactly 0.2.
+        assert!((s.migration_share() - 0.2).abs() < 1e-6);
+    }
+
+    // Pure migration drive (all others zero) → share is 1.
+    #[test]
+    fn drive_sample_share_is_one_when_only_migration() {
+        let s = DriveSample { sep: 0.0, coh: 0.0, grass: 0.0, social: 0.0, migration: 2.0, count: 1 };
+        assert!((s.migration_share() - 1.0).abs() < 1e-6);
+    }
+
+    // Raising migration while keeping others fixed raises the share.
+    #[test]
+    fn drive_sample_share_rises_with_migration() {
+        let lo = DriveSample { sep: 1.0, coh: 1.0, grass: 1.0, social: 1.0, migration: 0.5, count: 1 };
+        let hi = DriveSample { sep: 1.0, coh: 1.0, grass: 1.0, social: 1.0, migration: 2.0, count: 1 };
+        assert!(hi.migration_share() > lo.migration_share());
+    }
 
     fn default_params() -> ElkParams {
         ElkParams::default()

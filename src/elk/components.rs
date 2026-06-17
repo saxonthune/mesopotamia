@@ -86,7 +86,7 @@ impl Packs {
 /// pure weight on a *normalized* direction, so the weights are real ratios that
 /// hold their meaning across grid sizes and densities. Radii are absolute
 /// perception lengths (an elk's senses do not scale with the map).
-#[derive(Resource)]
+#[derive(Resource, Clone)]
 pub struct ElkParams {
     pub separation: f32,
     pub cohesion: f32,
@@ -108,6 +108,36 @@ pub struct ElkParams {
     pub swim_drain: f32,     // energy drained when entering deep non-ford water
     pub browse_bite: f32,    // browse stripped per graze — a big bite
     pub browse_energy: f32,  // energy from a browse bite — concentrated forage
+}
+
+/// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
+/// read by the UI (pie/graphs) and the balancing sweep. Index by `slot`.
+#[derive(Resource, Default)]
+pub struct DriveSamples {
+    /// Mean `Drives` over the elk of each slot this tick (zeroed `DriveSample` for
+    /// an empty slot). Length == PACK_COUNT.
+    pub per_slot: Vec<DriveSample>,
+}
+
+/// Per-slot mean drive magnitudes for one tick.
+#[derive(Default, Clone, Copy)]
+pub struct DriveSample {
+    pub sep: f32,
+    pub coh: f32,
+    pub grass: f32,
+    pub social: f32,
+    pub migration: f32,
+    pub count: u32,
+}
+
+impl DriveSample {
+    /// Fraction of total pull effort that is the migration force, in [0, 1]:
+    /// `migration` over the sum of all five magnitudes. 0 when nothing pulls.
+    #[allow(dead_code)] // consumed by ui-declarative-panels-graphs and balancing-param-sweep
+    pub fn migration_share(&self) -> f32 {
+        let sum = self.sep + self.coh + self.grass + self.social + self.migration;
+        if sum > 1e-6 { self.migration / sum } else { 0.0 }
+    }
 }
 
 impl Default for ElkParams {

@@ -24,6 +24,7 @@ bevy = { version = "0.18.1", default-features = false, features = [
     "touch",
 ] }
 bevy_egui = "0.39.1"
+egui_plot = "0.34"
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 
