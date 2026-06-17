@@ -3,14 +3,17 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 
 use crate::elk::{Elk, DriveSamples};
+use crate::grid::Grid;
 
-const WINDOW: usize = 600;
+const WINDOW: usize = 6000;
 
 #[derive(Resource, Default)]
 pub struct History {
     pub population: VecDeque<f32>,
     pub avg_energy: VecDeque<f32>,
     pub migration_share: Vec<VecDeque<f32>>, // per slot, from DriveSamples
+    pub grass_mass: VecDeque<f32>,           // Σ grass over the grid
+    pub shrub_mass: VecDeque<f32>,           // Σ shrubs over the grid
 }
 
 fn push_capped(buf: &mut VecDeque<f32>, value: f32) {
@@ -23,6 +26,7 @@ fn push_capped(buf: &mut VecDeque<f32>, value: f32) {
 pub fn sample_history(
     elk: Query<&Elk>,
     drive_samples: Res<DriveSamples>,
+    grid: Res<Grid>,
     mut history: ResMut<History>,
 ) {
     // Ensure per-slot buffers are sized to match DriveSamples.
@@ -45,4 +49,7 @@ pub fn sample_history(
     for (slot, ds) in drive_samples.per_slot.iter().enumerate() {
         push_capped(&mut history.migration_share[slot], ds.migration_share());
     }
+
+    push_capped(&mut history.grass_mass, grid.total_grass());
+    push_capped(&mut history.shrub_mass, grid.total_shrubs());
 }

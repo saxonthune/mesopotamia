@@ -8,7 +8,7 @@ use bevy_egui::input::egui_wants_any_pointer_input;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
 use crate::elk::{Elk, elk_color};
-use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_BROWSE, MAX_GRASS, MAX_POOP, MAX_WATER};
+use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_WATER};
 
 const TILE_SIZE: f32 = 16.0;
 
@@ -27,7 +27,7 @@ impl Plugin for RenderPlugin {
                     (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
                     sync_tiles,
                     sync_poop,
-                    sync_browse,
+                    sync_shrubs,
                     apply_camera,
                     sync_elk_transform,
                     sync_elk_color,
@@ -67,7 +67,7 @@ struct PoopDot {
 }
 
 #[derive(Component)]
-struct BrowseDot {
+struct ShrubDot {
     index: usize,
 }
 
@@ -130,14 +130,14 @@ fn setup(
             PoopDot { index }
         ));
 
-        // Browse shrub — a fat dark-green clump that grows in from zero scale, set
+        // Shrub — a fat dark-green clump that grows in from zero scale, set
         // below the poop/elk layers so bodies read on top of it.
         commands.spawn((
             Sprite::from_color(Color::srgb(0.16, 0.30, 0.10),
                 Vec2::splat(TILE_SIZE * 0.8)),
             Transform::from_xyz(pos.x, pos.y, 0.4)
                 .with_scale(Vec3::ZERO),
-            BrowseDot { index }
+            ShrubDot { index }
         ));
     }
 }
@@ -235,10 +235,10 @@ fn sync_poop(grid: Res<Grid>, mut dots: Query<(&PoopDot, &mut Transform)>) {
     }
 }
 
-fn sync_browse(grid: Res<Grid>, mut dots: Query<(&BrowseDot, &mut Transform)>) {
+fn sync_shrubs(grid: Res<Grid>, mut dots: Query<(&ShrubDot, &mut Transform)>) {
     for (dot, mut transform) in &mut dots {
-        let b = grid.browse(dot.index) / MAX_BROWSE;
-        transform.scale = Vec3::splat(b);
+        let s = grid.shrubs(dot.index) / MAX_SHRUBS;
+        transform.scale = Vec3::splat(s);
     }
 }
 

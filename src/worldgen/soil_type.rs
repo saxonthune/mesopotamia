@@ -8,7 +8,7 @@ const LO: f32 = 0.2;
 const HI: f32 = 0.7;
 
 /// Derive `soil_type` for every cell from the water-proximity gradient.
-/// Must run after `generate_water` and before `seed_browse_cap`.
+/// Must run after `generate_water` and before `seed_shrub_cap`.
 pub(super) fn seed_soil_type(grid: &mut Grid) {
     for i in 0..grid.len() {
         let t = ((grid.water_prox(i) - LO) / (HI - LO)).clamp(0.0, 1.0);

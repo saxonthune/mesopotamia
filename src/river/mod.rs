@@ -11,7 +11,7 @@ mod prox;
 mod raster;
 mod spec;
 
-pub use spec::{Heading, RiverSpec};
+pub use spec::RiverSpec;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};

@@ -8,7 +8,7 @@ pub const GRID_HEIGHT: usize = 108;
 pub const MAX_GRASS: f32 = 1.0;
 pub const MAX_POOP: f32 = 1.0;
 pub const MAX_WATER: f32 = 1.0;
-pub const MAX_BROWSE: f32 = 1.0;
+pub const MAX_SHRUBS: f32 = 1.0;
 
 #[derive(Resource)]
 pub struct Grid {
@@ -25,18 +25,18 @@ pub struct Grid {
     /// field. Folded into `capacity` so the smooth water-distance gradient breaks
     /// into rich thickets and poor scrapes. Authored once by `seed_soil`.
     soil: Vec<f32>,
-    /// Browse (big-leaf shrub) standing crop per cell, [0, MAX_BROWSE]. A second
+    /// Shrub (big-leaf) standing crop per cell, [0, MAX_SHRUBS]. A second
     /// forage type living on dry ground, off the water cycle entirely.
-    browse: Vec<f32>,
-    /// Browse carrying capacity — high on dry steppe, zero in/near water and off
-    /// the shrub clumps. Authored on the first browse-growth tick.
-    browse_cap: Vec<f32>,
+    shrubs: Vec<f32>,
+    /// Shrub carrying capacity — high on dry steppe, zero in/near water and off
+    /// the shrub clumps. Authored on the first shrub-growth tick.
+    shrub_cap: Vec<f32>,
     /// Ford mask: true on cells authored as periodic shallow crossings along the
     /// main channel centerline. Read by Phase B to apply the crossing discount.
     ford: Vec<bool>,
     /// Soil-type gradient: 0 = dry steppe, 1 = moist riparian. Derived from the
     /// water-proximity field after the water layer runs. Drives two-tone dirt render
-    /// and a gentle browse-capacity nudge away from the riparian band.
+    /// and a gentle shrub-capacity nudge away from the riparian band.
     soil_type: Vec<f32>,
 }
 
@@ -85,8 +85,8 @@ impl Grid {
             water_prox: vec![1.0; width * height],
             // Full fertility until `seed_soil` writes the patch field.
             soil: vec![1.0; width * height],
-            browse: vec![0.0; width * height],
-            browse_cap: vec![0.0; width * height],
+            shrubs: vec![0.0; width * height],
+            shrub_cap: vec![0.0; width * height],
             ford: vec![false; width * height],
             soil_type: vec![0.0; width * height],
         }
@@ -144,12 +144,13 @@ impl Grid {
         self.water_prox[index]
     }
 
-    /// Set the browse (shrub) carrying capacity for a cell. Authored by the
-    /// world-gen vegetation layer; the runtime browse regrowth reads it.
-    pub fn set_browse_cap(&mut self, index: usize, value: f32) {
-        self.browse_cap[index] = value.clamp(0.0, MAX_BROWSE);
+    /// Set the shrub carrying capacity for a cell. Authored by the
+    /// world-gen vegetation layer; the runtime shrub regrowth reads it.
+    pub fn set_shrub_cap(&mut self, index: usize, value: f32) {
+        self.shrub_cap[index] = value.clamp(0.0, MAX_SHRUBS);
     }
 
+    #[cfg(test)]
     pub fn soil(&self, index: usize) -> f32 {
         self.soil[index]
     }
@@ -197,35 +198,47 @@ impl Grid {
         self.soil_type[index] = value.clamp(0.0, 1.0);
     }
 
-    pub fn browse(&self, index: usize) -> f32 {
-        self.browse[index]
+    pub fn shrubs(&self, index: usize) -> f32 {
+        self.shrubs[index]
     }
 
-    /// Strip browse from a cell (positive `amount` removes it). Floors at zero.
-    pub fn eat_browse(&mut self, index: usize, amount: f32) {
-        self.browse[index] = (self.browse[index] - amount).max(0.0);
+    /// Strip shrubs from a cell (positive `amount` removes it). Floors at zero.
+    pub fn eat_shrubs(&mut self, index: usize, amount: f32) {
+        self.shrubs[index] = (self.shrubs[index] - amount).max(0.0);
     }
 
-    /// Total forage an elk perceives at a cell — grass plus browse. The herd's
+    /// Total forage an elk perceives at a cell — grass plus shrubs. The herd's
     /// grass-seeking drive steers up this combined field, so shrub clumps pull
     /// foragers the same way rich grass does.
     pub fn forage(&self, index: usize) -> f32 {
-        self.grass[index] + self.browse[index]
+        self.grass[index] + self.shrubs[index]
+    }
+
+    /// Total standing grass biomass across the whole grid — Σ grass. A macro
+    /// reduction the UI samples into `History` for the biomass graph; the
+    /// simulation itself never reads it.
+    pub fn total_grass(&self) -> f32 {
+        self.grass.iter().sum()
+    }
+
+    /// Total standing shrub biomass across the whole grid — Σ shrubs.
+    pub fn total_shrubs(&self) -> f32 {
+        self.shrubs.iter().sum()
     }
 }
 
 pub struct GridPlugin;
 
-// Browse (dry-ground shrubs) regrow slowly in place toward the capacity the
+// Shrubs (dry-ground) regrow slowly in place toward the capacity the
 // world-gen vegetation layer authored — a long lifecycle.
-const BROWSE_REGROW: f32 = 0.0025;
+const SHRUB_REGROW: f32 = 0.0025;
 
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
             .init_resource::<GrowthRate>()
             .init_resource::<Fertility>()
-            .add_systems(FixedUpdate, (growth, grow_browse, fertilize));
+            .add_systems(FixedUpdate, (growth, grow_shrubs, fertilize));
     }
 }
 
@@ -243,16 +256,16 @@ fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>) {
     );
 }
 
-/// Browse grows slowly toward its dry-ground capacity with a pure logistic step
+/// Shrubs grow slowly toward their dry-ground capacity with a pure logistic step
 /// (`spread = 0` → no colonisation; shrubs regenerate in place). Capacity is
 /// authored by the world-gen vegetation layer before the sim runs.
-fn grow_browse(mut grid: ResMut<Grid>) {
-    grid.browse = field::spread_grow(
-        &grid.browse,
-        &grid.browse_cap,
+fn grow_shrubs(mut grid: ResMut<Grid>) {
+    grid.shrubs = field::spread_grow(
+        &grid.shrubs,
+        &grid.shrub_cap,
         grid.width(),
         grid.height(),
-        BROWSE_REGROW,
+        SHRUB_REGROW,
         0.0,
     );
 }
@@ -265,6 +278,21 @@ fn fertilize(mut grid: ResMut<Grid>, fertility: Res<Fertility>) {
         }
         grid.add_poop(index, -consumed);
         grid.grow_grass(index, consumed * fertility.efficiency);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Total biomass is the plain sum over every cell — the macro reduction the
+    // biomass graph plots.
+    #[test]
+    fn total_grass_sums_every_cell() {
+        let mut grid = Grid::new(2, 2);
+        grid.set_grass(0, 0.5);
+        grid.set_grass(3, 0.25);
+        assert!((grid.total_grass() - 0.75).abs() < 1e-6);
     }
 }
 

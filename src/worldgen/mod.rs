@@ -51,6 +51,6 @@ fn generate_world(mut grid: ResMut<Grid>) {
     // 3. Soil type — riparian/steppe gradient derived from water proximity.
     soil_type::seed_soil_type(&mut grid);
 
-    // 4. Vegetation — browse (shrub) capacity on the dry ground away from water.
-    vegetation::seed_browse_cap(&mut grid);
+    // 4. Vegetation — shrub capacity on the dry ground away from water.
+    vegetation::seed_shrub_cap(&mut grid);
 }

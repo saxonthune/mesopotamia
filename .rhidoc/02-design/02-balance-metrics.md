@@ -82,6 +82,38 @@ spawned  = alive + deaths + departures
 survival = 1 − deaths / spawned
 ```
 
+## Foraging economics
+
+Survival is the outcome of an energy ledger: each tick an elk loses `energy_drain` to
+metabolism and gains intake only while grazing. Intake is **proportional to the grass it
+actually eats**, and a bite leaves a *giving-up density* — a fraction `graze_floor` of the
+cell's capacity stays in the ground:
+
+```
+edible      = grass − graze_floor · capacity
+bite_taken  = min(bite, edible)          (no bite when edible ≤ 0)
+intake/tick = bite_taken · graze_yield   (while grazing)
+```
+
+The slider values are **derived from inequalities, not tuned in the demo**. Three handles fix the
+feeding regime:
+
+- **Break-even grazing fraction.** An elk lives only if it grazes enough of the time to cover
+  drain. On full bites, `f_breakeven = energy_drain / (graze_yield · bite)`. As a patch thins
+  toward the floor the bite shrinks, so the duty cycle a grazed-down cell demands is strictly
+  worse — which is what forces movement.
+- **Single-cell sustainability.** A camped elk eats only what regrows, `≈ intrinsic · capacity`
+  per tick. For a grazed-down cell to *fail* to sustain it — closing the "camp a patch and sip
+  its regrowth" exploit — the yield must satisfy `intrinsic · capacity · graze_yield < energy_drain`.
+- **Giving-up density.** `graze_floor` is a fraction of capacity (not an absolute level), so the
+  abandon threshold scales with site quality and marginal land is given up sooner in absolute
+  terms rather than zeroed out.
+
+Hunger is the journey's engine: an elk that cannot camp must keep moving to fresh forage, and a
+herd that has grazed-down its bank is the one with the energy pressure to cross the river. The
+feeding ledger and the crossing decision (`cross_desire`) are the same economy — forage gained
+against cost paid.
+
 ## Counterfactual journey
 
 The demo goal is that natural drives alone carry the herd. The journey metric is a counterfactual

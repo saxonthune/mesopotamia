@@ -12,6 +12,10 @@ This project keeps its specifications in a `.rhidoc/` docs workspace. The docs a
 
 Before writing or changing code, read `doc02.01` (Coding Patterns). Its rules are standing — one concept per module, decisions extracted into pure tested functions, feature plugins over a thin root, tunables as params — and apply to every code change without being asked. The easy default of one large module that does everything is the wrong one here.
 
+## Test with `just test-fast` While Iterating
+
+Default to `just test-fast` (`cargo test --lib`) while writing code — it runs the pure-function unit tests in seconds and skips the slow Bevy-linking integration binaries. Do **not** run `cargo test` or `just test-all` after every change; the full suite links the engine and is the pre-merge gate, run once before handing work off or when a change touches the macro/integration invariants. When in doubt, `test-fast` during the loop, `test-all` at the end.
+
 ## Docs Unfold; They Are Not Drafted
 
 Documentation grows like a living system — a one-line doc is a finished doc until the work demands more. Capture what is known in the simplest form, deepen only when the next step requires it, and never invent detail to fill a sparse doc. Sparseness is intentional, not a defect.

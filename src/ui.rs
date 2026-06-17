@@ -17,9 +17,10 @@ impl Plugin for UiPlugin {
             .add_systems(Update, (pick_herd, crate::history::sample_history))
             .add_systems(
                 EguiPrimaryContextPass,
-                // control_panel lays out the dock; set_camera_viewport then reads
-                // the leftover rect, so order matters — hence .chain().
-                (control_panel, set_camera_viewport).chain(),
+                // graphs_bar (top) and control_panel (bottom) both claim screen
+                // edges; set_camera_viewport then reads the leftover rect, so it
+                // must run last — hence .chain().
+                (graphs_bar, control_panel, set_camera_viewport).chain(),
             );
     }
 }
@@ -29,6 +30,7 @@ struct UiState {
     tab: Tab,
     selected: Option<u32>, // hex code of the herd shown in the details pane;
     // persists on a dead/migrated cohort until the user picks another.
+    visible: std::collections::HashSet<Graph>, // overview graphs toggled on in the top bar
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
@@ -36,6 +38,26 @@ enum Tab {
     #[default]
     Sliders,
     Herds,
+}
+
+/// A toggleable overview graph shown in the top bar. `ALL` drives both the
+/// toggle row and the render loop, so adding a variant adds its button and plot
+/// in one place. Visibility is pure view state (lives on `UiState`); the sampler
+/// always records, regardless of what's shown.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Graph {
+    Biomass,
+}
+
+impl Graph {
+    const ALL: [Graph; 1] = [Graph::Biomass];
+
+    /// The toggle-button label.
+    fn label(self) -> &'static str {
+        match self {
+            Graph::Biomass => "biomass",
+        }
+    }
 }
 
 /// Standard labelled `f32` slider — the one-liner every control page uses.
@@ -47,6 +69,9 @@ fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f3
 struct PlotSpec<'a> {
     /// `egui_plot::Plot` id — must be unique within the panel.
     id: &'a str,
+    /// Plot height in points. Inline plots use a fixed value; a graph filling a
+    /// resizable window passes the window's available height.
+    height: f32,
     /// Each entry is (display name, ring-buffer reference).
     series: Vec<(&'a str, &'a std::collections::VecDeque<f32>)>,
 }
@@ -94,9 +119,14 @@ fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
 
 fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
     use egui_plot::{Line, Plot, PlotPoints};
+    // Lock the view: the plot auto-fits its data each frame, and the user can't
+    // pan or zoom it out of frame. All declarative builder flags on egui_plot.
     Plot::new(spec.id)
-        .height(80.0)
+        .height(spec.height)
         .allow_scroll(false)
+        .allow_drag(false)
+        .allow_zoom(false)
+        .allow_boxed_zoom(false)
         .show(ui, |plot_ui| {
             for (name, data) in spec.series {
                 let points: PlotPoints = data
@@ -187,6 +217,67 @@ fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
             );
         }
     });
+}
+
+/// The top bar: a row of toggles that show or hide overview graphs. Graphs start
+/// hidden; toggling one opens a draggable, resizable window floating over the
+/// world (an egui `Window`, not a panel — so it never shrinks the viewport).
+fn graphs_bar(
+    mut contexts: EguiContexts,
+    mut state: ResMut<UiState>,
+    history: Res<History>,
+) -> Result {
+    let ctx = contexts.ctx_mut()?;
+
+    egui::TopBottomPanel::top("graphs_bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.label("graphs:");
+            for g in Graph::ALL {
+                let on = state.visible.contains(&g);
+                if ui.selectable_label(on, g.label()).clicked() {
+                    if on {
+                        state.visible.remove(&g);
+                    } else {
+                        state.visible.insert(g);
+                    }
+                }
+            }
+        });
+    });
+
+    // Each toggled-on graph floats in its own window, draggable over the game.
+    for g in Graph::ALL {
+        if state.visible.contains(&g) {
+            egui::Window::new(g.label())
+                .default_size([360.0, 200.0])
+                // The top-bar toggle already shows/hides the graph, so the
+                // window's own collapse arrow is redundant.
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    // The plot fills the window's remaining height, so dragging
+                    // the window's edge resizes the graph vertically as well as
+                    // horizontally. The window title already names the graph.
+                    render_plot(ui, graph_plot(g, &history, ui.available_height()));
+                });
+        }
+    }
+    Ok(())
+}
+
+/// The plot for one overview graph, sized to `height`. Biomass plots grass and
+/// shrubs as two series so the riparian and steppe compartments read separately
+/// rather than collapsing into one summed line.
+fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'a> {
+    match graph {
+        Graph::Biomass => PlotSpec {
+            id: "biomass",
+            height,
+            series: vec![
+                ("grass", &history.grass_mass),
+                ("shrubs", &history.shrub_mass),
+            ],
+        },
+    }
 }
 
 /// The docked bottom panel: a tab bar with always-visible speed controls, and a
@@ -360,6 +451,7 @@ fn herd_details(
         Item::Label("population".to_string()),
         Item::Plot(PlotSpec {
             id: "pop_plot",
+            height: 80.0,
             series: vec![("population", &history.population)],
         }),
     ]);
@@ -370,6 +462,7 @@ fn herd_details(
             Item::Label("migration share".to_string()),
             Item::Plot(PlotSpec {
                 id: &format!("mig_share_{slot}"),
+                height: 80.0,
                 series: vec![("mig share", share_buf)],
             }),
         ]);
@@ -522,27 +615,33 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {
     slider(ui, &mut p.temperature, 0.1..=2.0, "step randomness");
     ui.separator();
     ui.label("metabolism");
-    slider(ui, &mut p.bite, 0.0..=1.0, "bite / graze");
-    // Ranged near `energy_drain` — energy in must beat energy out, so the whole
-    // live/die regime sits within a few × of the drain, not out at 1.0.
-    slider(ui, &mut p.energy_per_bite, 0.0..=0.05, "energy / bite");
+    slider(ui, &mut p.bite, 0.0..=1.0, "bite / graze (max)");
+    // Energy is proportional to grass eaten; ranged so a full bite (bite·this)
+    // lands within a few × of drain — the live/die regime, not out at the cap.
+    slider(ui, &mut p.graze_yield, 0.0..=0.1, "energy / grass eaten");
+    // Giving-up density: grass below this fraction of a cell's capacity isn't
+    // worth biting, so a grazed-down patch can't sustain an elk.
+    slider(ui, &mut p.graze_floor, 0.0..=0.9, "giving-up density (× capacity)");
     slider(ui, &mut p.energy_drain, 0.0..=0.02, "energy drain / tick");
-    // The balance made legible: net energy/tick = energy_per_bite·g − energy_drain,
-    // so an elk lives only if it grazes at least drain/energy_per_bite of the time.
-    ui.label(if p.energy_per_bite <= 0.0 {
+    // The balance made legible: on a full bite, net energy/tick = graze_yield·bite·g
+    // − energy_drain, so an elk lives only if it grazes (on full bites) at least
+    // drain/(graze_yield·bite) of the time. As a patch thins toward the floor the
+    // bite shrinks, so the real duty cycle a grazed-down cell demands is worse.
+    let full_bite = p.graze_yield * p.bite;
+    ui.label(if full_bite <= 0.0 {
         "break-even grazing: impossible (no energy/bite)".to_string()
     } else {
-        let pct = p.energy_drain / p.energy_per_bite * 100.0;
+        let pct = p.energy_drain / full_bite * 100.0;
         if pct > 100.0 {
             format!("break-even grazing: {pct:.0}% — herds starve")
         } else {
-            format!("break-even grazing: {pct:.0}% of ticks")
+            format!("break-even grazing: {pct:.0}% of ticks (on full bites)")
         }
     });
     ui.separator();
-    ui.label("browse & crossing");
-    slider(ui, &mut p.browse_energy, 0.0..=0.1, "energy / browse bite");
-    slider(ui, &mut p.browse_bite, 0.0..=1.0, "browse / bite");
+    ui.label("shrubs & crossing");
+    slider(ui, &mut p.shrub_energy, 0.0..=0.1, "energy / shrub bite");
+    slider(ui, &mut p.shrub_bite, 0.0..=1.0, "shrubs / bite");
     slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
     slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");

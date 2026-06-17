@@ -99,15 +99,16 @@ pub struct ElkParams {
     pub grass_radius: f32,
     pub social_radius: f32, // how far a grazing elk is noticed — longer than grass
     pub temperature: f32,   // step randomness; higher = more diffuse
-    pub bite: f32,        // grass eaten per graze
-    pub energy_per_bite: f32,
+    pub bite: f32,        // max grass eaten per graze (capped by what sits above the floor)
+    pub graze_yield: f32, // energy per unit of grass actually consumed (proportional intake)
+    pub graze_floor: f32, // giving-up density as a fraction of capacity; grass below isn't worth biting
     pub energy_drain: f32, // energy lost per tick; reaching 0 starves the elk
     pub mig_growth: f32,   // per-tick growth of migration pressure (0 → 1 ramp)
     pub water_cost: f32,     // step penalty for entering water — fording is costly
     pub ford_discount: f32,  // fraction of water_cost paid on a ford (0 → free, 1 → full cost)
     pub swim_drain: f32,     // energy drained when entering deep non-ford water
-    pub browse_bite: f32,    // browse stripped per graze — a big bite
-    pub browse_energy: f32,  // energy from a browse bite — concentrated forage
+    pub shrub_bite: f32,    // shrubs stripped per graze — a big bite
+    pub shrub_energy: f32,  // energy from a shrub bite — concentrated forage
 }
 
 /// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
@@ -158,17 +159,23 @@ impl Default for ElkParams {
             social_radius: 16.0,
             temperature: 0.6,
             bite: 0.5,
-            // Sits a few × above the break-even grazing fraction (drain / this),
-            // so a well-fed herd thrives but an overgrazed one starves — instead
-            // of the old 0.2, which was ~50× break-even and pinned energy at the cap.
-            energy_per_bite: 0.012,
+            // Energy is proportional to grass actually eaten. A full fresh bite
+            // (bite · this ≈ 0.0125) pays a few × drain, but a near-floor nibble
+            // pays almost nothing — so a grazed-down cell can't sustain an elk and
+            // the herd must keep moving to fresh forage. Derived (doc02.02): for a
+            // camped cell to starve, intrinsic · cap · this < drain ⇒ this < 0.2.
+            graze_yield: 0.035,
+            // Giving-up density: leave 30% of each cell's capacity uneaten. Grass
+            // below graze_floor · capacity isn't worth biting, which seeds regrowth
+            // and makes thin patches not worth the elk's time.
+            graze_floor: 0.3,
             energy_drain: 0.004,
             mig_growth: 0.0015,
             water_cost: 2.0,
             ford_discount: 0.1,
             swim_drain: 0.01,
-            browse_bite: 0.34,
-            browse_energy: 0.05,
+            shrub_bite: 0.34,
+            shrub_energy: 0.05,
         }
     }
 }
