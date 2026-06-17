@@ -1,0 +1,4942 @@
+{
+  "version": 3,
+  "pack": "rust-structure",
+  "nodes": [
+    {
+      "id": "file.src/bin/demo1.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/bin/demo1.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/bin/sweep.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/bin/sweep.rs",
+        "functionCount": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/color.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/color.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/components.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/components.rs",
+        "functionCount": 3
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/metabolism.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/metabolism.rs",
+        "functionCount": 4
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/mod.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/mod.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/movement.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/movement.rs",
+        "functionCount": 32
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/elk/spawn.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/elk/spawn.rs",
+        "functionCount": 4
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/field.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/field.rs",
+        "functionCount": 12
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/grid.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/grid.rs",
+        "functionCount": 30
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/history.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/history.rs",
+        "functionCount": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/main.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/main.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/render.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/render.rs",
+        "functionCount": 14
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/cost.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/cost.rs",
+        "functionCount": 3
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/features.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/features.rs",
+        "functionCount": 4
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/mod.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/mod.rs",
+        "functionCount": 10
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/prox.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/prox.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/raster.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/raster.rs",
+        "functionCount": 6
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/river/spec.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/river/spec.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/settings.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/settings.rs",
+        "functionCount": 4
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/sim_harness.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/sim_harness.rs",
+        "functionCount": 5
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/ui.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/ui.rs",
+        "functionCount": 25
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/worldgen/mod.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/worldgen/mod.rs",
+        "functionCount": 3
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/worldgen/soil.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/worldgen/soil.rs",
+        "functionCount": 2
+      },
+      "tags": []
+    },
+    {
+      "id": "file.src/worldgen/vegetation.rs",
+      "kind": "rust.file",
+      "props": {
+        "path": "src/worldgen/vegetation.rs",
+        "functionCount": 1
+      },
+      "tags": []
+    },
+    {
+      "id": "fn.src/bin/demo1.rs:main",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "main",
+        "signature": "fn main()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 31
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/bin/sweep.rs:main",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "main",
+        "signature": "fn main()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 82
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/bin/sweep.rs:Row::score",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Row::score",
+        "signature": "fn score(& self) -> f32",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/color.rs:elk_color",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "elk_color",
+        "signature": "fn elk_color(slot : usize, grazing : bool) -> Color",
+        "doc": "An elk's tint. Hues sweep the purple→red arc — purple → magenta → red —",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/components.rs:DriveSample::migration_share",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "DriveSample::migration_share",
+        "signature": "fn migration_share(& self) -> f32",
+        "doc": "Fraction of total pull effort that is the migration force, in [0, 1]:",
+        "public": true,
+        "free": false,
+        "lines": 7
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/components.rs:ElkParams::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "ElkParams::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 30
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/components.rs:Packs::new",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Packs::new",
+        "signature": "fn new() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 9
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/metabolism.rs:digest",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "digest",
+        "signature": "fn digest(mut grid : ResMut<Grid>, mut elk : Query<& mut Elk>)",
+        "doc": "Counts down each pending meal; when one expires, drop poop at the elk's",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/metabolism.rs:graze",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "graze",
+        "signature": "fn graze(mut grid : ResMut<Grid>, params : Res<ElkParams>, mut elk : Query<& mut Elk>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 19
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/metabolism.rs:metabolize",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "metabolize",
+        "signature": "fn metabolize(mut commands : Commands, params : Res<ElkParams>, mut herds : ResMut<Herds>, mut elk : Query<(Entity, & mut Elk)>,)",
+        "doc": "Every tick the elk spends energy just being alive; an elk that runs out",
+        "public": false,
+        "free": true,
+        "lines": 18
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/metabolism.rs:migrate_pressure",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "migrate_pressure",
+        "signature": "fn migrate_pressure(params : Res<ElkParams>, mut packs : ResMut<Packs>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/mod.rs:ElkSimPlugin::build",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "ElkSimPlugin::build",
+        "signature": "fn build(& self, app : & mut App)",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 22
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "combine_drives",
+        "signature": "fn combine_drives(sep : Vec2, coh : Vec2, grass_dir : Vec2, social : Vec2, params : & ElkParams, pressure : f32, energy : f32,) -> Drives",
+        "doc": "Combine the raw per-drive direction accumulators into weighted contributions.",
+        "public": true,
+        "free": true,
+        "lines": 25
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:cross_desire",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "cross_desire",
+        "signature": "fn cross_desire(here : f32, ahead : f32, across : f32, cross_cost : f32) -> f32",
+        "doc": "The verifiable behavioural contract for river crossings (world-gen C): a herd's",
+        "public": true,
+        "free": true,
+        "lines": 17
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:Drives::migration_share",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Drives::migration_share",
+        "signature": "fn migration_share(& self) -> f32",
+        "doc": "Fraction of total pull effort that is the migration (\"magic\") force, in",
+        "public": true,
+        "free": false,
+        "lines": 16
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:Drives::total",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Drives::total",
+        "signature": "fn total(& self) -> Vec2",
+        "doc": "The combined desire vector — what `herd_move` steers by.",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:herd_move",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "herd_move",
+        "signature": "fn herd_move(grid : Res<Grid>, packs : Res<Packs>, params : Res<ElkParams>, mut elk_q : Query<& mut Elk>, mut samples : ResMut<DriveSamples>,)",
+        "doc": "Two-phase boids-on-a-lattice. Phase 1 snapshots every elk's position and",
+        "public": false,
+        "free": true,
+        "lines": 169
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:migration_residual",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "migration_residual",
+        "signature": "fn migration_residual(natural_strength : f32, quiet : f32) -> f32",
+        "doc": "Residual weight on the migration pull, in (0, 1]. Migration is a *fallback*:",
+        "public": true,
+        "free": true,
+        "lines": 7
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:norm",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "norm",
+        "signature": "fn norm(v : Vec2) -> Vec2",
+        "doc": "Unit vector in `v`'s direction, or zero if `v` is ~zero.",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "step_water_penalty",
+        "signature": "fn step_water_penalty(water : f32, is_ford : bool, water_cost : f32, ford_discount : f32) -> f32",
+        "doc": "Step cost for entering a water cell. On a ford the cost is reduced by",
+        "public": true,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::costlier_crossing_never_raises_cross_desire",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::costlier_crossing_never_raises_cross_desire",
+        "signature": "fn costlier_crossing_never_raises_cross_desire()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::deep_non_ford_beats_shallow_tributary",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::deep_non_ford_beats_shallow_tributary",
+        "signature": "fn deep_non_ford_beats_shallow_tributary()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::default_params",
+        "signature": "fn default_params() -> ElkParams",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::drive_sample_share_is_one_when_only_migration",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::drive_sample_share_is_one_when_only_migration",
+        "signature": "fn drive_sample_share_is_one_when_only_migration()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::drive_sample_share_is_zero_when_idle",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::drive_sample_share_is_zero_when_idle",
+        "signature": "fn drive_sample_share_is_zero_when_idle()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::drive_sample_share_matches_manual_calculation",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::drive_sample_share_matches_manual_calculation",
+        "signature": "fn drive_sample_share_matches_manual_calculation()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::drive_sample_share_rises_with_migration",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::drive_sample_share_rises_with_migration",
+        "signature": "fn drive_sample_share_rises_with_migration()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::drives_total_is_component_sum",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::drives_total_is_component_sum",
+        "signature": "fn drives_total_is_component_sum()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 12
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::ford_penalty_is_near_zero",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::ford_penalty_is_near_zero",
+        "signature": "fn ford_penalty_is_near_zero()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::hunger_raises_food_drive_share",
+        "signature": "fn hunger_raises_food_drive_share()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 30
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::lead_herd_with_forage_ahead_does_not_cross",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::lead_herd_with_forage_ahead_does_not_cross",
+        "signature": "fn lead_herd_with_forage_ahead_does_not_cross()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::migration_share_falls_as_natural_weights_grow",
+        "signature": "fn migration_share_falls_as_natural_weights_grow()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 28
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::migration_share_is_zero_when_idle",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::migration_share_is_zero_when_idle",
+        "signature": "fn migration_share_is_zero_when_idle()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 11
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::migration_share_rises_with_migration_param",
+        "signature": "fn migration_share_rises_with_migration_param()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 21
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::migration_share_rises_with_pressure",
+        "signature": "fn migration_share_rises_with_pressure()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::more_forage_across_never_lowers_cross_desire",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::more_forage_across_never_lowers_cross_desire",
+        "signature": "fn more_forage_across_never_lowers_cross_desire()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::more_forage_ahead_never_raises_cross_desire",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::more_forage_ahead_never_raises_cross_desire",
+        "signature": "fn more_forage_ahead_never_raises_cross_desire()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::non_ford_penalty_equals_water_times_cost",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::non_ford_penalty_equals_water_times_cost",
+        "signature": "fn non_ford_penalty_equals_water_times_cost()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::penalty_monotone_in_water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::penalty_monotone_in_water",
+        "signature": "fn penalty_monotone_in_water()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::residual_is_half_at_crossover",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::residual_is_half_at_crossover",
+        "signature": "fn residual_is_half_at_crossover()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::residual_is_one_when_drives_silent",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::residual_is_one_when_drives_silent",
+        "signature": "fn residual_is_one_when_drives_silent()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::residual_strictly_decreasing_in_natural_strength",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::residual_strictly_decreasing_in_natural_strength",
+        "signature": "fn residual_strictly_decreasing_in_natural_strength()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 9
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::residual_vanishes_for_strong_naturals",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::residual_vanishes_for_strong_naturals",
+        "signature": "fn residual_vanishes_for_strong_naturals()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/movement.rs:tests::trailing_herd_crosses_for_the_far_bank",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::trailing_herd_crosses_for_the_far_bank",
+        "signature": "fn trailing_herd_crosses_for_the_far_bank()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/spawn.rs:cull",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "cull",
+        "signature": "fn cull(mut commands : Commands, mut herds : ResMut<Herds>, mut elk : Query<(Entity, & mut Elk)>,)",
+        "doc": "Despawns any elk that has lingered at the far edge long enough to count as",
+        "public": false,
+        "free": true,
+        "lines": 21
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/spawn.rs:spawn_pack",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "spawn_pack",
+        "signature": "fn spawn_pack(commands : & mut Commands, rng : & mut impl Rng, slot : u8, code : u32, size : usize)",
+        "doc": "Spawn one cohort of `size` elk — pack `code`, occupying `slot`'s vertical",
+        "public": false,
+        "free": true,
+        "lines": 26
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/spawn.rs:spawn_waves",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "spawn_waves",
+        "signature": "fn spawn_waves(mut commands : Commands, mut spawner : ResMut<Spawner>, mut packs : ResMut<Packs>, mut herds : ResMut<Herds>, elk : Query<(), With<Elk>>,)",
+        "doc": "Spawns cohorts in spaced waves whenever the population sits below a target.",
+        "public": false,
+        "free": true,
+        "lines": 53
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/elk/spawn.rs:tally_herds",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tally_herds",
+        "signature": "fn tally_herds(mut herds : ResMut<Herds>, elk : Query<& Elk>)",
+        "doc": "Recompute live counts and energy totals for every cohort each frame.",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:neighbor_mean",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "neighbor_mean",
+        "signature": "fn neighbor_mean(field : & [f32], index : usize, width : usize, height : usize) -> f32",
+        "doc": "Mean of a cell's 4-neighbours (edge cells average only the neighbours present).",
+        "public": false,
+        "free": true,
+        "lines": 12
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:normalize",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "normalize",
+        "signature": "fn normalize(field : & [f32]) -> Vec<f32>",
+        "doc": "Rescale so the field's min→0 and max→1. A flat field maps to all-zeros.",
+        "public": true,
+        "free": true,
+        "lines": 10
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:smooth",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "smooth",
+        "signature": "fn smooth(field : & [f32], width : usize, height : usize, passes : usize) -> Vec<f32>",
+        "doc": "Box-blur `passes` times: each cell becomes the average of itself and its",
+        "public": true,
+        "free": true,
+        "lines": 23
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:spread_grow",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "spread_grow",
+        "signature": "fn spread_grow(field : & [f32], cap : & [f32], width : usize, height : usize, floor : f32, spread : f32,) -> Vec<f32>",
+        "doc": "One reaction-diffusion growth step. Each cell grows toward its `cap` at a rate",
+        "public": true,
+        "free": true,
+        "lines": 28
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:step",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "step",
+        "signature": "fn step(index : usize, dx : isize, dy : isize, width : usize, height : usize) -> Option<usize>",
+        "doc": "4-neighbour step with bounds, mirroring the lattice adjacency the rest of the",
+        "public": false,
+        "free": true,
+        "lines": 11
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::bare_field_with_no_floor_stays_bare",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::bare_field_with_no_floor_stays_bare",
+        "signature": "fn bare_field_with_no_floor_stays_bare()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::grass_spreads_into_a_bare_neighbour",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::grass_spreads_into_a_bare_neighbour",
+        "signature": "fn grass_spreads_into_a_bare_neighbour()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::normalize_flat_field_is_zero",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::normalize_flat_field_is_zero",
+        "signature": "fn normalize_flat_field_is_zero()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::normalize_stretches_to_unit_range",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::normalize_stretches_to_unit_range",
+        "signature": "fn normalize_stretches_to_unit_range()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::smooth_preserves_a_flat_field",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::smooth_preserves_a_flat_field",
+        "signature": "fn smooth_preserves_a_flat_field()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:tests::zero_capacity_stays_empty",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::zero_capacity_stays_empty",
+        "signature": "fn zero_capacity_stays_empty()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/field.rs:value_noise",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "value_noise",
+        "signature": "fn value_noise(width : usize, height : usize, passes : usize, rng : & mut impl Rng) -> Vec<f32>",
+        "doc": "White noise smoothed into spatially-correlated value noise. Raw output sits in",
+        "public": true,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Fertility::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Fertility::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:fertilize",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "fertilize",
+        "signature": "fn fertilize(mut grid : ResMut<Grid>, fertility : Res<Fertility>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 10
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::add_poop",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::add_poop",
+        "signature": "fn add_poop(& mut self, index : usize, amount : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::browse",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::browse",
+        "signature": "fn browse(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::capacity",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::capacity",
+        "signature": "fn capacity(& self, index : usize) -> f32",
+        "doc": "Max grass this cell can hold: water proximity gated by soil fertility, so",
+        "public": true,
+        "free": false,
+        "lines": 5
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::col_row",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::col_row",
+        "signature": "fn col_row(& self, index : usize) ->(usize, usize)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::eat_browse",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::eat_browse",
+        "signature": "fn eat_browse(& mut self, index : usize, amount : f32)",
+        "doc": "Strip browse from a cell (positive `amount` removes it). Floors at zero.",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::forage",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::forage",
+        "signature": "fn forage(& self, index : usize) -> f32",
+        "doc": "Total forage an elk perceives at a cell — grass plus browse. The herd's",
+        "public": true,
+        "free": false,
+        "lines": 6
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::grass",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::grass",
+        "signature": "fn grass(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::grow_grass",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::grow_grass",
+        "signature": "fn grow_grass(& mut self, index : usize, amount : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::height",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::height",
+        "signature": "fn height(& self) -> usize",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::is_ford",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::is_ford",
+        "signature": "fn is_ford(& self, index : usize) -> bool",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::len",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::len",
+        "signature": "fn len(& self) -> usize",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::new",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::new",
+        "signature": "fn new(width : usize, height : usize) -> Self",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 17
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::poop",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::poop",
+        "signature": "fn poop(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_browse_cap",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_browse_cap",
+        "signature": "fn set_browse_cap(& mut self, index : usize, value : f32)",
+        "doc": "Set the browse (shrub) carrying capacity for a cell. Authored by the",
+        "public": true,
+        "free": false,
+        "lines": 5
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_ford",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_ford",
+        "signature": "fn set_ford(& mut self, index : usize, value : bool)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_grass",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_grass",
+        "signature": "fn set_grass(& mut self, index : usize, value : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_soil",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_soil",
+        "signature": "fn set_soil(& mut self, index : usize, value : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_water",
+        "signature": "fn set_water(& mut self, index : usize, value : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::set_water_prox",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::set_water_prox",
+        "signature": "fn set_water_prox(& mut self, index : usize, value : f32)",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::soil",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::soil",
+        "signature": "fn soil(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::step",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::step",
+        "signature": "fn step(& self, index : usize, dx : isize, dy : isize) -> Option<usize>",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 12
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::water",
+        "signature": "fn water(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::water_prox",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::water_prox",
+        "signature": "fn water_prox(& self, index : usize) -> f32",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:Grid::width",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Grid::width",
+        "signature": "fn width(& self) -> usize",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:GridPlugin::build",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "GridPlugin::build",
+        "signature": "fn build(& self, app : & mut App)",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:grow_browse",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "grow_browse",
+        "signature": "fn grow_browse(mut grid : ResMut<Grid>)",
+        "doc": "Browse grows slowly toward its dry-ground capacity with a pure logistic step",
+        "public": false,
+        "free": true,
+        "lines": 13
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:growth",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "growth",
+        "signature": "fn growth(mut grid : ResMut<Grid>, rate : Res<GrowthRate>)",
+        "doc": "Reaction-diffusion regrowth (#3): grass spreads from green neighbours toward",
+        "public": false,
+        "free": true,
+        "lines": 13
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/grid.rs:GrowthRate::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "GrowthRate::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/history.rs:push_capped",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "push_capped",
+        "signature": "fn push_capped(buf : & mut VecDeque<f32>, value : f32)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/history.rs:sample_history",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sample_history",
+        "signature": "fn sample_history(elk : Query<& Elk>, drive_samples : Res<DriveSamples>, mut history : ResMut<History>,)",
+        "doc": "",
+        "public": true,
+        "free": true,
+        "lines": 26
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/main.rs:main",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "main",
+        "signature": "fn main()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 24
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:apply_camera",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "apply_camera",
+        "signature": "fn apply_camera(mut settings : ResMut<CameraSettings>, camera : Single<(& mut Transform, & mut Projection), With<WorldCamera>>,)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 19
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:CameraSettings::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "CameraSettings::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:cell_pos",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "cell_pos",
+        "signature": "fn cell_pos(cell : usize) -> Vec2",
+        "doc": "World-space centre of a cell, derived from grid constants.",
+        "public": false,
+        "free": true,
+        "lines": 9
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:cell_world_pos",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "cell_world_pos",
+        "signature": "fn cell_world_pos(grid : & Grid, index : usize) -> Vec2",
+        "doc": "",
+        "public": true,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:pan",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "pan",
+        "signature": "fn pan(buttons : Res<ButtonInput<MouseButton>>, motion : Res<AccumulatedMouseMotion>, mut settings : ResMut<CameraSettings>,)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:pinch_zoom",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "pinch_zoom",
+        "signature": "fn pinch_zoom(mut pinch : MessageReader<PinchGesture>, mut settings : ResMut<CameraSettings>)",
+        "doc": "Trackpad pinch (macOS): positive delta = zoom in, which is a *smaller*",
+        "public": false,
+        "free": true,
+        "lines": 8
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:RenderPlugin::build",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "RenderPlugin::build",
+        "signature": "fn build(& self, app : & mut App)",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 19
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:scroll_input",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "scroll_input",
+        "signature": "fn scroll_input(scroll : Res<AccumulatedMouseScroll>, mut settings : ResMut<CameraSettings>)",
+        "doc": "Scroll input means different things per device. A mouse wheel reports in",
+        "public": false,
+        "free": true,
+        "lines": 21
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:setup",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "setup",
+        "signature": "fn setup(mut commands : Commands, mut egui_settings : ResMut<EguiGlobalSettings>, grid : Res<Grid>,)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 63
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:sync_browse",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sync_browse",
+        "signature": "fn sync_browse(grid : Res<Grid>, mut dots : Query<(& BrowseDot, & mut Transform)>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:sync_elk_color",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sync_elk_color",
+        "signature": "fn sync_elk_color(mut elk : Query<(& Elk, & mut Sprite)>)",
+        "doc": "Recolour each elk sprite from the `grazing` flag the simulation sets.",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:sync_elk_transform",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sync_elk_transform",
+        "signature": "fn sync_elk_transform(time : Res<Time<Fixed>>, mut elk : Query<(& Elk, & mut Transform)>)",
+        "doc": "Slide each elk sprite from its previous cell to its current one across the tick.",
+        "public": false,
+        "free": true,
+        "lines": 9
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:sync_poop",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sync_poop",
+        "signature": "fn sync_poop(grid : Res<Grid>, mut dots : Query<(& PoopDot, & mut Transform)>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/render.rs:sync_tiles",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "sync_tiles",
+        "signature": "fn sync_tiles(grid : Res<Grid>, mut tiles : Query<(& CellTile, & mut Sprite)>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 14
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/cost.rs:carve",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "carve",
+        "signature": "fn carve(grid : & Grid, cost : & [u32], start : usize, goal : usize, bias : Option<(& Heading, u32)>,) -> Vec<usize>",
+        "doc": "Dijkstra on a grid graph. When `bias` is `Some((Heading::Down, penalty))`,",
+        "public": false,
+        "free": true,
+        "lines": 55
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/cost.rs:cost_field",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "cost_field",
+        "signature": "fn cost_field(grid : & Grid, rng : & mut StdRng, passes : usize) -> Vec<u32>",
+        "doc": "Build the white-noise cost field and smooth it `passes` times via `field::smooth`.",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/cost.rs:lerp",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "lerp",
+        "signature": "fn lerp(a : f32, b : f32, t : f32) -> f32",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/features.rs:carve_tributaries",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "carve_tributaries",
+        "signature": "fn carve_tributaries(grid : & mut Grid, cost : & [u32], rng : & mut StdRng, spec : & RiverSpec, mains : & [Vec<usize>],) -> Vec<Vec<usize>>",
+        "doc": "Tributaries: shallow feeders that branch off a main channel at a confluence.",
+        "public": false,
+        "free": true,
+        "lines": 45
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/features.rs:is_dry_basin",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "is_dry_basin",
+        "signature": "fn is_dry_basin(grid : & Grid, cost : & [u32], i : usize) -> bool",
+        "doc": "A cell that holds no water and whose 4-neighbours hold none either — i.e. not",
+        "public": false,
+        "free": true,
+        "lines": 13
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/features.rs:place_lakes",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "place_lakes",
+        "signature": "fn place_lakes(grid : & mut Grid, cost : & [u32], spec : & RiverSpec)",
+        "doc": "Lakes: larger full-depth standing water at the deepest dry basins. Re-collects",
+        "public": false,
+        "free": true,
+        "lines": 15
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/features.rs:place_oxbows",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "place_oxbows",
+        "signature": "fn place_oxbows(grid : & mut Grid, cost : & [u32], rng : & mut StdRng, spec : & RiverSpec)",
+        "doc": "Oxbow pools: small pools dropped at randomly chosen dry cost-basins.",
+        "public": false,
+        "free": true,
+        "lines": 11
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:generate_water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "generate_water",
+        "signature": "fn generate_water(grid : & mut Grid, spec : & RiverSpec) ->(Vec<Vec<usize>>, Vec<Vec<usize>>)",
+        "doc": "Generate the full water field from `spec` — the world-gen *water layer*. Stamps",
+        "public": true,
+        "free": true,
+        "lines": 86
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::confluence_child_joins_parent",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::confluence_child_joins_parent",
+        "signature": "fn confluence_child_joins_parent()",
+        "doc": "Assert that each child main's exit cell lies on the declared parent's centerline.",
+        "public": false,
+        "free": true,
+        "lines": 31
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::fords_carry_low_water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::fords_carry_low_water",
+        "signature": "fn fords_carry_low_water()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::generation_is_deterministic",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::generation_is_deterministic",
+        "signature": "fn generation_is_deterministic()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 11
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::lakes_are_seeded",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::lakes_are_seeded",
+        "signature": "fn lakes_are_seeded()",
+        "doc": "Assert that lakes add full-depth standing water beyond what channels alone produce.",
+        "public": false,
+        "free": true,
+        "lines": 19
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::main_channel_has_deep_water",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::main_channel_has_deep_water",
+        "signature": "fn main_channel_has_deep_water()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 8
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::per_river_params_differ",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::per_river_params_differ",
+        "signature": "fn per_river_params_differ()",
+        "doc": "Assert that per-river child RNGs produce different drift parameters,",
+        "public": false,
+        "free": true,
+        "lines": 32
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::rivers_flow_top_to_bottom",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::rivers_flow_top_to_bottom",
+        "signature": "fn rivers_flow_top_to_bottom()",
+        "doc": "Assert each main channel runs top→bottom with rightward drift.",
+        "public": false,
+        "free": true,
+        "lines": 59
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::tributaries_join_a_main_channel",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::tributaries_join_a_main_channel",
+        "signature": "fn tributaries_join_a_main_channel()",
+        "doc": "Assert each tributary's confluence cell (its Dijkstra goal) lies on a main",
+        "public": false,
+        "free": true,
+        "lines": 34
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/mod.rs:tests::water_levels_span_expected_range",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::water_levels_span_expected_range",
+        "signature": "fn water_levels_span_expected_range()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 10
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/prox.rs:compute_water_prox",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "compute_water_prox",
+        "signature": "fn compute_water_prox(grid : & mut Grid, reach : u32)",
+        "doc": "Multi-source BFS out from every water cell, converting ring-distance into a",
+        "public": false,
+        "free": true,
+        "lines": 33
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:ford_indices",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "ford_indices",
+        "signature": "fn ford_indices(centerline : & [usize], spacing : usize) -> Vec<usize>",
+        "doc": "Returns every `spacing`-th element of `centerline` by position (0, spacing, 2*spacing, …).",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:rasterize",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "rasterize",
+        "signature": "fn rasterize(grid : & mut Grid, centerline : & [usize], radius : isize, core : isize, max_depth : f32,)",
+        "doc": "Stamp water values around each centerline cell. `max_depth` scales the level:",
+        "public": false,
+        "free": true,
+        "lines": 28
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:stamp_fords",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "stamp_fords",
+        "signature": "fn stamp_fords(grid : & mut Grid, mains : & [Vec<usize>], radius : isize, spacing : usize, depth : f32,)",
+        "doc": "Stamp periodic shallow crossing bands (horizontal, perpendicular to flow)",
+        "public": false,
+        "free": true,
+        "lines": 20
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:tests::ford_indices_empty_centerline",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::ford_indices_empty_centerline",
+        "signature": "fn ford_indices_empty_centerline()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:tests::ford_indices_returns_every_nth_cell",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::ford_indices_returns_every_nth_cell",
+        "signature": "fn ford_indices_returns_every_nth_cell()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/raster.rs:tests::ford_indices_spacing_larger_than_len",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::ford_indices_spacing_larger_than_len",
+        "signature": "fn ford_indices_spacing_larger_than_len()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/river/spec.rs:RiverSpec::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "RiverSpec::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 25
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/settings.rs:maximize_window",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "maximize_window",
+        "signature": "fn maximize_window(settings : Res<UserSettings>, window : Single<& mut Window, With<PrimaryWindow>>,)",
+        "doc": "Startup system: maximize the primary window if the settings ask for it.",
+        "public": true,
+        "free": true,
+        "lines": 12
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/settings.rs:UserSettings::load",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "UserSettings::load",
+        "signature": "fn load() -> Self",
+        "doc": "Read and parse `usersettings.json`, falling back to defaults when the",
+        "public": true,
+        "free": false,
+        "lines": 12
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/settings.rs:UserSettings::load",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "UserSettings::load",
+        "signature": "fn load() -> Self",
+        "doc": "",
+        "public": true,
+        "free": false,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/settings.rs:WindowSettings::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "WindowSettings::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/sim_harness.rs:elk_count",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "elk_count",
+        "signature": "fn elk_count(world : & mut World) -> usize",
+        "doc": "",
+        "public": true,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/sim_harness.rs:journey_natural",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "journey_natural",
+        "signature": "fn journey_natural(params : ElkParams, ticks : u32) -> usize",
+        "doc": "doc02.02 counterfactual: run with `migration = 0` and return the farthest",
+        "public": true,
+        "free": true,
+        "lines": 7
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/sim_harness.rs:make_app",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "make_app",
+        "signature": "fn make_app() -> App",
+        "doc": "Build a headless app without a renderer or window.",
+        "public": true,
+        "free": true,
+        "lines": 9
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/sim_harness.rs:max_col_reached",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "max_col_reached",
+        "signature": "fn max_col_reached(world : & mut World) -> usize",
+        "doc": "",
+        "public": true,
+        "free": true,
+        "lines": 5
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/sim_harness.rs:run_metrics",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "run_metrics",
+        "signature": "fn run_metrics(params : ElkParams, ticks : u32) -> RunMetrics",
+        "doc": "Run a headless app for `ticks` steps with the given `ElkParams` and collect",
+        "public": true,
+        "free": true,
+        "lines": 53
+      },
+      "tags": [
+        "public"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:behaviour_tab",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "behaviour_tab",
+        "signature": "fn behaviour_tab(ui : & mut egui :: Ui, p : & mut ElkParams)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 43
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:control_panel",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "control_panel",
+        "signature": "fn control_panel(mut contexts : EguiContexts, mut state : ResMut<UiState>, mut elk_params : ResMut<ElkParams>, mut growth : ResMut<GrowthRate>, mut fertility : ResMut<Fertility>, mut camera : ResMut<CameraSettings>, mut time : ResMut<Time<Virtual>>, herds : Res<Herds>, history : Res<History>, drive_samples : Res<DriveSamples>,) -> Result",
+        "doc": "The docked bottom panel: a tab bar with always-visible speed controls, and a",
+        "public": false,
+        "free": true,
+        "lines": 44
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:grass_items",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "grass_items",
+        "signature": "fn grass_items<'a>(growth : & 'a mut GrowthRate, fertility : & 'a mut Fertility) -> Vec<Item<'a>>",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 14
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:herd_card",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "herd_card",
+        "signature": "fn herd_card(ui : & mut egui :: Ui, code : u32, co : & crate :: elk :: Cohort, state : & mut UiState)",
+        "doc": "A clickable summary card for one herd. Highlights when selected.",
+        "public": false,
+        "free": true,
+        "lines": 28
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:herd_details",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "herd_details",
+        "signature": "fn herd_details(ui : & mut egui :: Ui, code : u32, co : & crate :: elk :: Cohort, history : & History, drive_samples : & DriveSamples,)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 57
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:herd_health",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "herd_health",
+        "signature": "fn herd_health(co : & crate :: elk :: Cohort) -> f32",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 7
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:herds_view",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "herds_view",
+        "signature": "fn herds_view(ui : & mut egui :: Ui, state : & mut UiState, herds : & Herds, history : & History, drive_samples : & DriveSamples)",
+        "doc": "The Herds tab: a scrollable list of herd cards on the left; clicking one",
+        "public": false,
+        "free": true,
+        "lines": 38
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:panel_flow",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "panel_flow",
+        "signature": "fn panel_flow(ui : & mut egui :: Ui, panels : Vec<Panel>)",
+        "doc": "Lay panels out left-to-right, wrapping to a new row when the row fills —",
+        "public": false,
+        "free": true,
+        "lines": 20
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:Panel<'a>::new",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Panel<'a>::new",
+        "signature": "fn new(title : & 'a str, items : Vec<Item<'a>>) -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:Panel<'a>::width",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "Panel<'a>::width",
+        "signature": "fn width(mut self, width : f32) -> Self",
+        "doc": "Override the flex-basis for a wider/narrower group.",
+        "public": false,
+        "free": false,
+        "lines": 5
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:pick_herd",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "pick_herd",
+        "signature": "fn pick_herd(mouse : Res<ButtonInput<MouseButton>>, mut contexts : EguiContexts, window : Single<& Window>, camera : Single<(& Camera, & GlobalTransform), With<WorldCamera>>, grid : Res<Grid>, elk : Query<& Elk>, mut state : ResMut<UiState>,) -> Result",
+        "doc": "A left-click in the world selects the nearest elk's herd and opens the Herds",
+        "public": false,
+        "free": true,
+        "lines": 45
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:render_items",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "render_items",
+        "signature": "fn render_items(ui : & mut egui :: Ui, items : Vec<Item>)",
+        "doc": "Walk an item list and render each to `ui`. Recursive through `Section`.",
+        "public": false,
+        "free": true,
+        "lines": 18
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:render_pie",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "render_pie",
+        "signature": "fn render_pie(ui : & mut egui :: Ui, slices : & [(& str, f32, egui :: Color32)])",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 35
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:render_plot",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "render_plot",
+        "signature": "fn render_plot(ui : & mut egui :: Ui, spec : PlotSpec)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:set_camera_viewport",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "set_camera_viewport",
+        "signature": "fn set_camera_viewport(mut contexts : EguiContexts, window : Single<& Window>, camera : Single<& mut Camera, With<WorldCamera>>,) -> Result",
+        "doc": "Confine the *world* camera to the rect egui leaves above the dock. The egui",
+        "public": false,
+        "free": true,
+        "lines": 17
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:slider",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "slider",
+        "signature": "fn slider(ui : & mut egui :: Ui, value : & mut f32, range : std :: ops :: RangeInclusive<f32>, label : & str)",
+        "doc": "Standard labelled `f32` slider — the one-liner every control page uses.",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:speed_inline",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "speed_inline",
+        "signature": "fn speed_inline(ui : & mut egui :: Ui, time : & mut Time<Virtual>)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 24
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:tests::bottom_dock_shrinks_height_only",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::bottom_dock_shrinks_height_only",
+        "signature": "fn bottom_dock_shrinks_height_only()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 7
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:tests::collapsed_area_yields_none",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::collapsed_area_yields_none",
+        "signature": "fn collapsed_area_yields_none()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 4
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:tests::full_window_when_no_panel",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::full_window_when_no_panel",
+        "signature": "fn full_window_when_no_panel()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 7
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:tests::oversize_rect_clamps_to_target",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::oversize_rect_clamps_to_target",
+        "signature": "fn oversize_rect_clamps_to_target()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:tests::retina_scale_counts_once",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::retina_scale_counts_once",
+        "signature": "fn retina_scale_counts_once()",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 6
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:UiPlugin::build",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "UiPlugin::build",
+        "signature": "fn build(& self, app : & mut App)",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 12
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:view_tab",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "view_tab",
+        "signature": "fn view_tab(ui : & mut egui :: Ui, cam : & mut CameraSettings)",
+        "doc": "",
+        "public": false,
+        "free": true,
+        "lines": 13
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/ui.rs:world_viewport",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "world_viewport",
+        "signature": "fn world_viewport(min : Vec2, size : Vec2, scale : f32, target : UVec2) -> Option<Viewport>",
+        "doc": "Map the egui logical rect left free above the bottom dock to a physical-pixel",
+        "public": false,
+        "free": true,
+        "lines": 24
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/mod.rs:generate_world",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "generate_world",
+        "signature": "fn generate_world(mut grid : ResMut<Grid>)",
+        "doc": "The world-generation orchestrator. The call order *is* the contract: soil and",
+        "public": false,
+        "free": true,
+        "lines": 16
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/mod.rs:WorldgenPlugin::build",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "WorldgenPlugin::build",
+        "signature": "fn build(& self, app : & mut App)",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/mod.rs:WorldSpec::default",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "WorldSpec::default",
+        "signature": "fn default() -> Self",
+        "doc": "",
+        "public": false,
+        "free": false,
+        "lines": 3
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/soil.rs:seed_soil",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "seed_soil",
+        "signature": "fn seed_soil(grid : & mut Grid)",
+        "doc": "Author the static patchiness field: fine value noise (soil patches) multiplied",
+        "public": false,
+        "free": true,
+        "lines": 18
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/soil.rs:tests::soil_has_regional_spread",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "tests::soil_has_regional_spread",
+        "signature": "fn soil_has_regional_spread()",
+        "doc": "`seed_soil` must produce a field with genuine regional spread — both the",
+        "public": false,
+        "free": true,
+        "lines": 27
+      },
+      "tags": [
+        "private"
+      ]
+    },
+    {
+      "id": "fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "kind": "rust.function",
+      "props": {
+        "qualname": "seed_browse_cap",
+        "signature": "fn seed_browse_cap(grid : & mut Grid)",
+        "doc": "Author browse capacity: dense noise clumps on dry ground (far from water),",
+        "public": false,
+        "free": true,
+        "lines": 22
+      },
+      "tags": [
+        "private"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge.calls.fn.src/bin/sweep.rs:main.fn.src/sim_harness.rs:journey_natural",
+      "kind": "rust.calls",
+      "from": "fn.src/bin/sweep.rs:main",
+      "to": "fn.src/sim_harness.rs:journey_natural",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/bin/sweep.rs:main.fn.src/sim_harness.rs:run_metrics",
+      "kind": "rust.calls",
+      "from": "fn.src/bin/sweep.rs:main",
+      "to": "fn.src/sim_harness.rs:run_metrics",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:combine_drives.fn.src/elk/movement.rs:migration_residual",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:combine_drives",
+      "to": "fn.src/elk/movement.rs:migration_residual",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:combine_drives.fn.src/elk/movement.rs:norm",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:combine_drives",
+      "to": "fn.src/elk/movement.rs:norm",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:herd_move.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:herd_move",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:herd_move.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:herd_move",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::deep_non_ford_beats_shallow_tributary.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::deep_non_ford_beats_shallow_tributary",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::ford_penalty_is_near_zero.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::ford_penalty_is_near_zero",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share.fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share",
+      "to": "fn.src/elk/movement.rs:tests::default_params",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow.fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow",
+      "to": "fn.src/elk/movement.rs:tests::default_params",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param.fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param",
+      "to": "fn.src/elk/movement.rs:tests::default_params",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure.fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure",
+      "to": "fn.src/elk/movement.rs:tests::default_params",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::non_ford_penalty_equals_water_times_cost.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::non_ford_penalty_equals_water_times_cost",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::penalty_monotone_in_water.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::penalty_monotone_in_water",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/movement.rs:tests::residual_strictly_decreasing_in_natural_strength.fn.src/elk/movement.rs:migration_residual",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/movement.rs:tests::residual_strictly_decreasing_in_natural_strength",
+      "to": "fn.src/elk/movement.rs:migration_residual",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/spawn.rs:spawn_pack.fn.src/elk/color.rs:elk_color",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/spawn.rs:spawn_pack",
+      "to": "fn.src/elk/color.rs:elk_color",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/elk/spawn.rs:spawn_waves.fn.src/elk/spawn.rs:spawn_pack",
+      "kind": "rust.calls",
+      "from": "fn.src/elk/spawn.rs:spawn_waves",
+      "to": "fn.src/elk/spawn.rs:spawn_pack",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:neighbor_mean.fn.src/field.rs:step",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:neighbor_mean",
+      "to": "fn.src/field.rs:step",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:smooth.fn.src/field.rs:step",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:smooth",
+      "to": "fn.src/field.rs:step",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:spread_grow.fn.src/field.rs:neighbor_mean",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:spread_grow",
+      "to": "fn.src/field.rs:neighbor_mean",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:tests::bare_field_with_no_floor_stays_bare.fn.src/field.rs:spread_grow",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:tests::bare_field_with_no_floor_stays_bare",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:tests::grass_spreads_into_a_bare_neighbour.fn.src/field.rs:spread_grow",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:tests::grass_spreads_into_a_bare_neighbour",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:tests::smooth_preserves_a_flat_field.fn.src/field.rs:smooth",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:tests::smooth_preserves_a_flat_field",
+      "to": "fn.src/field.rs:smooth",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:tests::zero_capacity_stays_empty.fn.src/field.rs:spread_grow",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:tests::zero_capacity_stays_empty",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/field.rs:value_noise.fn.src/field.rs:smooth",
+      "kind": "rust.calls",
+      "from": "fn.src/field.rs:value_noise",
+      "to": "fn.src/field.rs:smooth",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/grid.rs:grow_browse.fn.src/field.rs:spread_grow",
+      "kind": "rust.calls",
+      "from": "fn.src/grid.rs:grow_browse",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/grid.rs:growth.fn.src/field.rs:spread_grow",
+      "kind": "rust.calls",
+      "from": "fn.src/grid.rs:growth",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/history.rs:sample_history.fn.src/history.rs:push_capped",
+      "kind": "rust.calls",
+      "from": "fn.src/history.rs:sample_history",
+      "to": "fn.src/history.rs:push_capped",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/render.rs:setup.fn.src/render.rs:cell_world_pos",
+      "kind": "rust.calls",
+      "from": "fn.src/render.rs:setup",
+      "to": "fn.src/render.rs:cell_world_pos",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/render.rs:sync_elk_color.fn.src/elk/color.rs:elk_color",
+      "kind": "rust.calls",
+      "from": "fn.src/render.rs:sync_elk_color",
+      "to": "fn.src/elk/color.rs:elk_color",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/render.rs:sync_elk_transform.fn.src/render.rs:cell_pos",
+      "kind": "rust.calls",
+      "from": "fn.src/render.rs:sync_elk_transform",
+      "to": "fn.src/render.rs:cell_pos",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/cost.rs:cost_field.fn.src/field.rs:smooth",
+      "kind": "rust.calls",
+      "from": "fn.src/river/cost.rs:cost_field",
+      "to": "fn.src/field.rs:smooth",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:carve_tributaries.fn.src/river/cost.rs:carve",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:carve_tributaries",
+      "to": "fn.src/river/cost.rs:carve",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:carve_tributaries.fn.src/river/raster.rs:rasterize",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:carve_tributaries",
+      "to": "fn.src/river/raster.rs:rasterize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:place_lakes.fn.src/river/features.rs:is_dry_basin",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:place_lakes",
+      "to": "fn.src/river/features.rs:is_dry_basin",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:place_lakes.fn.src/river/raster.rs:rasterize",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:place_lakes",
+      "to": "fn.src/river/raster.rs:rasterize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:place_oxbows.fn.src/river/features.rs:is_dry_basin",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:place_oxbows",
+      "to": "fn.src/river/features.rs:is_dry_basin",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/features.rs:place_oxbows.fn.src/river/raster.rs:rasterize",
+      "kind": "rust.calls",
+      "from": "fn.src/river/features.rs:place_oxbows",
+      "to": "fn.src/river/raster.rs:rasterize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/cost.rs:carve",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/cost.rs:carve",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/cost.rs:cost_field",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/cost.rs:cost_field",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/cost.rs:lerp",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/cost.rs:lerp",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/features.rs:carve_tributaries",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/features.rs:carve_tributaries",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/features.rs:place_lakes",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/features.rs:place_lakes",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/features.rs:place_oxbows",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/features.rs:place_oxbows",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/prox.rs:compute_water_prox",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/prox.rs:compute_water_prox",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/raster.rs:rasterize",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/raster.rs:rasterize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:generate_water.fn.src/river/raster.rs:stamp_fords",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:generate_water",
+      "to": "fn.src/river/raster.rs:stamp_fords",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::confluence_child_joins_parent.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::confluence_child_joins_parent",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::fords_carry_low_water.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::fords_carry_low_water",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::generation_is_deterministic.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::generation_is_deterministic",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::lakes_are_seeded.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::lakes_are_seeded",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::main_channel_has_deep_water.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::main_channel_has_deep_water",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::per_river_params_differ.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::per_river_params_differ",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::rivers_flow_top_to_bottom.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::rivers_flow_top_to_bottom",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::tributaries_join_a_main_channel.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::tributaries_join_a_main_channel",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/mod.rs:tests::water_levels_span_expected_range.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/river/mod.rs:tests::water_levels_span_expected_range",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/raster.rs:stamp_fords.fn.src/river/raster.rs:ford_indices",
+      "kind": "rust.calls",
+      "from": "fn.src/river/raster.rs:stamp_fords",
+      "to": "fn.src/river/raster.rs:ford_indices",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/raster.rs:tests::ford_indices_returns_every_nth_cell.fn.src/river/raster.rs:ford_indices",
+      "kind": "rust.calls",
+      "from": "fn.src/river/raster.rs:tests::ford_indices_returns_every_nth_cell",
+      "to": "fn.src/river/raster.rs:ford_indices",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/river/raster.rs:tests::ford_indices_spacing_larger_than_len.fn.src/river/raster.rs:ford_indices",
+      "kind": "rust.calls",
+      "from": "fn.src/river/raster.rs:tests::ford_indices_spacing_larger_than_len",
+      "to": "fn.src/river/raster.rs:ford_indices",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/sim_harness.rs:journey_natural.fn.src/sim_harness.rs:run_metrics",
+      "kind": "rust.calls",
+      "from": "fn.src/sim_harness.rs:journey_natural",
+      "to": "fn.src/sim_harness.rs:run_metrics",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/sim_harness.rs:run_metrics.fn.src/sim_harness.rs:make_app",
+      "kind": "rust.calls",
+      "from": "fn.src/sim_harness.rs:run_metrics",
+      "to": "fn.src/sim_harness.rs:make_app",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/sim_harness.rs:run_metrics.fn.src/sim_harness.rs:max_col_reached",
+      "kind": "rust.calls",
+      "from": "fn.src/sim_harness.rs:run_metrics",
+      "to": "fn.src/sim_harness.rs:max_col_reached",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:behaviour_tab.fn.src/ui.rs:slider",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:behaviour_tab",
+      "to": "fn.src/ui.rs:slider",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:control_panel.fn.src/ui.rs:herds_view",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:control_panel",
+      "to": "fn.src/ui.rs:herds_view",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:control_panel.fn.src/ui.rs:panel_flow",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:control_panel",
+      "to": "fn.src/ui.rs:panel_flow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:control_panel.fn.src/ui.rs:speed_inline",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:control_panel",
+      "to": "fn.src/ui.rs:speed_inline",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:herd_card.fn.src/ui.rs:herd_health",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:herd_card",
+      "to": "fn.src/ui.rs:herd_health",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:herd_details.fn.src/ui.rs:herd_health",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:herd_details",
+      "to": "fn.src/ui.rs:herd_health",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:herd_details.fn.src/ui.rs:render_items",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:herd_details",
+      "to": "fn.src/ui.rs:render_items",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:herds_view.fn.src/ui.rs:herd_card",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:herds_view",
+      "to": "fn.src/ui.rs:herd_card",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:herds_view.fn.src/ui.rs:herd_details",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:herds_view",
+      "to": "fn.src/ui.rs:herd_details",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:panel_flow.fn.src/ui.rs:render_items",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:panel_flow",
+      "to": "fn.src/ui.rs:render_items",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:pick_herd.fn.src/render.rs:cell_world_pos",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:pick_herd",
+      "to": "fn.src/render.rs:cell_world_pos",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:render_items.fn.src/ui.rs:render_pie",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:render_items",
+      "to": "fn.src/ui.rs:render_pie",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:render_items.fn.src/ui.rs:render_plot",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:render_items",
+      "to": "fn.src/ui.rs:render_plot",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:render_items.fn.src/ui.rs:slider",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:render_items",
+      "to": "fn.src/ui.rs:slider",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:set_camera_viewport.fn.src/ui.rs:world_viewport",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:set_camera_viewport",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:tests::bottom_dock_shrinks_height_only.fn.src/ui.rs:world_viewport",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:tests::bottom_dock_shrinks_height_only",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:tests::full_window_when_no_panel.fn.src/ui.rs:world_viewport",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:tests::full_window_when_no_panel",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:tests::oversize_rect_clamps_to_target.fn.src/ui.rs:world_viewport",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:tests::oversize_rect_clamps_to_target",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:tests::retina_scale_counts_once.fn.src/ui.rs:world_viewport",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:tests::retina_scale_counts_once",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/ui.rs:view_tab.fn.src/ui.rs:slider",
+      "kind": "rust.calls",
+      "from": "fn.src/ui.rs:view_tab",
+      "to": "fn.src/ui.rs:slider",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/mod.rs:generate_world.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/mod.rs:generate_world",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/mod.rs:generate_world.fn.src/worldgen/soil.rs:seed_soil",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/mod.rs:generate_world",
+      "to": "fn.src/worldgen/soil.rs:seed_soil",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/mod.rs:generate_world.fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/mod.rs:generate_world",
+      "to": "fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/soil.rs:seed_soil.fn.src/field.rs:normalize",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/soil.rs:seed_soil",
+      "to": "fn.src/field.rs:normalize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/soil.rs:seed_soil.fn.src/field.rs:value_noise",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/soil.rs:seed_soil",
+      "to": "fn.src/field.rs:value_noise",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/soil.rs:tests::soil_has_regional_spread.fn.src/worldgen/soil.rs:seed_soil",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/soil.rs:tests::soil_has_regional_spread",
+      "to": "fn.src/worldgen/soil.rs:seed_soil",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/vegetation.rs:seed_browse_cap.fn.src/field.rs:normalize",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "to": "fn.src/field.rs:normalize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.calls.fn.src/worldgen/vegetation.rs:seed_browse_cap.fn.src/field.rs:value_noise",
+      "kind": "rust.calls",
+      "from": "fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "to": "fn.src/field.rs:value_noise",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/bin/demo1.rs.fn.src/bin/demo1.rs:main",
+      "kind": "rust.contains",
+      "from": "file.src/bin/demo1.rs",
+      "to": "fn.src/bin/demo1.rs:main",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/bin/sweep.rs.fn.src/bin/sweep.rs:main",
+      "kind": "rust.contains",
+      "from": "file.src/bin/sweep.rs",
+      "to": "fn.src/bin/sweep.rs:main",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/bin/sweep.rs.fn.src/bin/sweep.rs:Row::score",
+      "kind": "rust.contains",
+      "from": "file.src/bin/sweep.rs",
+      "to": "fn.src/bin/sweep.rs:Row::score",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/color.rs.fn.src/elk/color.rs:elk_color",
+      "kind": "rust.contains",
+      "from": "file.src/elk/color.rs",
+      "to": "fn.src/elk/color.rs:elk_color",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/components.rs.fn.src/elk/components.rs:DriveSample::migration_share",
+      "kind": "rust.contains",
+      "from": "file.src/elk/components.rs",
+      "to": "fn.src/elk/components.rs:DriveSample::migration_share",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/components.rs.fn.src/elk/components.rs:ElkParams::default",
+      "kind": "rust.contains",
+      "from": "file.src/elk/components.rs",
+      "to": "fn.src/elk/components.rs:ElkParams::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/components.rs.fn.src/elk/components.rs:Packs::new",
+      "kind": "rust.contains",
+      "from": "file.src/elk/components.rs",
+      "to": "fn.src/elk/components.rs:Packs::new",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/metabolism.rs.fn.src/elk/metabolism.rs:digest",
+      "kind": "rust.contains",
+      "from": "file.src/elk/metabolism.rs",
+      "to": "fn.src/elk/metabolism.rs:digest",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/metabolism.rs.fn.src/elk/metabolism.rs:graze",
+      "kind": "rust.contains",
+      "from": "file.src/elk/metabolism.rs",
+      "to": "fn.src/elk/metabolism.rs:graze",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/metabolism.rs.fn.src/elk/metabolism.rs:metabolize",
+      "kind": "rust.contains",
+      "from": "file.src/elk/metabolism.rs",
+      "to": "fn.src/elk/metabolism.rs:metabolize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/metabolism.rs.fn.src/elk/metabolism.rs:migrate_pressure",
+      "kind": "rust.contains",
+      "from": "file.src/elk/metabolism.rs",
+      "to": "fn.src/elk/metabolism.rs:migrate_pressure",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/mod.rs.fn.src/elk/mod.rs:ElkSimPlugin::build",
+      "kind": "rust.contains",
+      "from": "file.src/elk/mod.rs",
+      "to": "fn.src/elk/mod.rs:ElkSimPlugin::build",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:combine_drives",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:combine_drives",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:cross_desire",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:cross_desire",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:Drives::migration_share",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:Drives::migration_share",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:Drives::total",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:Drives::total",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:herd_move",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:herd_move",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:migration_residual",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:migration_residual",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:norm",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:norm",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:step_water_penalty",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:step_water_penalty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::costlier_crossing_never_raises_cross_desire",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::costlier_crossing_never_raises_cross_desire",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::deep_non_ford_beats_shallow_tributary",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::deep_non_ford_beats_shallow_tributary",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::default_params",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::default_params",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::drive_sample_share_is_one_when_only_migration",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::drive_sample_share_is_one_when_only_migration",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::drive_sample_share_is_zero_when_idle",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::drive_sample_share_is_zero_when_idle",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::drive_sample_share_matches_manual_calculation",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::drive_sample_share_matches_manual_calculation",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::drive_sample_share_rises_with_migration",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::drive_sample_share_rises_with_migration",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::drives_total_is_component_sum",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::drives_total_is_component_sum",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::ford_penalty_is_near_zero",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::ford_penalty_is_near_zero",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::hunger_raises_food_drive_share",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::lead_herd_with_forage_ahead_does_not_cross",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::lead_herd_with_forage_ahead_does_not_cross",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::migration_share_falls_as_natural_weights_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::migration_share_is_zero_when_idle",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::migration_share_is_zero_when_idle",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::migration_share_rises_with_migration_param",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::migration_share_rises_with_pressure",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::more_forage_across_never_lowers_cross_desire",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::more_forage_across_never_lowers_cross_desire",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::more_forage_ahead_never_raises_cross_desire",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::more_forage_ahead_never_raises_cross_desire",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::non_ford_penalty_equals_water_times_cost",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::non_ford_penalty_equals_water_times_cost",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::penalty_monotone_in_water",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::penalty_monotone_in_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::residual_is_half_at_crossover",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::residual_is_half_at_crossover",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::residual_is_one_when_drives_silent",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::residual_is_one_when_drives_silent",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::residual_strictly_decreasing_in_natural_strength",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::residual_strictly_decreasing_in_natural_strength",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::residual_vanishes_for_strong_naturals",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::residual_vanishes_for_strong_naturals",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/movement.rs.fn.src/elk/movement.rs:tests::trailing_herd_crosses_for_the_far_bank",
+      "kind": "rust.contains",
+      "from": "file.src/elk/movement.rs",
+      "to": "fn.src/elk/movement.rs:tests::trailing_herd_crosses_for_the_far_bank",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/spawn.rs.fn.src/elk/spawn.rs:cull",
+      "kind": "rust.contains",
+      "from": "file.src/elk/spawn.rs",
+      "to": "fn.src/elk/spawn.rs:cull",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/spawn.rs.fn.src/elk/spawn.rs:spawn_pack",
+      "kind": "rust.contains",
+      "from": "file.src/elk/spawn.rs",
+      "to": "fn.src/elk/spawn.rs:spawn_pack",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/spawn.rs.fn.src/elk/spawn.rs:spawn_waves",
+      "kind": "rust.contains",
+      "from": "file.src/elk/spawn.rs",
+      "to": "fn.src/elk/spawn.rs:spawn_waves",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/elk/spawn.rs.fn.src/elk/spawn.rs:tally_herds",
+      "kind": "rust.contains",
+      "from": "file.src/elk/spawn.rs",
+      "to": "fn.src/elk/spawn.rs:tally_herds",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:neighbor_mean",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:neighbor_mean",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:normalize",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:normalize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:smooth",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:smooth",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:spread_grow",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:spread_grow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:step",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:step",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::bare_field_with_no_floor_stays_bare",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::bare_field_with_no_floor_stays_bare",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::grass_spreads_into_a_bare_neighbour",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::grass_spreads_into_a_bare_neighbour",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::normalize_flat_field_is_zero",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::normalize_flat_field_is_zero",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::normalize_stretches_to_unit_range",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::normalize_stretches_to_unit_range",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::smooth_preserves_a_flat_field",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::smooth_preserves_a_flat_field",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:tests::zero_capacity_stays_empty",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:tests::zero_capacity_stays_empty",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/field.rs.fn.src/field.rs:value_noise",
+      "kind": "rust.contains",
+      "from": "file.src/field.rs",
+      "to": "fn.src/field.rs:value_noise",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Fertility::default",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Fertility::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:fertilize",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:fertilize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::add_poop",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::add_poop",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::browse",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::browse",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::capacity",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::capacity",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::col_row",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::col_row",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::eat_browse",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::eat_browse",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::forage",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::forage",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::grass",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::grass",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::grow_grass",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::grow_grass",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::height",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::height",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::is_ford",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::is_ford",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::len",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::len",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::new",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::new",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::poop",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::poop",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_browse_cap",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_browse_cap",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_ford",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_ford",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_grass",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_grass",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_soil",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_soil",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_water",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::set_water_prox",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::set_water_prox",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::soil",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::soil",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::step",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::step",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::water",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::water_prox",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::water_prox",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:Grid::width",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:Grid::width",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:GridPlugin::build",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:GridPlugin::build",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:grow_browse",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:grow_browse",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:growth",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:growth",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/grid.rs.fn.src/grid.rs:GrowthRate::default",
+      "kind": "rust.contains",
+      "from": "file.src/grid.rs",
+      "to": "fn.src/grid.rs:GrowthRate::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/history.rs.fn.src/history.rs:push_capped",
+      "kind": "rust.contains",
+      "from": "file.src/history.rs",
+      "to": "fn.src/history.rs:push_capped",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/history.rs.fn.src/history.rs:sample_history",
+      "kind": "rust.contains",
+      "from": "file.src/history.rs",
+      "to": "fn.src/history.rs:sample_history",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/main.rs.fn.src/main.rs:main",
+      "kind": "rust.contains",
+      "from": "file.src/main.rs",
+      "to": "fn.src/main.rs:main",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:apply_camera",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:apply_camera",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:CameraSettings::default",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:CameraSettings::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:cell_pos",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:cell_pos",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:cell_world_pos",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:cell_world_pos",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:pan",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:pan",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:pinch_zoom",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:pinch_zoom",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:RenderPlugin::build",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:RenderPlugin::build",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:scroll_input",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:scroll_input",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:setup",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:setup",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:sync_browse",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:sync_browse",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:sync_elk_color",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:sync_elk_color",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:sync_elk_transform",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:sync_elk_transform",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:sync_poop",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:sync_poop",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/render.rs.fn.src/render.rs:sync_tiles",
+      "kind": "rust.contains",
+      "from": "file.src/render.rs",
+      "to": "fn.src/render.rs:sync_tiles",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/cost.rs.fn.src/river/cost.rs:carve",
+      "kind": "rust.contains",
+      "from": "file.src/river/cost.rs",
+      "to": "fn.src/river/cost.rs:carve",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/cost.rs.fn.src/river/cost.rs:cost_field",
+      "kind": "rust.contains",
+      "from": "file.src/river/cost.rs",
+      "to": "fn.src/river/cost.rs:cost_field",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/cost.rs.fn.src/river/cost.rs:lerp",
+      "kind": "rust.contains",
+      "from": "file.src/river/cost.rs",
+      "to": "fn.src/river/cost.rs:lerp",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/features.rs.fn.src/river/features.rs:carve_tributaries",
+      "kind": "rust.contains",
+      "from": "file.src/river/features.rs",
+      "to": "fn.src/river/features.rs:carve_tributaries",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/features.rs.fn.src/river/features.rs:is_dry_basin",
+      "kind": "rust.contains",
+      "from": "file.src/river/features.rs",
+      "to": "fn.src/river/features.rs:is_dry_basin",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/features.rs.fn.src/river/features.rs:place_lakes",
+      "kind": "rust.contains",
+      "from": "file.src/river/features.rs",
+      "to": "fn.src/river/features.rs:place_lakes",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/features.rs.fn.src/river/features.rs:place_oxbows",
+      "kind": "rust.contains",
+      "from": "file.src/river/features.rs",
+      "to": "fn.src/river/features.rs:place_oxbows",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:generate_water",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:generate_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::confluence_child_joins_parent",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::confluence_child_joins_parent",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::fords_carry_low_water",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::fords_carry_low_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::generation_is_deterministic",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::generation_is_deterministic",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::lakes_are_seeded",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::lakes_are_seeded",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::main_channel_has_deep_water",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::main_channel_has_deep_water",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::per_river_params_differ",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::per_river_params_differ",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::rivers_flow_top_to_bottom",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::rivers_flow_top_to_bottom",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::tributaries_join_a_main_channel",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::tributaries_join_a_main_channel",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/mod.rs.fn.src/river/mod.rs:tests::water_levels_span_expected_range",
+      "kind": "rust.contains",
+      "from": "file.src/river/mod.rs",
+      "to": "fn.src/river/mod.rs:tests::water_levels_span_expected_range",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/prox.rs.fn.src/river/prox.rs:compute_water_prox",
+      "kind": "rust.contains",
+      "from": "file.src/river/prox.rs",
+      "to": "fn.src/river/prox.rs:compute_water_prox",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:ford_indices",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:ford_indices",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:rasterize",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:rasterize",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:stamp_fords",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:stamp_fords",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:tests::ford_indices_empty_centerline",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:tests::ford_indices_empty_centerline",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:tests::ford_indices_returns_every_nth_cell",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:tests::ford_indices_returns_every_nth_cell",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/raster.rs.fn.src/river/raster.rs:tests::ford_indices_spacing_larger_than_len",
+      "kind": "rust.contains",
+      "from": "file.src/river/raster.rs",
+      "to": "fn.src/river/raster.rs:tests::ford_indices_spacing_larger_than_len",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/river/spec.rs.fn.src/river/spec.rs:RiverSpec::default",
+      "kind": "rust.contains",
+      "from": "file.src/river/spec.rs",
+      "to": "fn.src/river/spec.rs:RiverSpec::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/settings.rs.fn.src/settings.rs:maximize_window",
+      "kind": "rust.contains",
+      "from": "file.src/settings.rs",
+      "to": "fn.src/settings.rs:maximize_window",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/settings.rs.fn.src/settings.rs:UserSettings::load",
+      "kind": "rust.contains",
+      "from": "file.src/settings.rs",
+      "to": "fn.src/settings.rs:UserSettings::load",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/settings.rs.fn.src/settings.rs:UserSettings::load",
+      "kind": "rust.contains",
+      "from": "file.src/settings.rs",
+      "to": "fn.src/settings.rs:UserSettings::load",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/settings.rs.fn.src/settings.rs:WindowSettings::default",
+      "kind": "rust.contains",
+      "from": "file.src/settings.rs",
+      "to": "fn.src/settings.rs:WindowSettings::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/sim_harness.rs.fn.src/sim_harness.rs:elk_count",
+      "kind": "rust.contains",
+      "from": "file.src/sim_harness.rs",
+      "to": "fn.src/sim_harness.rs:elk_count",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/sim_harness.rs.fn.src/sim_harness.rs:journey_natural",
+      "kind": "rust.contains",
+      "from": "file.src/sim_harness.rs",
+      "to": "fn.src/sim_harness.rs:journey_natural",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/sim_harness.rs.fn.src/sim_harness.rs:make_app",
+      "kind": "rust.contains",
+      "from": "file.src/sim_harness.rs",
+      "to": "fn.src/sim_harness.rs:make_app",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/sim_harness.rs.fn.src/sim_harness.rs:max_col_reached",
+      "kind": "rust.contains",
+      "from": "file.src/sim_harness.rs",
+      "to": "fn.src/sim_harness.rs:max_col_reached",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/sim_harness.rs.fn.src/sim_harness.rs:run_metrics",
+      "kind": "rust.contains",
+      "from": "file.src/sim_harness.rs",
+      "to": "fn.src/sim_harness.rs:run_metrics",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:behaviour_tab",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:behaviour_tab",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:control_panel",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:control_panel",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:grass_items",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:grass_items",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:herd_card",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:herd_card",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:herd_details",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:herd_details",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:herd_health",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:herd_health",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:herds_view",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:herds_view",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:panel_flow",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:panel_flow",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:Panel<'a>::new",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:Panel<'a>::new",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:Panel<'a>::width",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:Panel<'a>::width",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:pick_herd",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:pick_herd",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:render_items",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:render_items",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:render_pie",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:render_pie",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:render_plot",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:render_plot",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:set_camera_viewport",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:set_camera_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:slider",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:slider",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:speed_inline",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:speed_inline",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:tests::bottom_dock_shrinks_height_only",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:tests::bottom_dock_shrinks_height_only",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:tests::collapsed_area_yields_none",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:tests::collapsed_area_yields_none",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:tests::full_window_when_no_panel",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:tests::full_window_when_no_panel",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:tests::oversize_rect_clamps_to_target",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:tests::oversize_rect_clamps_to_target",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:tests::retina_scale_counts_once",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:tests::retina_scale_counts_once",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:UiPlugin::build",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:UiPlugin::build",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:view_tab",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:view_tab",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/ui.rs.fn.src/ui.rs:world_viewport",
+      "kind": "rust.contains",
+      "from": "file.src/ui.rs",
+      "to": "fn.src/ui.rs:world_viewport",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/mod.rs.fn.src/worldgen/mod.rs:generate_world",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/mod.rs",
+      "to": "fn.src/worldgen/mod.rs:generate_world",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/mod.rs.fn.src/worldgen/mod.rs:WorldgenPlugin::build",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/mod.rs",
+      "to": "fn.src/worldgen/mod.rs:WorldgenPlugin::build",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/mod.rs.fn.src/worldgen/mod.rs:WorldSpec::default",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/mod.rs",
+      "to": "fn.src/worldgen/mod.rs:WorldSpec::default",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/soil.rs.fn.src/worldgen/soil.rs:seed_soil",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/soil.rs",
+      "to": "fn.src/worldgen/soil.rs:seed_soil",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/soil.rs.fn.src/worldgen/soil.rs:tests::soil_has_regional_spread",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/soil.rs",
+      "to": "fn.src/worldgen/soil.rs:tests::soil_has_regional_spread",
+      "props": {},
+      "tags": []
+    },
+    {
+      "id": "edge.contains.file.src/worldgen/vegetation.rs.fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "kind": "rust.contains",
+      "from": "file.src/worldgen/vegetation.rs",
+      "to": "fn.src/worldgen/vegetation.rs:seed_browse_cap",
+      "props": {},
+      "tags": []
+    }
+  ],
+  "defaultView": "structure"
+}

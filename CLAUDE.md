@@ -24,18 +24,9 @@ Docs state what the artifact does, declaratively. Before writing or editing one,
 
 ## Search Without Triggering Approval Prompts
 
-Prefer reads and searches the sandbox can auto-approve. Reach for the dedicated tools first — they read and search files without shell indirection that the sandbox must stop to vet.
-
-**Do:**
-- Use the Read tool to read files, passing absolute paths.
-- Use the Grep and Glob tools for searching content and finding files.
-- Pass absolute paths directly to any command instead of changing directory first.
-- Keep Bash invocations simple and single-purpose.
-
-**Do not:**
-- Combine `cd` with output redirection in one compound command (e.g. `cd dir && cat x > y`). The sandbox requires manual approval to prevent a path-resolution bypass.
-- Chain `cd <dir> && <cmd>` when an absolute path makes the `cd` unnecessary — the directory change can force an approval prompt.
-- Use Bash `cat`, `head`, `tail`, `grep`, or `find` when a dedicated tool does the same job.
+Shell hygiene rules — use the dedicated tools and avoid command forms that
+trigger approval prompts — live in the user-level `~/.claude/CLAUDE.md`, shared
+across all repos.
 
 ## Structural Changes Use the `rhidoc` CLI
 
