@@ -53,6 +53,16 @@ pub struct RiverSpec {
     pub oxbow_depth: f32,
     pub ford_spacing: usize,
     pub ford_depth: f32,
+    /// Fractional jitter applied to each river's drift: drift_i = drift * (1 ± spread).
+    pub drift_spread: f32,
+    /// Additive jitter on each river's bendiness (clamped to [0, 1]).
+    pub bendiness_spread: f32,
+    /// Number of large standing-water lakes seeded at the deepest basins.
+    pub lake_count: usize,
+    /// Raster radius for each lake (cells from center to shore).
+    pub lake_radius: isize,
+    /// Full-depth core radius for each lake.
+    pub lake_core: isize,
 }
 
 impl Default for RiverSpec {
@@ -73,6 +83,11 @@ impl Default for RiverSpec {
             oxbow_depth: 0.3,
             ford_spacing: 20,
             ford_depth: 0.3,
+            drift_spread: 0.2,
+            bendiness_spread: 0.2,
+            lake_count: 3,
+            lake_radius: 4,
+            lake_core: 2,
         }
     }
 }
@@ -89,11 +104,9 @@ fn generate_river(mut grid: ResMut<Grid>) {
 fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
     let mut rng = StdRng::seed_from_u64(RIVER_SEED);
 
-    // Derive smoothing passes and directional penalty from the single bendiness knob.
-    // Low bendiness → many passes (broad gentle bends) + high penalty (nearly straight).
-    // High bendiness → few passes (tight wiggles) + low penalty (free to wander).
+    // Smoothing passes from global bendiness — shared cost field for all channels.
+    // Per-river directional penalty is derived inside the loop from a child RNG.
     let passes = lerp(8.0, 2.0, spec.bendiness).round() as usize;
-    let penalty = lerp(PEN_HIGH as f32, PEN_LOW as f32, spec.bendiness) as u32;
 
     // One shared cost field for all channels — they belong to the same landscape.
     let cost = cost_field(grid, &mut rng, passes);
@@ -110,12 +123,23 @@ fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, 
         let entry_col = (width * (i + 1) / (spec.count + 1)).clamp(1, width - 2);
         let entry = entry_col; // row 0 → index = 0 * width + col = col
 
-        // Drift the exit rightward by `drift * height` columns.
-        let exit_col = ((entry_col as f32 + spec.drift * height as f32).round() as isize)
+        // Per-river jitter via a child RNG seeded from RIVER_SEED + index.
+        // Using a separate RNG keeps oxbow/tributary placement stable.
+        let mut rrng = StdRng::seed_from_u64(RIVER_SEED ^ (i as u64 + 1));
+        let drift_i = (spec.drift
+            * (1.0 + rrng.random_range(-spec.drift_spread..spec.drift_spread)))
+        .max(0.001);
+        let bendiness_i = (spec.bendiness
+            + rrng.random_range(-spec.bendiness_spread..spec.bendiness_spread))
+        .clamp(0.0, 1.0);
+        let penalty_i = lerp(PEN_HIGH as f32, PEN_LOW as f32, bendiness_i) as u32;
+
+        // Drift the exit rightward by `drift_i * height` columns.
+        let exit_col = ((entry_col as f32 + drift_i * height as f32).round() as isize)
             .clamp(0, width as isize - 1) as usize;
         let exit_idx = (height - 1) * width + exit_col;
 
-        let cl = carve(grid, &cost, entry, exit_idx, Some((&spec.heading, penalty)));
+        let cl = carve(grid, &cost, entry, exit_idx, Some((&spec.heading, penalty_i)));
         rasterize(grid, &cl, spec.radius, spec.core, 1.0);
         mains.push(cl);
     }
@@ -142,6 +166,33 @@ fn generate_river_inner(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, 
         let ci = rng.random_range(0..cands.len());
         let center = cands.swap_remove(ci);
         rasterize(grid, &[center], spec.oxbow_radius, spec.core, spec.oxbow_depth);
+    }
+
+    // Lakes: larger standing-water bodies at the deepest non-channel basins.
+    // Re-collect candidates so oxbow-painted cells are excluded.
+    if spec.lake_count > 0 {
+        let mut lake_cands: Vec<usize> = (0..grid.len())
+            .filter(|&i| {
+                grid.water(i) == 0.0
+                    && [(-1, 0), (1, 0), (0, -1i32), (0, 1i32)]
+                        .iter()
+                        .all(|&(dx, dy)| {
+                            grid.step(i, dx as isize, dy as isize)
+                                .is_none_or(|n| grid.water(n) == 0.0)
+                        })
+                    && [(-1, 0), (1, 0), (0, -1i32), (0, 1i32)]
+                        .iter()
+                        .all(|&(dx, dy)| {
+                            grid.step(i, dx as isize, dy as isize)
+                                .is_none_or(|n| cost[n] >= cost[i])
+                        })
+            })
+            .collect();
+        // Pick the deepest basins (lowest cost) for deterministic placement.
+        lake_cands.sort_by_key(|&i| cost[i]);
+        for &center in lake_cands.iter().take(spec.lake_count) {
+            rasterize(grid, &[center], spec.lake_radius, spec.lake_core, 1.0);
+        }
     }
 
     // Tributaries: shallow feeders that branch off a main channel at a confluence.
@@ -479,5 +530,58 @@ mod tests {
                 "tributary {i} confluence cell {confluence} is not on any main centerline"
             );
         }
+    }
+
+    /// Assert that per-river child RNGs produce different drift parameters,
+    /// resulting in measurably different exit-column drift ratios across rivers.
+    #[test]
+    fn per_river_params_differ() {
+        let spec = RiverSpec {
+            drift_spread: 0.5,
+            bendiness_spread: 0.5,
+            ..RiverSpec::default()
+        };
+        let width = 128usize;
+        let height = 96usize;
+        let mut g = Grid::new(width, height);
+        let (mains, _) = generate_river_inner(&mut g, &spec);
+
+        assert!(mains.len() >= 2, "need at least 2 rivers to compare");
+
+        let drifts: Vec<f32> = mains
+            .iter()
+            .map(|cl| {
+                let entry_col = (*cl.last().unwrap() % width) as f32;
+                let exit_col = (cl[0] % width) as f32;
+                (exit_col - entry_col) / height as f32
+            })
+            .collect();
+
+        let all_equal = drifts.windows(2).all(|w| (w[0] - w[1]).abs() < 0.01);
+        assert!(
+            !all_equal,
+            "expected rivers to show per-river drift variation with spread=0.5, got: {:?}",
+            drifts
+        );
+    }
+
+    /// Assert that lakes add full-depth standing water beyond what channels alone produce.
+    #[test]
+    fn lakes_are_seeded() {
+        let spec_with = RiverSpec::default(); // lake_count = 3
+        let spec_none = RiverSpec { lake_count: 0, ..RiverSpec::default() };
+
+        let mut g_with = Grid::new(128, 96);
+        let mut g_none = Grid::new(128, 96);
+        generate_river_inner(&mut g_with, &spec_with);
+        generate_river_inner(&mut g_none, &spec_none);
+
+        let deep_with = (0..g_with.len()).filter(|&i| g_with.water(i) >= 0.9).count();
+        let deep_none = (0..g_none.len()).filter(|&i| g_none.water(i) >= 0.9).count();
+
+        assert!(
+            deep_with > deep_none,
+            "expected lakes to add deep water cells: with_lakes={deep_with}, no_lakes={deep_none}"
+        );
     }
 }
