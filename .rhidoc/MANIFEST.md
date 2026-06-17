@@ -54,7 +54,8 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.00 | `00-index.md` |  |  | — | — | — |
-| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, tunables as params | patterns, code, architecture, modules, testing | doc03.01.02 | — | — |
+| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, tunables as params | patterns, code, architecture, modules, testing | doc03.01.02 | doc02.02 | — |
+| doc02.02 | `02-balance-metrics.md` | The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes | metrics, balance, movement, migration, verification, spec | doc03.01.01, doc02.01 | — | — |
 
 ## 03-milestones — Milestones
 
@@ -69,7 +70,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc03.01.00 | `01-grazers/00-index.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop, and the code structure it establishes | milestone, ecs, grid, simulation | doc01.01 | — | — |
-| doc03.01.01 | `01-grazers/01-grazers.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop | milestone, ecs, grid, simulation | doc01.01 | doc03.01.02, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 | — |
+| doc03.01.01 | `01-grazers/01-grazers.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop | milestone, ecs, grid, simulation | doc01.01 | doc02.02, doc03.01.02, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 | — |
 | doc03.01.02 | `01-grazers/02-structure.md` | Crate and module layout for the grazers slice: a binary crate composed of feature plugins | structure, layout, bevy, cargo | doc03.01.01 | doc02.01 | — |
 | doc03.01.03 | `01-grazers/03-spatial-and-storage-research.md` | Research session during the grazers milestone — spatial representation (grid vs. continuous vs. graph), RimWorld/DF actor routing, ECS storage, network graphs, macro-variable aggregation, and an algorithm inventory for the simulation | research, exploration, spatial, storage, ecs, architecture | doc03.01.01 | doc03.01.04 | — |
 | doc03.01.04 | `01-grazers/04-field-and-partition-research.md` | Research session — the Eulerian/Lagrangian field-vs-body faultline under three vocabularies, the field/body decision rule, bodies-over-a-field as one engine, and how milestone-1's grid is the same Eulerian-field-over-a-partition pattern the DESIGN.md graph models use with adjacency swapped from arithmetic to a matrix | research, exploration, spatial, eulerian, lagrangian, partition, graph, ecs | doc03.01.01, doc03.01.03 | doc03.01.05, doc03.01.06 | — |
@@ -85,6 +86,7 @@ Quick lookup for file-path→doc mapping:
 | `abm` | doc01.01 |
 | `ai` | doc00.04 |
 | `architecture` | doc02.01, doc03.01.03 |
+| `balance` | doc02.02 |
 | `bevy` | doc03.01.02 |
 | `bfs` | doc03.01.06 |
 | `boids` | doc03.01.05 |
@@ -119,9 +121,11 @@ Quick lookup for file-path→doc mapping:
 | `maintenance` | doc00.02 |
 | `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
 | `meta` | doc00.00, doc00.01 |
-| `migration` | doc03.01.05 |
+| `metrics` | doc02.02 |
+| `migration` | doc02.02, doc03.01.05 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
 | `modules` | doc02.01 |
+| `movement` | doc02.02 |
 | `noise` | doc03.01.06 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
@@ -142,10 +146,12 @@ Quick lookup for file-path→doc mapping:
 | `silver` | doc01.02.01.01, doc01.02.01.05 |
 | `simulation` | doc01.01, doc03.01.00, doc03.01.01 |
 | `spatial` | doc03.01.03, doc03.01.04 |
+| `spec` | doc02.02 |
 | `storage` | doc03.01.03 |
 | `structure` | doc03.01.02 |
 | `testing` | doc02.01 |
 | `theory` | doc00.01 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
+| `verification` | doc02.02 |
 | `vision` | doc01.01 |
 | `yields` | doc01.02.01.05 |

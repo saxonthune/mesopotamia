@@ -38,9 +38,7 @@ WANT="${1:-all}"
 NONE="-"
 NOW="$(date +%s)"
 
-# GNU stat uses -c %Y; BSD/macOS stat uses -f %m. Try GNU, fall back to BSD,
-# then to NOW so a missing file reads as age 0 rather than erroring.
-mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo "$NOW"; }
+mtime() { stat -c %Y "$1" 2>/dev/null || echo "$NOW"; }
 age_of() { echo "$(( NOW - $(mtime "$1") ))"; }
 
 # resolve_agent_md <slug> <run_file>
