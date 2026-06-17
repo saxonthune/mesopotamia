@@ -9,13 +9,13 @@ use super::color::elk_color;
 const TILE_SIZE: f32 = 16.0;
 
 // Population lifecycle tuning.
-const TARGET_POPULATION: usize = 200; // fixed headcount — does NOT scale with grid area,
+pub const TARGET_POPULATION: usize = 200; // fixed headcount — does NOT scale with grid area,
 // so a bigger world means the same herds spread thinner rather than 4× more elk
 const WAVE_INTERVAL: u32 = 180; // ticks between successive spawn waves
 const PACK_BASE: usize = 20; // elk per wave at the start
 const TARGET_GROWTH_PERIOD: u32 = 1200; // +1 to target population per this many ticks
 const PACK_GROWTH_PERIOD: u32 = 2400; // +1 to wave size per this many ticks
-const EDGE_COL: usize = GRID_WIDTH - 2; // the two farthest columns count as "at the edge"
+pub const EDGE_COL: usize = GRID_WIDTH - 2; // the two farthest columns count as "at the edge"
 const EDGE_TICKS: u32 = 3; // consecutive ticks in that band before the elk leaves the map
 
 /// Spawn one cohort of `size` elk — pack `code`, occupying `slot`'s vertical

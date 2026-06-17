@@ -5,7 +5,7 @@ use rand::rngs::StdRng;
 use crate::field;
 
 pub const GRID_WIDTH: usize = 256;
-pub const GRID_HEIGHT: usize = 64;
+pub const GRID_HEIGHT: usize = 144;
 
 pub const MAX_GRASS: f32 = 1.0;
 pub const MAX_POOP: f32 = 1.0;
