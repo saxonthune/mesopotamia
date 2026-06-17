@@ -54,8 +54,9 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.00 | `00-index.md` |  |  | — | — | — |
-| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc02.02 | doc02.02 | — |
-| doc02.02 | `02-balance-metrics.md` | The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes | metrics, balance, movement, migration, verification, spec | doc03.01.01, doc02.01 | doc02.01 | — |
+| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc02.02 | doc02.02, doc02.03 | — |
+| doc02.02 | `02-balance-metrics.md` | The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes | metrics, balance, movement, migration, verification, spec | doc03.01.01, doc02.01 | doc02.01, doc02.03 | — |
+| doc02.03 | `03-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc02.01, doc02.02 | — | — |
 
 ## 03-milestones — Milestones
 
@@ -94,7 +95,9 @@ Quick lookup for file-path→doc mapping:
 | `code` | doc02.01 |
 | `collapse` | doc01.02.01.02 |
 | `conventions` | doc00.03 |
+| `craft` | doc02.03 |
 | `debt` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.03 |
+| `debugging` | doc02.03 |
 | `deep-research` | doc01.02.01.01, doc01.02.01.02 |
 | `dijkstra` | doc03.01.06 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
@@ -112,6 +115,7 @@ Quick lookup for file-path→doc mapping:
 | `household` | doc01.02.01.04 |
 | `husbandry` | doc01.02.01.04 |
 | `index` | doc00.00, doc01.02.00, doc03.00 |
+| `instrumentation` | doc02.03 |
 | `jubilee` | doc01.02.01.01, doc01.02.01.02 |
 | `karum` | doc01.02.01.03, doc01.02.01.05 |
 | `lagrangian` | doc03.01.04 |
@@ -121,12 +125,13 @@ Quick lookup for file-path→doc mapping:
 | `maintenance` | doc00.02 |
 | `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
 | `meta` | doc00.00, doc00.01 |
-| `metrics` | doc02.02 |
+| `metrics` | doc02.02, doc02.03 |
 | `migration` | doc02.02, doc03.01.05 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
 | `modules` | doc02.01 |
 | `movement` | doc02.02 |
 | `noise` | doc03.01.06 |
+| `observability` | doc02.03 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
 | `pathfinding` | doc03.01.06 |
@@ -138,6 +143,7 @@ Quick lookup for file-path→doc mapping:
 | `procgen` | doc03.01.06 |
 | `product` | doc01.01 |
 | `research` | doc01.02.00, doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
+| `resources` | doc02.03 |
 | `retrieval` | doc00.04 |
 | `river` | doc03.01.06 |
 | `salinization` | doc01.02.01.01, doc01.02.01.03 |
@@ -151,6 +157,7 @@ Quick lookup for file-path→doc mapping:
 | `structure` | doc03.01.02 |
 | `testing` | doc02.01 |
 | `theory` | doc00.01 |
+| `tooling` | doc02.03 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
 | `verification` | doc02.02 |
 | `vision` | doc01.01 |

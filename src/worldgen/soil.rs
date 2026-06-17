@@ -9,27 +9,27 @@ use rand::rngs::StdRng;
 use crate::field;
 use crate::grid::Grid;
 
-// Fine soil patches. A distinct seed from the river so the two heterogeneities
-// (where water is vs. where the ground is rich) are uncorrelated.
-const SOIL_SEED: u64 = 0x501;
+// Fine soil patches.
 const SOIL_PASSES: usize = 6; // smoothing passes — higher = broader patches
 const SOIL_FLOOR: f32 = 0.35; // the poorest ground still carries this fraction
 
-// Macro (coarse) regional fertility octave — broad lush vs. sparse zones. A
-// distinct seed so coarse regions are uncorrelated with the fine patches.
-const MACRO_SEED: u64 = 0xA7C3;
+// Macro (coarse) regional fertility octave — broad lush vs. sparse zones.
 const MACRO_PASSES: usize = 14; // many passes → features span large fractions of the map
 const MACRO_FLOOR: f32 = 0.4; // the sparsest region still carries this fraction
 
 /// Author the static patchiness field: fine value noise (soil patches) multiplied
 /// by a coarse macro-octave (regional lush/sparse zones). Both factors are in
 /// (0, 1] so `soil` stays in [0, 1]; `capacity` inherits the regional variation.
-pub(super) fn seed_soil(grid: &mut Grid) {
-    let mut rng = StdRng::seed_from_u64(SOIL_SEED);
+///
+/// `soil_seed` and `macro_seed` must differ from each other and from the river
+/// seed so the three heterogeneities (water, fine patches, regional zones) stay
+/// uncorrelated; the orchestrator derives both from the master world seed.
+pub(super) fn seed_soil(grid: &mut Grid, soil_seed: u64, macro_seed: u64) {
+    let mut rng = StdRng::seed_from_u64(soil_seed);
     let noise = field::value_noise(grid.width(), grid.height(), SOIL_PASSES, &mut rng);
     let patch = field::normalize(&noise);
 
-    let mut macro_rng = StdRng::seed_from_u64(MACRO_SEED);
+    let mut macro_rng = StdRng::seed_from_u64(macro_seed);
     let macro_noise = field::value_noise(grid.width(), grid.height(), MACRO_PASSES, &mut macro_rng);
     let macro_patch = field::normalize(&macro_noise);
 
@@ -51,7 +51,9 @@ mod tests {
     #[test]
     fn soil_has_regional_spread() {
         let mut grid = Grid::new(GRID_WIDTH, GRID_HEIGHT);
-        seed_soil(&mut grid);
+        // Two distinct fixed seeds keep the test deterministic and the fine/macro
+        // octaves uncorrelated, mirroring what the orchestrator derives at runtime.
+        seed_soil(&mut grid, 0x501, 0xA7C3);
 
         let n = grid.len();
         let min: f32 = (0..n).map(|i| grid.soil(i)).fold(f32::MAX, f32::min);

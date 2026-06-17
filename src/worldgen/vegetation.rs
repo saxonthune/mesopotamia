@@ -10,17 +10,18 @@ use rand::rngs::StdRng;
 use crate::field;
 use crate::grid::{Grid, MAX_SHRUBS};
 
-// A separate seed and patch from soil/river so the shrub clumps fall independently
-// of where water and good grazing land are.
-const SHRUB_SEED: u64 = 0xB405E;
 const SHRUB_PASSES: usize = 5;
 const SHRUB_THRESHOLD: f32 = 0.55; // only the densest noise becomes a shrub clump
 
 /// Author shrub capacity: dense noise clumps on dry ground (far from water),
 /// excluded from water cells. Reads `water`/`water_prox` straight off the grid,
 /// which the water layer has already filled by the time this layer runs.
-pub(super) fn seed_shrub_cap(grid: &mut Grid) {
-    let mut rng = StdRng::seed_from_u64(SHRUB_SEED);
+///
+/// `shrub_seed` is distinct from the soil and river seeds so the clumps fall
+/// independently of where water and good grazing land are; the orchestrator
+/// derives it from the master world seed.
+pub(super) fn seed_shrub_cap(grid: &mut Grid, shrub_seed: u64) {
+    let mut rng = StdRng::seed_from_u64(shrub_seed);
     let patch = field::normalize(&field::value_noise(
         grid.width(),
         grid.height(),

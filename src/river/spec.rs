@@ -1,9 +1,10 @@
 //! Declarative authoring knobs for the watershed plus the flow-direction enum.
-//! One `RiverSpec` together with `RIVER_SEED` fully determines the water field;
-//! same pair → same world.
+//! A `RiverSpec` (its `seed` field included) fully determines the water field;
+//! same spec → same world.
 
-/// Seed for the watershed RNG. The full water field is a pure function of a
-/// `RiverSpec` and this seed.
+/// Default watershed seed used by `RiverSpec::default()`. The full water field is
+/// a pure function of the spec, so overriding `RiverSpec::seed` yields a fresh
+/// river network from the same knobs.
 pub(super) const RIVER_SEED: u64 = 0xBEDA;
 
 /// Directional cost constants: against-heading steps are penalised by this much
@@ -23,6 +24,9 @@ pub enum Heading {
 ///
 /// Could become a Bevy `Resource` later to expose knobs to the editor UI.
 pub struct RiverSpec {
+    /// Seed for the watershed RNG. All channel, tributary, oxbow, and lake RNG
+    /// derives from this, so the whole water field is a pure function of the spec.
+    pub seed: u64,
     /// Number of main rivers (default 3 — evenly spaced for elk crossings).
     /// Entry columns are distributed across the width as width*(i+1)/(count+1),
     /// so spacing tracks the grid size instead of a fixed column period.
@@ -77,6 +81,7 @@ pub struct RiverSpec {
 impl Default for RiverSpec {
     fn default() -> Self {
         Self {
+            seed: RIVER_SEED,
             count: 3,
             heading: Heading::Down,
             drift: 0.25,

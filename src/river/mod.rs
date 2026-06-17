@@ -2,8 +2,8 @@
 //! shared smoothed cost field and least-cost carve (`cost`), water stamped onto
 //! the grid plus ford bands (`raster`), features layered on top (`features`:
 //! oxbows, lakes, tributaries), and finally the water-proximity capacity field
-//! (`prox`). Every knob lives in `RiverSpec` (`spec`); the whole water field is a
-//! pure function of that spec plus `RIVER_SEED`.
+//! (`prox`). Every knob lives in `RiverSpec` (`spec`), seed included; the whole
+//! water field is a pure function of that spec.
 
 mod cost;
 mod features;
@@ -21,7 +21,7 @@ use crate::grid::Grid;
 use crate::field;
 use cost::{carve, cost_field, lerp};
 use raster::{stamp_main_channel, tag_shallows_as_fords};
-use spec::{PEN_HIGH, PEN_LOW, RIVER_SEED};
+use spec::{PEN_HIGH, PEN_LOW};
 
 /// Generate the full water field from `spec` — the world-gen *water layer*. Stamps
 /// rivers, tributaries, lakes, and ford bands onto the grid and computes the
@@ -29,7 +29,7 @@ use spec::{PEN_HIGH, PEN_LOW, RIVER_SEED};
 /// paths for the main rivers and tributary feeders, which tests use to assert
 /// structural invariants; the orchestrator discards the return value.
 pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
-    let mut rng = StdRng::seed_from_u64(RIVER_SEED);
+    let mut rng = StdRng::seed_from_u64(spec.seed);
 
     // Smoothing passes from global bendiness — shared cost field for all channels.
     // Per-river directional penalty is derived inside the loop from a child RNG.
@@ -50,9 +50,9 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         let entry_col = (width * (i + 1) / (spec.count + 1)).clamp(1, width - 2);
         let entry = entry_col; // row 0 → index = 0 * width + col = col
 
-        // Per-river jitter via a child RNG seeded from RIVER_SEED + index.
+        // Per-river jitter via a child RNG seeded from the spec seed + index.
         // Using a separate RNG keeps oxbow/tributary placement stable.
-        let mut rrng = StdRng::seed_from_u64(RIVER_SEED ^ (i as u64 + 1));
+        let mut rrng = StdRng::seed_from_u64(spec.seed ^ (i as u64 + 1));
         let drift_i = (spec.drift
             * (1.0 + rrng.random_range(-spec.drift_spread..spec.drift_spread)))
         .max(0.001);
@@ -93,7 +93,7 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         };
 
         let cl = carve(grid, &cost, entry, goal, Some((&spec.heading, penalty_i)));
-        let mut riffle_rng = StdRng::seed_from_u64(RIVER_SEED ^ ((i as u64 + 1) << 16));
+        let mut riffle_rng = StdRng::seed_from_u64(spec.seed ^ ((i as u64 + 1) << 16));
         let profile = field::normalize(&field::value_noise(cl.len(), 1, spec.riffle_passes, &mut riffle_rng));
         stamp_main_channel(grid, &cl, &profile, spec);
         mains.push(cl);
