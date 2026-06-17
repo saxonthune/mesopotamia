@@ -48,3 +48,11 @@ The slice exercises the entity-component-system pattern that later milestones ex
 ## What It Demonstrates
 
 The milestone is reached when grass visibly spreads across empty cells while roaming elk thin it back — a graze-and-regrow balance playing out on the grid in real time.
+
+## The Balancing Goal
+
+The demo is a balancing game. Elk movement is driven by two kinds of force. The **natural drives** — separation, cohesion, grass-seeking, and social foraging — are each a response to what an elk senses around it. The **migration pull** is a single uniform pressure toward the far edge that grows over time regardless of local conditions; it is the artificial hand on the scale, moving the herd even when nothing in the world would.
+
+The demo surfaces, for any moment, how much of a herd's movement comes from the natural drives and how much from the migration pull. The player tunes the sliders — drive weights, perception radii, metabolism — toward a settling where the herd travels on its natural drives while staying fed, so the migration pull can recede and the herd still moves and survives on its own.
+
+To make that tuning possible the demo exposes a readout and a control for each force in play, arranged so a change and its consequence are both legible: adjusting a weight visibly shifts both the force balance and the survival outcome.

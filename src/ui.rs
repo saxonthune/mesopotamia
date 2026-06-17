@@ -41,6 +41,52 @@ fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f3
     ui.add(egui::Slider::new(value, range).text(label));
 }
 
+/// One self-contained control group: a heading and its body. The body is a
+/// closure so a panel is just a titled `&mut Ui` consumer — the immediate-mode
+/// analogue of a composed component.
+struct Panel<'a> {
+    title: &'a str,
+    /// Target column width — the flex-basis. Panels wrap to a new row when the
+    /// current row can't fit another at its width.
+    width: f32,
+    body: Box<dyn FnOnce(&mut egui::Ui) + 'a>,
+}
+
+impl<'a> Panel<'a> {
+    const DEFAULT_WIDTH: f32 = 240.0;
+
+    fn new(title: &'a str, body: impl FnOnce(&mut egui::Ui) + 'a) -> Self {
+        Self { title, width: Self::DEFAULT_WIDTH, body: Box::new(body) }
+    }
+
+    /// Override the flex-basis for a wider/narrower group.
+    fn width(mut self, width: f32) -> Self {
+        self.width = width;
+        self
+    }
+}
+
+/// Lay panels out left-to-right, wrapping to a new row when the row fills —
+/// `flex-wrap: wrap`. Each panel is boxed to its own `width` so it forms a
+/// column rather than spreading to fill the row.
+fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
+    ui.horizontal_wrapped(|ui| {
+        for p in panels {
+            ui.allocate_ui_with_layout(
+                egui::vec2(p.width, ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui.set_width(p.width);
+                        ui.heading(p.title);
+                        (p.body)(ui);
+                    });
+                },
+            );
+        }
+    });
+}
+
 /// The docked bottom panel: a tab bar with always-visible speed controls, and a
 /// scrolling content area paged by the selected tab.
 #[allow(clippy::too_many_arguments)]
@@ -72,16 +118,12 @@ fn control_panel(
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| match state.tab {
-                Tab::Sliders => {
-                    ui.heading("Grass");
-                    grass_tab(ui, growth.as_mut(), fertility.as_mut());
-                    ui.separator();
-                    ui.heading("Behaviour");
-                    behaviour_tab(ui, elk_params.as_mut());
-                    ui.separator();
-                    ui.heading("View");
-                    view_tab(ui, camera.as_mut());
-                }
+                Tab::Sliders => panel_flow(ui, vec![
+                    Panel::new("Grass", |ui| grass_tab(ui, growth.as_mut(), fertility.as_mut())),
+                    // Behaviour carries the most rows, so give it a wider column.
+                    Panel::new("Behaviour", |ui| behaviour_tab(ui, elk_params.as_mut())).width(300.0),
+                    Panel::new("View", |ui| view_tab(ui, camera.as_mut())),
+                ]),
                 Tab::Herds => herds_view(ui, state.as_mut(), &herds),
             });
         });

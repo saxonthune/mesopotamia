@@ -25,11 +25,17 @@ bevy = { version = "0.18.1", default-features = false, features = [
 ] }
 bevy_egui = "0.39.1"
 rand = "0.9"
+serde = { version = "1", features = ["derive"] }
 
 # On the web there is no OS RNG; `rand::rng()` (used by the elk systems) needs
 # getrandom routed to the browser's crypto. No effect on native builds.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.3", features = ["wasm_js"] }
+
+# `usersettings.json` is read from the filesystem, which only exists natively;
+# on the web the window is sized by the canvas, so the JSON parser is dropped.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+serde_json = "1"
 
 [profile.dev.package."*"]
 opt-level = 3

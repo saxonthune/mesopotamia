@@ -8,6 +8,10 @@ This project keeps its specifications in a `.carta/` docs workspace. The docs ar
 
 **Start every orientation at `.carta/MANIFEST.md`.** It is the machine-readable index — summaries, tags, and dependency refs for every doc. Read it, identify the docs relevant to the task, then read only those. Do not read the workspace top to bottom. The codex group (`00-codex/`) explains how the system works; `doc00.04` covers AI retrieval patterns and token budgets.
 
+## Apply the Coding Patterns
+
+Before writing or changing code, read `doc02.01` (Coding Patterns). Its rules are standing — one concept per module, decisions extracted into pure tested functions, feature plugins over a thin root, tunables as params — and apply to every code change without being asked. The easy default of one large module that does everything is the wrong one here.
+
 ## Docs Unfold; They Are Not Drafted
 
 Documentation grows like a living system — a one-line doc is a finished doc until the work demands more. Capture what is known in the simplest form, deepen only when the next step requires it, and never invent detail to fill a sparse doc. Sparseness is intentional, not a defect.
@@ -33,6 +37,6 @@ Prefer reads and searches the sandbox can auto-approve. Reach for the dedicated 
 - Chain `cd <dir> && <cmd>` when an absolute path makes the `cd` unnecessary — the directory change can force an approval prompt.
 - Use Bash `cat`, `head`, `tail`, `grep`, or `find` when a dedicated tool does the same job.
 
-## Structural Changes Use the `carta` CLI
+## Structural Changes Use the `rhidoc` CLI
 
-Content changes are normal file edits. Adding, moving, or removing docs uses the `carta` CLI (`carta create`, `carta move`, `carta delete`, `carta regenerate`) so `MANIFEST.md` stays in sync. Run `carta regenerate` after editing frontmatter directly. See `doc00.00` for the command set and `doc00.03` for conventions.
+Content changes are normal file edits. Adding, moving, or removing docs uses the `rhidoc` CLI (`rhidoc make`, `rhidoc move`, `rhidoc delete`, `rhidoc regenerate`) so `MANIFEST.md` stays in sync. Run `rhidoc regenerate` after editing frontmatter directly. Run `rhidoc ai-skill` for the full command reference; see `doc00.00` for conventions and `doc00.03` for cross-reference syntax.

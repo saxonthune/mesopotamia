@@ -17,6 +17,8 @@ mod grid;
 mod elk;
 #[path = "../render.rs"]
 mod render;
+#[path = "../settings.rs"]
+mod settings;
 #[path = "../ui.rs"]
 mod ui;
 #[path = "../river.rs"]
@@ -25,6 +27,7 @@ mod river;
 use crate::elk::ElkSimPlugin;
 use crate::grid::GridPlugin;
 use crate::river::RiverPlugin;
+use crate::settings::UserSettings;
 use crate::ui::UiPlugin;
 use render::RenderPlugin;
 
@@ -33,8 +36,10 @@ use render::RenderPlugin;
 const CANVAS_ID: &str = "#game-canvas";
 
 fn main() {
-    App::new()
-        .insert_resource(Time::<Fixed>::from_hz(10.0))
+    let settings = UserSettings::load();
+
+    let mut app = App::new();
+    app.insert_resource(Time::<Fixed>::from_hz(10.0))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Mesopotamia — Demo 1".into(),
@@ -45,12 +50,19 @@ fn main() {
                 fit_canvas_to_parent: true,
                 // Let the browser keep its own keyboard shortcuts (F5, etc.).
                 prevent_default_event_handling: false,
-                resolution: WindowResolution::new(1280, 480),
+                // Native restore/initial size; ignored on web (canvas governs).
+                resolution: WindowResolution::new(settings.window.width, settings.window.height),
                 ..default()
             }),
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
         .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, RiverPlugin))
-        .run();
+        .insert_resource(settings);
+
+    // Maximizing is native-only; the canvas sizes the window on the web.
+    #[cfg(not(target_arch = "wasm32"))]
+    app.add_systems(Startup, settings::maximize_window);
+
+    app.run();
 }

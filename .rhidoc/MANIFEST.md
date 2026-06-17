@@ -54,6 +54,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.00 | `00-index.md` |  |  | — | — | — |
+| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, tunables as params | patterns, code, architecture, modules, testing | doc03.01.02 | — | — |
 
 ## 03-milestones — Milestones
 
@@ -69,11 +70,11 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc03.01.00 | `01-grazers/00-index.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop, and the code structure it establishes | milestone, ecs, grid, simulation | doc01.01 | — | — |
 | doc03.01.01 | `01-grazers/01-grazers.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop | milestone, ecs, grid, simulation | doc01.01 | doc03.01.02, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 | — |
-| doc03.01.02 | `01-grazers/02-structure.md` | Crate and module layout for the grazers slice: a binary crate composed of feature plugins | structure, layout, bevy, cargo | doc03.01.01 | — | — |
+| doc03.01.02 | `01-grazers/02-structure.md` | Crate and module layout for the grazers slice: a binary crate composed of feature plugins | structure, layout, bevy, cargo | doc03.01.01 | doc02.01 | — |
 | doc03.01.03 | `01-grazers/03-spatial-and-storage-research.md` | Research session during the grazers milestone — spatial representation (grid vs. continuous vs. graph), RimWorld/DF actor routing, ECS storage, network graphs, macro-variable aggregation, and an algorithm inventory for the simulation | research, exploration, spatial, storage, ecs, architecture | doc03.01.01 | doc03.01.04 | — |
 | doc03.01.04 | `01-grazers/04-field-and-partition-research.md` | Research session — the Eulerian/Lagrangian field-vs-body faultline under three vocabularies, the field/body decision rule, bodies-over-a-field as one engine, and how milestone-1's grid is the same Eulerian-field-over-a-partition pattern the DESIGN.md graph models use with adjacency swapped from arithmetic to a matrix | research, exploration, spatial, eulerian, lagrangian, partition, graph, ecs | doc03.01.01, doc03.01.03 | doc03.01.05, doc03.01.06 | — |
 | doc03.01.05 | `01-grazers/05-herd-and-flocking-research.md` | Research session — boids' separation/alignment/cohesion adapted from velocity-steering to per-neighbor move-scoring on a lattice; social foraging (local enhancement) as a two-radius forage sense; a time-growing migration drive; pack affiliation as a partition over bodies; and the two-phase snapshot-then-move ECS pattern that scales to hundreds of bodies | research, exploration, herd, flocking, boids, foraging, migration, ecs, scale | doc03.01.01, doc03.01.04 | — | — |
-| doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a seed-to-content function; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; least-cost (Dijkstra) carving bank-to-bank for guaranteed-connected meanders; rasterizing a centerline to substantial width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | — | — |
+| doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a function from seed and a declarative spec to content; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; directed least-cost (Dijkstra) carving as a geodesic in an anisotropic metric, with heading, drift, and bendiness; several rivers from one shared cost field spaced by a period; rasterizing a centerline to width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | — | — |
 
 ## Tag Index
 
@@ -83,11 +84,12 @@ Quick lookup for file-path→doc mapping:
 |-----|---------------|
 | `abm` | doc01.01 |
 | `ai` | doc00.04 |
-| `architecture` | doc03.01.03 |
+| `architecture` | doc02.01, doc03.01.03 |
 | `bevy` | doc03.01.02 |
 | `bfs` | doc03.01.06 |
 | `boids` | doc03.01.05 |
 | `cargo` | doc03.01.02 |
+| `code` | doc02.01 |
 | `collapse` | doc01.02.01.02 |
 | `conventions` | doc00.03 |
 | `debt` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.03 |
@@ -119,10 +121,12 @@ Quick lookup for file-path→doc mapping:
 | `meta` | doc00.00, doc00.01 |
 | `migration` | doc03.01.05 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
+| `modules` | doc02.01 |
 | `noise` | doc03.01.06 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
 | `pathfinding` | doc03.01.06 |
+| `patterns` | doc02.01 |
 | `philosophy` | doc00.02 |
 | `political-economy` | doc01.02.01.00 |
 | `polity` | doc01.02.01.02 |
@@ -140,6 +144,7 @@ Quick lookup for file-path→doc mapping:
 | `spatial` | doc03.01.03, doc03.01.04 |
 | `storage` | doc03.01.03 |
 | `structure` | doc03.01.02 |
+| `testing` | doc02.01 |
 | `theory` | doc00.01 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
 | `vision` | doc01.01 |
