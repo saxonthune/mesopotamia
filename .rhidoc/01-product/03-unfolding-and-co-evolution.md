@@ -2,7 +2,7 @@
 title: Unfolding and Co-Evolution
 summary: The artifact's two generative processes — a backtrack-free unfolding that builds the world, and a dialectical loop where actors and environment co-determine each other until quantitative accumulation crosses into qualitative change — and the seam between them
 tags: [product, generation, worldgen, dialectics, emergence, loop-vs-accumulator, philosophy]
-deps: [doc01.01, doc01.02.01.00, doc03.01.06, doc02.03]
+deps: [doc01.01, doc01.02.01.00, doc03.01.06, doc02.01]
 ---
 
 # Unfolding and Co-Evolution
@@ -82,5 +82,5 @@ turns into quality.
 The transition is meant to be *felt*, and it is also meant to be *seen*. The qualitative break is
 precisely the moment a conservation that held during the homeostatic regime fails — the cycle that
 always closed stops closing. Read against the right instrument, that failure is the phase transition
-made legible (doc02.03): watching the contradiction and checking the wholeness are the same act from
+made legible (doc02.01): watching the contradiction and checking the wholeness are the same act from
 two sides.

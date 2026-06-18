@@ -2,7 +2,7 @@
 title: Reading the Simulation
 summary: The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences
 tags: [observability, debugging, metrics, tooling, instrumentation, resources, craft]
-deps: [doc02.01, doc02.02]
+deps: [doc05.01, doc04.01]
 ---
 
 # Reading the Simulation
@@ -27,7 +27,7 @@ that rung is the next tool to build — before touching a slider.
 
 When an agent picks from options by score, that score vector for one agent on demand is the
 simulation's breakpoint. `herd_move` scores four candidate steps as `desire · dir −
-water_penalty` and softmaxes (doc02.02). Decision introspection exposes, for a *selected* agent,
+water_penalty` and softmaxes (doc04.01). Decision introspection exposes, for a *selected* agent,
 the full breakdown each tick: the candidate cells, each one's `desire · dir`, its penalty, and
 the resulting softmax probabilities.
 
@@ -60,7 +60,7 @@ already confirmed unimodal. A bimodal shape names a trapped subpopulation that n
 ## Spatial event logging — where and in what state
 
 A counter records *how many*; it discards the *where* and the *state*, which are the diagnostic
-payload. `metabolize` despawns a starving agent and increments `deaths` (doc02.02) — the count
+payload. `metabolize` despawns a starving agent and increments `deaths` (doc04.01) — the count
 survives, the context does not. Structured events keep the context: each mortality (and each
 other salient event) is a record of tick, cell, recent energy, recent decisions, and cause.
 Plotted on the map, deaths clustered tight against a barrier with forage visible beyond it
@@ -71,13 +71,13 @@ localize a bug to a coordinate in one glance. Cluster-against-a-barrier is a sig
 The most unambiguous class of check. An emergent system has quantities that must reconcile, and a
 violated reconciliation is a bug with no "is this intended?" ambiguity:
 
-- **Population.** `spawned = alive + deaths + departures` (doc02.02). The cohort counters already
+- **Population.** `spawned = alive + deaths + departures` (doc04.01). The cohort counters already
   hold every term; the identity is an assertable invariant.
 - **Energy.** Intake from grazing, minus drain and swim cost, equals the net change in total
   energy. If the ledger does not close, there is a leak or a double-count.
 
 These are pure functions of state, so they are pinned as metamorphic assertions in the headless
-harness, the same way balance metrics are (doc02.01, doc02.02, the verification skill).
+harness, the same way balance metrics are (doc05.01, doc04.01, the verification skill).
 
 ## Probe scenarios — the reproducible micro-experiment
 

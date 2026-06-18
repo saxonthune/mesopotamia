@@ -10,7 +10,7 @@ This project keeps its specifications in a `.rhidoc/` docs workspace. The docs a
 
 ## Apply the Coding Patterns
 
-Before writing or changing code, read `doc02.01` (Coding Patterns). Its rules are standing — one concept per module, decisions extracted into pure tested functions, feature plugins over a thin root, tunables as params — and apply to every code change without being asked. The easy default of one large module that does everything is the wrong one here.
+Before writing or changing code, read `doc05.01` (Coding Patterns). Its rules are standing — one concept per module, decisions extracted into pure tested functions, feature plugins over a thin root, tunables as params — and apply to every code change without being asked. The easy default of one large module that does everything is the wrong one here.
 
 ## Test with `just test-fast` While Iterating
 

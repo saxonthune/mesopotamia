@@ -34,7 +34,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
 | doc01.01 | `01-exploratory.md` | Product vision — emergent agent-based simulation of ancient Mesopotamian debt and ecological cycles, the historical arc it dramatizes, and architecture/visualization directions | product, simulation, abm, history, vision | — | doc01.02.01.00, doc01.03, doc03.01.00, doc03.01.01 | — |
-| doc01.03 | `03-unfolding-and-co-evolution.md` | The artifact's two generative processes — a backtrack-free unfolding that builds the world, and a dialectical loop where actors and environment co-determine each other until quantitative accumulation crosses into qualitative change — and the seam between them | product, generation, worldgen, dialectics, emergence, loop-vs-accumulator, philosophy | doc01.01, doc01.02.01.00, doc03.01.06, doc02.03 | — | — |
+| doc01.03 | `03-unfolding-and-co-evolution.md` | The artifact's two generative processes — a backtrack-free unfolding that builds the world, and a dialectical loop where actors and environment co-determine each other until quantitative accumulation crosses into qualitative change — and the seam between them | product, generation, worldgen, dialectics, emergence, loop-vs-accumulator, philosophy | doc01.01, doc01.02.01.00, doc03.01.06, doc02.01 | — | — |
 
 ### Research Sessions
 
@@ -55,9 +55,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.00 | `00-index.md` |  |  | — | — | — |
-| doc02.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc02.02 | doc02.02, doc02.03 | — |
-| doc02.02 | `02-balance-metrics.md` | The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes | metrics, balance, movement, migration, verification, spec | doc03.01.01, doc02.01 | doc02.01, doc02.03 | — |
-| doc02.03 | `03-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc02.01, doc02.02 | doc01.03 | — |
+| doc02.01 | `01-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc05.01, doc04.01 | doc01.03 | — |
 
 ## 03-milestones — Milestones
 
@@ -72,12 +70,29 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc03.01.00 | `01-grazers/00-index.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop, and the code structure it establishes | milestone, ecs, grid, simulation | doc01.01 | — | — |
-| doc03.01.01 | `01-grazers/01-grazers.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop | milestone, ecs, grid, simulation | doc01.01 | doc02.02, doc03.01.02, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 | — |
-| doc03.01.02 | `01-grazers/02-structure.md` | Crate and module layout for the grazers slice: a binary crate composed of feature plugins | structure, layout, bevy, cargo | doc03.01.01 | doc02.01 | — |
+| doc03.01.01 | `01-grazers/01-grazers.md` | First milestone — a 2D grid ECS where grass grows and elk graze; the simplest slice that proves the simulation loop | milestone, ecs, grid, simulation | doc01.01 | doc03.01.02, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06, doc04.01 | — |
+| doc03.01.02 | `01-grazers/02-structure.md` | Crate and module layout for the grazers slice: a binary crate composed of feature plugins | structure, layout, bevy, cargo | doc03.01.01 | doc05.01 | — |
 | doc03.01.03 | `01-grazers/03-spatial-and-storage-research.md` | Research session during the grazers milestone — spatial representation (grid vs. continuous vs. graph), RimWorld/DF actor routing, ECS storage, network graphs, macro-variable aggregation, and an algorithm inventory for the simulation | research, exploration, spatial, storage, ecs, architecture | doc03.01.01 | doc03.01.04 | — |
-| doc03.01.04 | `01-grazers/04-field-and-partition-research.md` | Research session — the Eulerian/Lagrangian field-vs-body faultline under three vocabularies, the field/body decision rule, bodies-over-a-field as one engine, and how milestone-1's grid is the same Eulerian-field-over-a-partition pattern the DESIGN.md graph models use with adjacency swapped from arithmetic to a matrix | research, exploration, spatial, eulerian, lagrangian, partition, graph, ecs | doc03.01.01, doc03.01.03 | doc02.01, doc03.01.05, doc03.01.06 | — |
+| doc03.01.04 | `01-grazers/04-field-and-partition-research.md` | Research session — the Eulerian/Lagrangian field-vs-body faultline under three vocabularies, the field/body decision rule, bodies-over-a-field as one engine, and how milestone-1's grid is the same Eulerian-field-over-a-partition pattern the DESIGN.md graph models use with adjacency swapped from arithmetic to a matrix | research, exploration, spatial, eulerian, lagrangian, partition, graph, ecs | doc03.01.01, doc03.01.03 | doc03.01.05, doc03.01.06, doc05.01 | — |
 | doc03.01.05 | `01-grazers/05-herd-and-flocking-research.md` | Research session — boids' separation/alignment/cohesion adapted from velocity-steering to per-neighbor move-scoring on a lattice; social foraging (local enhancement) as a two-radius forage sense; a time-growing migration drive; pack affiliation as a partition over bodies; and the two-phase snapshot-then-move ECS pattern that scales to hundreds of bodies | research, exploration, herd, flocking, boids, foraging, migration, ecs, scale | doc03.01.01, doc03.01.04 | — | — |
 | doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a function from seed and a declarative spec to content; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; directed least-cost (Dijkstra) carving as a geodesic in an anisotropic metric, with heading, drift, and bendiness; several rivers from one shared cost field spaced by a period; rasterizing a centerline to width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | doc01.03 | — |
+
+## 04-modeling — Mathematical Modeling
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc04.00 | `00-index.md` | The model's formal layer — the equations behind the simulation's forces and metrics, and the discipline for choosing parameter values that hold their meaning | modeling, metrics, parameters | — | — | — |
+| doc04.01 | `01-balance-metrics.md` | The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes | metrics, balance, movement, migration, verification, spec | doc03.01.01, doc05.01 | doc02.01, doc04.02, doc05.01 | — |
+| doc04.02 | `02-parameter-discipline.md` | How the model's tunables are chosen so defaults sit in a stable regime — dimensionless ratios over magnitudes, off the bifurcation edge, separated timescales, and sensitivity analysis to find the fragile knobs | parameters, nondimensionalization, sensitivity-analysis, robustness, modeling, methodology | doc04.01 | — | — |
+
+## 05-engineering — Code Quality & Maintenance
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc05.00 | `00-index.md` | How the code is shaped and kept maintainable — module boundaries, pure tested functions, feature plugins, and tunables as params | code, patterns, maintenance | — | — | — |
+| doc05.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc04.01 | doc02.01, doc04.01 | — |
 
 ## Tag Index
 
@@ -87,18 +102,18 @@ Quick lookup for file-path→doc mapping:
 |-----|---------------|
 | `abm` | doc01.01 |
 | `ai` | doc00.04 |
-| `architecture` | doc02.01, doc03.01.03 |
-| `balance` | doc02.02 |
+| `architecture` | doc03.01.03, doc05.01 |
+| `balance` | doc04.01 |
 | `bevy` | doc03.01.02 |
 | `bfs` | doc03.01.06 |
 | `boids` | doc03.01.05 |
 | `cargo` | doc03.01.02 |
-| `code` | doc02.01 |
+| `code` | doc05.00, doc05.01 |
 | `collapse` | doc01.02.01.02 |
 | `conventions` | doc00.03 |
-| `craft` | doc02.03 |
+| `craft` | doc02.01 |
 | `debt` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.03 |
-| `debugging` | doc02.03 |
+| `debugging` | doc02.01 |
 | `deep-research` | doc01.02.01.01, doc01.02.01.02 |
 | `dialectics` | doc01.03 |
 | `dijkstra` | doc03.01.06 |
@@ -119,27 +134,31 @@ Quick lookup for file-path→doc mapping:
 | `household` | doc01.02.01.04 |
 | `husbandry` | doc01.02.01.04 |
 | `index` | doc00.00, doc01.02.00, doc03.00 |
-| `instrumentation` | doc02.03 |
+| `instrumentation` | doc02.01 |
 | `jubilee` | doc01.02.01.01, doc01.02.01.02 |
 | `karum` | doc01.02.01.03, doc01.02.01.05 |
 | `lagrangian` | doc03.01.04 |
 | `land-tenure` | doc01.02.01.02 |
 | `layout` | doc03.01.02 |
 | `loop-vs-accumulator` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc01.03 |
-| `maintenance` | doc00.02 |
+| `maintenance` | doc00.02, doc05.00 |
 | `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
 | `meta` | doc00.00, doc00.01 |
-| `metrics` | doc02.02, doc02.03 |
-| `migration` | doc02.02, doc03.01.05 |
+| `methodology` | doc04.02 |
+| `metrics` | doc02.01, doc04.00, doc04.01 |
+| `migration` | doc03.01.05, doc04.01 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
-| `modules` | doc02.01 |
-| `movement` | doc02.02 |
+| `modeling` | doc04.00, doc04.02 |
+| `modules` | doc05.01 |
+| `movement` | doc04.01 |
 | `noise` | doc03.01.06 |
-| `observability` | doc02.03 |
+| `nondimensionalization` | doc04.02 |
+| `observability` | doc02.01 |
+| `parameters` | doc04.00, doc04.02 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
 | `pathfinding` | doc03.01.06 |
-| `patterns` | doc02.01 |
+| `patterns` | doc05.00, doc05.01 |
 | `philosophy` | doc00.02, doc01.03 |
 | `political-economy` | doc01.02.01.00 |
 | `polity` | doc01.02.01.02 |
@@ -147,23 +166,25 @@ Quick lookup for file-path→doc mapping:
 | `procgen` | doc03.01.06 |
 | `product` | doc01.01, doc01.03 |
 | `research` | doc01.02.00, doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
-| `resources` | doc02.03 |
+| `resources` | doc02.01 |
 | `retrieval` | doc00.04 |
 | `river` | doc03.01.06 |
+| `robustness` | doc04.02 |
 | `salinization` | doc01.02.01.01, doc01.02.01.03 |
 | `scale` | doc03.01.05 |
+| `sensitivity-analysis` | doc04.02 |
 | `sessions` | doc01.02.00 |
 | `silver` | doc01.02.01.01, doc01.02.01.05 |
 | `simulation` | doc01.01, doc03.01.00, doc03.01.01 |
 | `spatial` | doc03.01.03, doc03.01.04 |
-| `spec` | doc02.02 |
+| `spec` | doc04.01 |
 | `storage` | doc03.01.03 |
 | `structure` | doc03.01.02 |
-| `testing` | doc02.01 |
+| `testing` | doc05.01 |
 | `theory` | doc00.01 |
-| `tooling` | doc02.03 |
+| `tooling` | doc02.01 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
-| `verification` | doc02.02 |
+| `verification` | doc04.01 |
 | `vision` | doc01.01 |
 | `worldgen` | doc01.03 |
 | `yields` | doc01.02.01.05 |

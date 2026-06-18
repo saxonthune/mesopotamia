@@ -442,7 +442,7 @@ rhidoc cat <ref>
 ```
 
 Arguments:
-  ref  Doc ref (e.g., `doc02.03`) or workspace-relative path.
+  ref  Doc ref (e.g., `doc02.01`) or workspace-relative path.
        If the ref resolves to a directory, prints `00-index.md` from that directory.
 
 Side effects:

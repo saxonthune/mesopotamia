@@ -2,14 +2,14 @@
 title: Balance Metrics
 summary: The equations that define the demo's force decomposition, the migration residual, and the survival/journey/share objective the balancing sweep optimizes
 tags: [metrics, balance, movement, migration, verification, spec]
-deps: [doc03.01.01, doc02.01]
+deps: [doc03.01.01, doc05.01]
 ---
 
 # Balance Metrics
 
 The formal definitions behind the balancing goal (doc03.01.01). Each is a pure metric — a
 function of local state — so each is implemented as a pure function and pinned with metamorphic
-tests (doc02.01, the verification skill). This doc is the source of truth the movement code, the
+tests (doc05.01, the verification skill). This doc is the source of truth the movement code, the
 UI readouts, and the balancing sweep all reconcile against.
 
 The migration axis is **+x**: the far edge a herd migrates toward.
