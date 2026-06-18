@@ -203,6 +203,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
                 digesting: Vec::new(),
                 grazing: false,
                 at_edge: 0,
+                intake_rate: 0.0,
             },
             LastDecision(Decision::default()),
         ));
@@ -243,7 +244,7 @@ impl Decider for FieldDecider {
         let grass_dir = grass_gradient(cell, grid, params);
         let drives = combine_drives(
             Vec2::ZERO, Vec2::ZERO, grass_dir, Vec2::ZERO,
-            params, self.pressure, self.energy,
+            params, self.pressure, self.energy, 1.0,
         );
         let desire = drives.total();
 

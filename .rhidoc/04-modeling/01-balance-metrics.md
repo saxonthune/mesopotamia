@@ -114,6 +114,54 @@ herd that has grazed-down its bank is the one with the energy pressure to cross 
 feeding ledger and the crossing decision (`cross_desire`) are the same economy — forage gained
 against cost paid.
 
+## Patch leaving
+
+A forager leaves a patch when its local intake rate drops below the habitat average — switching
+from intensive local search to extensive directional movement. This is expressed as a continuous
+**gate** (not a binary mode flip) that scales the grass and social drives down and the migration
+pull up:
+
+Each elk tracks an exponentially-weighted moving average of its per-tick forage intake, updated
+in `graze` after each feed (or no-feed) event:
+
+```
+intake_rate ← (1 − α) · intake_rate + α · intake_this_tick      (α = intake_smoothing)
+```
+
+A habitat-average intake is maintained as the plain mean of all elk `intake_rate` values,
+recomputed each tick:
+
+```
+habitat_mean = mean({ elk.intake_rate })
+```
+
+The **`forage_gate`** maps an elk's local intake to a scale in [0, 1]: 1 when the elk is at or
+above average (stay, intensive search), decreasing linearly to 0 below the giving-up floor:
+
+```
+gate = clamp((local − giving_up · mean) / (mean · (1 − giving_up)), 0, 1)
+```
+
+where `giving_up` ∈ [0, 1) is the ratio of habitat mean below which the gate fully closes. When
+`habitat_mean ≤ 0` (start of run, no signal yet) the gate returns 1 — no suppression.
+
+The gate is applied in `combine_drives`:
+
+```
+grass′  = grass  · gate
+social′ = social · gate
+migration′ = migration · (1 + leave_boost · (1 − gate))
+```
+
+A below-average-intake elk has its grass and social drives suppressed (reducing the reward for
+staying) and its migration pull amplified by up to `1 + leave_boost` (increasing the push to
+leave). The gate is a soft multiplier, not a new additive force — it avoids introducing another
+vector into the weighted-sum that could cancel existing drives.
+
+Properties of `forage_gate` (metamorphic contract): `gate = 1` when `local ≥ mean`; `gate = 0`
+when `local ≤ giving_up · mean`; strictly non-increasing in `local`; bounded in [0, 1]; `gate =
+1` when `mean ≤ 0`.
+
 ## Counterfactual journey
 
 The demo goal is that natural drives alone carry the herd. The journey metric is a counterfactual

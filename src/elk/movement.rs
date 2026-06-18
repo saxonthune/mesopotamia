@@ -3,7 +3,7 @@ use rand::Rng;
 
 use crate::grid::Grid;
 
-use super::components::{DriveSample, DriveSamples, Elk, ElkParams, LastDecision, Packs, ProbeSeed};
+use super::components::{DriveSample, DriveSamples, Elk, ElkParams, HabitatIntake, LastDecision, Packs, ProbeSeed};
 use super::ledger::EnergyFlows;
 
 const OTHER_PACK_SEP: f32 = 0.5; // mild push from foreign packs
@@ -100,6 +100,27 @@ pub fn migration_residual(natural_strength: f32, quiet: f32) -> f32 {
     1.0 / (1.0 + natural_strength / quiet.max(1e-6))
 }
 
+/// Patch-leaving gate: how strongly an elk should stay on the current patch vs.
+/// leave for extensive search. Returns a scale in [0, 1] — 1.0 means stay
+/// (intensive local search); 0.0 means leave (extensive directional movement).
+///
+/// Form: linear ramp from 0 at `giving_up · habitat_mean` to 1 at `habitat_mean`,
+/// clamped to [0, 1]:
+///
+///   gate = clamp((local_intake − giving_up·mean) / (mean·(1 − giving_up)), 0, 1)
+///
+/// When `habitat_mean ≤ 0` (no signal yet) the gate returns 1.0 — no suppression.
+pub fn forage_gate(local_intake: f32, habitat_mean: f32, giving_up: f32) -> f32 {
+    if habitat_mean <= 0.0 {
+        return 1.0;
+    }
+    let denom = habitat_mean * (1.0 - giving_up);
+    if denom <= 0.0 {
+        return 1.0;
+    }
+    ((local_intake - giving_up * habitat_mean) / denom).clamp(0.0, 1.0)
+}
+
 /// The five weighted contribution vectors that sum into an elk's step desire,
 /// kept separate so the migration-vs-natural split is legible and testable.
 pub struct Drives {
@@ -149,8 +170,10 @@ impl Decomposable for Drives {
 /// Combine the raw per-drive direction accumulators into weighted contributions.
 /// `sep`/`coh`/`grass_dir`/`social` are the un-normalized accumulators built in
 /// `herd_move`; `pressure` is the pack's migration pressure; `energy` is the elk's
-/// energy (hunger sharpens the food drives). Migration is residual — it scales by
-/// how quiet the naturals are.
+/// energy (hunger sharpens the food drives). `gate` is the patch-leaving scale
+/// from `forage_gate` — it suppresses grass/social when the elk is below the
+/// habitat average, and amplifies migration to push it into extensive search.
+/// Migration is residual — it scales by how quiet the naturals are.
 pub fn combine_drives(
     sep: Vec2,
     coh: Vec2,
@@ -159,16 +182,18 @@ pub fn combine_drives(
     params: &ElkParams,
     pressure: f32,
     energy: f32,
+    gate: f32,
 ) -> Drives {
     let hunger = 1.0 - energy;
     let appetite = 0.25 + 0.75 * hunger;
     let sep = norm(sep) * params.separation;
     let coh = norm(coh) * params.cohesion;
-    let grass = norm(grass_dir) * (params.grass * appetite);
-    let social = norm(social) * (params.social * appetite);
+    let grass = norm(grass_dir) * (params.grass * appetite * gate);
+    let social = norm(social) * (params.social * appetite * gate);
     let natural_strength = sep.length() + coh.length() + grass.length() + social.length();
+    let mig_boost = 1.0 + params.leave_boost * (1.0 - gate);
     let migration = Vec2::X
-        * (params.migration * pressure * migration_residual(natural_strength, params.quiet));
+        * (params.migration * pressure * migration_residual(natural_strength, params.quiet) * mig_boost);
     Drives { sep, coh, grass, social, migration }
 }
 
@@ -184,6 +209,7 @@ pub(super) fn herd_move(
     mut samples: ResMut<DriveSamples>,
     mut flows: ResMut<EnergyFlows>,
     mut probe_seed: Option<ResMut<ProbeSeed>>,
+    habitat_intake: Res<HabitatIntake>,
 ) {
     // Phase 1: snapshot (col, row, slot, grazing) for every elk, in query order.
     let snapshot: Vec<(f32, f32, u8, bool)> = elk_q
@@ -245,8 +271,11 @@ pub(super) fn herd_move(
         // both grass directly and other elk already feeding — so a fed herd
         // drifts while a starving one bolts toward the nearest feast.
         // Migration is a residual: it fills in only as the natural drives fall quiet.
+        // The patch-leaving gate suppresses grass/social for below-average foragers
+        // and amplifies migration, nudging them into extensive search.
+        let gate = forage_gate(elk.intake_rate, habitat_intake.mean, params.giving_up);
         let drives = combine_drives(
-            sep, coh, grass_dir, social, &params, packs.migration[slot as usize], elk.energy,
+            sep, coh, grass_dir, social, &params, packs.migration[slot as usize], elk.energy, gate,
         );
 
         // Accumulate magnitudes for the per-slot sample (pure read, no behaviour change).
@@ -599,8 +628,8 @@ mod tests {
         let pressure = 0.8;
         let energy = 0.5;
 
-        let lo = combine_drives(sep, coh, grass, social, &p_lo, pressure, energy);
-        let hi = combine_drives(sep, coh, grass, social, &p_hi, pressure, energy);
+        let lo = combine_drives(sep, coh, grass, social, &p_lo, pressure, energy, 1.0);
+        let hi = combine_drives(sep, coh, grass, social, &p_hi, pressure, energy, 1.0);
         assert!(
             hi.migration_share() > lo.migration_share(),
             "higher migration param must raise migration_share"
@@ -618,8 +647,8 @@ mod tests {
         let social = Vec2::ZERO;
         let energy = 0.5;
 
-        let lo = combine_drives(sep, coh, grass, social, &p, 0.1, energy);
-        let hi = combine_drives(sep, coh, grass, social, &p, 1.0, energy);
+        let lo = combine_drives(sep, coh, grass, social, &p, 0.1, energy, 1.0);
+        let hi = combine_drives(sep, coh, grass, social, &p, 1.0, energy, 1.0);
         assert!(
             hi.migration_share() > lo.migration_share(),
             "higher pressure must raise migration_share"
@@ -650,8 +679,8 @@ mod tests {
         let pressure = 1.0;
         let energy = 0.5;
 
-        let weak = combine_drives(sep, coh, grass, social, &p_weak, pressure, energy);
-        let strong = combine_drives(sep, coh, grass, social, &p_strong, pressure, energy);
+        let weak = combine_drives(sep, coh, grass, social, &p_weak, pressure, energy, 1.0);
+        let strong = combine_drives(sep, coh, grass, social, &p_strong, pressure, energy, 1.0);
         assert!(
             weak.migration_share() > strong.migration_share(),
             "stronger natural drives must reduce migration_share via residual"
@@ -669,8 +698,8 @@ mod tests {
         let social = Vec2::new(0.3, 0.0);
         let pressure = 1.0;
 
-        let well_fed = combine_drives(sep, coh, grass, social, &p, pressure, 1.0); // energy=1
-        let starving = combine_drives(sep, coh, grass, social, &p, pressure, 0.0); // energy=0
+        let well_fed = combine_drives(sep, coh, grass, social, &p, pressure, 1.0, 1.0); // energy=1
+        let starving = combine_drives(sep, coh, grass, social, &p, pressure, 0.0, 1.0); // energy=0
 
         let food_share_fed = (well_fed.grass.length() + well_fed.social.length())
             / (well_fed.sep.length()
@@ -854,5 +883,63 @@ mod tests {
         // ford_discount 0.1 ⇒ each water cell costs 0.2 instead of 2.0.
         let (_, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
         assert!((cost - 0.4).abs() < 1e-6, "ford span should cost 2×0.2 = 0.4, got {cost}");
+    }
+
+    // ── forage_gate ───────────────────────────────────────────────────────────
+
+    // Gate is 1.0 when local intake equals habitat mean (at-average → stay).
+    #[test]
+    fn forage_gate_is_one_at_habitat_mean() {
+        assert!((forage_gate(0.5, 0.5, 0.6) - 1.0).abs() < 1e-6);
+    }
+
+    // Gate is 1.0 when local intake exceeds habitat mean.
+    #[test]
+    fn forage_gate_is_one_above_habitat_mean() {
+        assert!((forage_gate(0.8, 0.5, 0.6) - 1.0).abs() < 1e-6);
+    }
+
+    // Gate is 0.0 at or below the giving_up floor.
+    #[test]
+    fn forage_gate_is_zero_at_giving_up_floor() {
+        let mean = 0.5;
+        let giving_up = 0.6;
+        let floor = giving_up * mean;
+        assert!((forage_gate(floor, mean, giving_up)).abs() < 1e-6);
+        assert!((forage_gate(floor - 0.1, mean, giving_up)).abs() < 1e-6);
+    }
+
+    // Gate is strictly bounded in [0, 1].
+    #[test]
+    fn forage_gate_bounded() {
+        for local in [0.0, 0.1, 0.3, 0.5, 0.7, 1.0] {
+            let g = forage_gate(local, 0.4, 0.6);
+            assert!((0.0..=1.0).contains(&g), "gate out of bounds: {g}");
+        }
+    }
+
+    // Gate is non-increasing as local_intake falls.
+    #[test]
+    fn forage_gate_monotone_decreasing_in_local_intake() {
+        let mean = 0.5;
+        let giving_up = 0.6;
+        let hi = forage_gate(0.5, mean, giving_up);
+        let mid = forage_gate(0.35, mean, giving_up);
+        let lo = forage_gate(0.1, mean, giving_up);
+        assert!(hi >= mid, "gate must not rise as local falls");
+        assert!(mid >= lo, "gate must not rise as local falls");
+    }
+
+    // Gate returns 1.0 when habitat_mean is zero (no signal → no suppression).
+    #[test]
+    fn forage_gate_is_one_when_mean_is_zero() {
+        assert!((forage_gate(0.0, 0.0, 0.6) - 1.0).abs() < 1e-6);
+        assert!((forage_gate(0.5, 0.0, 0.6) - 1.0).abs() < 1e-6);
+    }
+
+    // Gate returns 1.0 when habitat_mean is negative.
+    #[test]
+    fn forage_gate_is_one_when_mean_negative() {
+        assert!((forage_gate(0.0, -1.0, 0.6) - 1.0).abs() < 1e-6);
     }
 }

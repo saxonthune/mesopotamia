@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::events::{Event, EventKind, EventLog};
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams, Herds, LastDecision, Packs, Spawner};
+use super::components::{Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
 use super::ledger::EnergyFlows;
 
 const POOP_PER_GRAZE: f32 = 0.3;
@@ -38,15 +38,22 @@ pub(super) fn graze(
     params: Res<ElkParams>,
     mut elk: Query<&mut Elk>,
     mut flows: ResMut<EnergyFlows>,
+    mut habitat_intake: ResMut<HabitatIntake>,
 ) {
+    let alpha = params.intake_smoothing;
+    let mut sum = 0.0_f32;
+    let mut count = 0u32;
+
     for mut elk in &mut elk {
+        let intake_this_tick;
         if grid.shrubs(elk.cell) > 0.05 {
             // Shrubs first: a big, concentrated bite that strips the shrub and
             // pays more energy than grass — the reward for crossing dry ground.
             grid.eat_shrubs(elk.cell, params.shrub_bite);
             let before = elk.energy;
             elk.energy = (elk.energy + params.shrub_energy).min(1.0);
-            flows.intake += elk.energy - before;
+            intake_this_tick = elk.energy - before;
+            flows.intake += intake_this_tick;
             elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true;
         } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
@@ -57,13 +64,20 @@ pub(super) fn graze(
             grid.grow_grass(elk.cell, -bitten);
             let before = elk.energy;
             elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
-            flows.intake += elk.energy - before;
+            intake_this_tick = elk.energy - before;
+            flows.intake += intake_this_tick;
             elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true; // raise the beacon other elk forage toward
         } else {
+            intake_this_tick = 0.0;
             elk.grazing = false;
         }
+        elk.intake_rate = (1.0 - alpha) * elk.intake_rate + alpha * intake_this_tick;
+        sum += elk.intake_rate;
+        count += 1;
     }
+
+    habitat_intake.mean = if count > 0 { sum / count as f32 } else { 0.0 };
 }
 
 /// Counts down each pending meal; when one expires, drop poop at the elk's

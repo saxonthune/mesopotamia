@@ -28,6 +28,9 @@ pub struct Elk {
     /// Consecutive ticks spent at the far edge; once it crosses a threshold the
     /// elk has "left the map" and despawns.
     pub at_edge: u32,
+    /// Exponentially-weighted moving average of per-tick forage intake. Updated
+    /// in `graze`; read by `herd_move` to compute the patch-leaving gate.
+    pub intake_rate: f32,
 }
 
 /// The decision record written by `herd_move` each tick. Present on every elk;
@@ -118,6 +121,12 @@ pub struct ElkParams {
     pub swim_drain: f32,     // energy drained when entering deep non-ford water
     pub shrub_bite: f32,    // shrubs stripped per graze — a big bite
     pub shrub_energy: f32,  // energy from a shrub bite — concentrated forage
+    /// EWMA smoothing factor for per-elk intake rate (0 → frozen, 1 → instantaneous).
+    pub intake_smoothing: f32,
+    /// Ratio of habitat mean below which the patch-leaving gate fully closes.
+    pub giving_up: f32,
+    /// Migration amplification when the gate is fully closed: factor = 1 + leave_boost.
+    pub leave_boost: f32,
 }
 
 /// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
@@ -167,6 +176,14 @@ impl ProbeSeed {
     }
 }
 
+/// Running habitat-average intake — the mean of all elk `intake_rate` values,
+/// recomputed each tick in `graze`. `herd_move` reads this to scale the patch-
+/// leaving gate: an elk with below-average local intake is nudged to leave.
+#[derive(Resource, Default)]
+pub struct HabitatIntake {
+    pub mean: f32,
+}
+
 impl Default for ElkParams {
     fn default() -> Self {
         Self {
@@ -203,6 +220,9 @@ impl Default for ElkParams {
             swim_drain: 0.01,
             shrub_bite: 0.34,
             shrub_energy: 0.05,
+            intake_smoothing: 0.05,
+            giving_up: 0.6,
+            leave_boost: 1.5,
         }
     }
 }

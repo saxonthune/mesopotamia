@@ -42,6 +42,7 @@ fn spawn_pack(commands: &mut Commands, rng: &mut impl Rng, slot: u8, code: u32, 
                 digesting: Vec::new(),
                 grazing: false,
                 at_edge: 0,
+                intake_rate: 0.0,
             },
             LastDecision(Decision::default()),
         ));

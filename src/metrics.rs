@@ -23,6 +23,7 @@ mod tests {
             digesting: vec![],
             grazing: false,
             at_edge: 0,
+            intake_rate: 0.0,
         }
     }
 

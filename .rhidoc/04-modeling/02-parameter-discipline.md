@@ -18,13 +18,16 @@ A tunable's absolute value carries no meaning on its own — behaviour is govern
 competing rates*. The model is read in dimensionless groups: a default is set by fixing a group
 to a sensible order-one value and back-solving the absolute parameter. The governing groups:
 
-- **regrowth ÷ drain** — whether a patch refills faster than a herd strips it. Above one the herd
-  can camp indefinitely; the pressure to move appears only as it falls toward one. (This is the
-  `regrowth_drain_ratio` the abundance readout plots.)
-- **intake-per-bite ÷ drain-per-tick** — how many ticks of metabolism one full bite buys; the
-  feeding regime's break-even (doc04.01).
-- **migration pull ÷ crossing cost** — whether fording is ever worth more than the water penalty.
+- **`bite_ratio` — intake-per-bite ÷ drain** (`bite * graze_yield / energy_drain`): how many
+  ticks of metabolism one full bite buys; the feeding regime's break-even (doc04.01). Slider
+  derives `ElkParams.graze_yield`.
+- **`regrow_ratio` — regrowth ÷ drain** (`intrinsic * MAX_GRASS * graze_yield / energy_drain`):
+  whether a patch refills faster than a herd strips it. Above one the herd can camp indefinitely;
+  the pressure to move appears only as it falls toward one. Slider derives `GrowthRate.intrinsic`.
+- **`cross_ratio` — migration ÷ crossing cost** (`migration / water_cost`): whether the fallback
+  migration pull ever overcomes the water penalty. Slider derives `ElkParams.migration`.
 - **perception radius ÷ feature size** — whether a herd can sense the far bank of a river at all.
+  Not yet exposed as a ratio slider (worldgen feature size is a required anchor).
 
 Tuning `graze_yield` or `water_cost` in isolation turns a magnitude; the regime is set by where
 these ratios land.

@@ -5,15 +5,17 @@ mod spawn;
 mod movement;
 mod metabolism;
 pub mod abundance;
+pub mod ratios;
 
-pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, Herds, LastDecision, Packs, Spawner};
+pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
+pub use ratios::RatioControls;
 // Used by sim_harness probe infrastructure; not imported by the main binary.
 #[allow(unused_imports)]
 pub use components::ProbeSeed;
 #[allow(unused_imports)]
 pub use ledger::{energy_expected_delta, energy_ledger_closes, population_balances, EnergyFlows};
 #[allow(unused_imports)]
-pub use movement::{cell_water_penalty, combine_drives, cross_desire, grass_gradient, migration_residual, step_water_penalty, Decomposable, Decision, Drives, StepEval};
+pub use movement::{cell_water_penalty, combine_drives, cross_desire, forage_gate, grass_gradient, migration_residual, step_water_penalty, Decomposable, Decision, Drives, StepEval};
 // Lifecycle constants the macro-sim harness asserts against — exported so the
 // tests read the single source of truth instead of mirroring magic numbers.
 #[allow(unused_imports)]
@@ -40,8 +42,10 @@ impl Plugin for ElkSimPlugin {
             .init_resource::<ElkParams>()
             .init_resource::<Herds>()
             .init_resource::<EnergyFlows>()
+            .init_resource::<HabitatIntake>()
             .init_resource::<abundance::AbundanceParams>()
-            .add_systems(Update, spawn::tally_herds)
+            .init_resource::<RatioControls>()
+            .add_systems(Update, (spawn::tally_herds, ratios::apply_ratios))
             .add_systems(OnExit(Sim::Running), spawn::teardown)
             .add_systems(
                 FixedUpdate,
