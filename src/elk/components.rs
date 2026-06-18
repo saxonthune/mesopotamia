@@ -102,6 +102,7 @@ pub struct ElkParams {
     pub social: f32,    // attraction toward elk seen grazing (local enhancement)
     pub migration: f32, // weight of the far-edge fallback pull
     pub quiet: f32,     // migration-residual crossover: natural_strength at half migration weight
+    pub cross: f32,     // hunger-scaled weight on the ford-toward-greener-far-bank incentive
     pub sep_radius: f32,
     pub coh_radius: f32,
     pub grass_radius: f32,
@@ -178,6 +179,7 @@ impl Default for ElkParams {
             // quiet = 2.0 sets the crossover there; balancing-param-sweep tunes both properly.
             migration: 0.7,
             quiet: 2.0,
+            cross: 1.0,
             sep_radius: 3.0,
             coh_radius: 9.0,
             grass_radius: 5.0,

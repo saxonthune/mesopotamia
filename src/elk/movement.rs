@@ -262,6 +262,12 @@ pub(super) fn herd_move(
         // Move drives into a local so it can be placed into the Decision record.
         let decision_drives = drives;
 
+        // Hunger sharpens the urge to ford (matches the appetite in combine_drives:
+        // a fed elk has no reason to risk the river), and the forage under the elk
+        // now is the baseline a crossing must beat.
+        let appetite = 0.25 + 0.75 * (1.0 - elk.energy);
+        let here_forage = grid.forage(elk.cell);
+
         // Score each valid step, then softmax for a weighted-random pick.
         let mut scores = [f32::NEG_INFINITY; 4];
         let mut cells: [Option<usize>; 4] = [None; 4];
@@ -277,7 +283,22 @@ pub(super) fn herd_move(
                     params.water_cost,
                     params.ford_discount,
                 );
-                scores[k] = desire.dot(Vec2::new(dx as f32, dy as f32)) - penalty;
+                let mut score = desire.dot(Vec2::new(dx as f32, dy as f32)) - penalty;
+                // Crossing incentive: when the step enters water, peek across for
+                // the far bank and add `cross_desire` — the forage gain over the
+                // best dry option, net of the whole span's cost. Scaled by hunger
+                // and the tunable `cross` weight, this is what lets a starving herd
+                // commit to a ford toward grass it cannot otherwise sense.
+                if grid.water(next) >= WATER_EPS {
+                    if let Some((across, span_cost)) = forage_across(
+                        &grid, elk.cell, dx, dy, params.water_cost, params.ford_discount, MAX_PEEK,
+                    ) {
+                        let ahead = grid.forage(next);
+                        let incentive = cross_desire(here_forage, ahead, across, span_cost).max(0.0);
+                        score += params.cross * appetite * incentive;
+                    }
+                }
+                scores[k] = score;
                 penalties[k] = penalty;
                 cells[k] = Some(next);
             }
@@ -383,9 +404,51 @@ pub(super) fn herd_move(
 /// extracted, testable kernel of the crossing decision the full softmax move expresses;
 /// the metamorphic tests below pin its behaviour, and the fording work in task
 /// `water-as-barrier-fords` consumes it directly.
-#[allow(dead_code)] // a verified behavioural spec, wired into movement in task B
 pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 {
     across - here.max(ahead) - cross_cost
+}
+
+/// A water step entering a cell with at least this water level engages the
+/// crossing incentive; below it the step is dry land and scored normally.
+const WATER_EPS: f32 = 0.01;
+
+/// How far across a water span an elk looks for the far bank. Bounds the peek so
+/// a step parallel to a long river (which never reaches dry land) stops cheaply.
+const MAX_PEEK: usize = 12;
+
+/// Look across a water span for the far bank `cross_desire` would aim at. Walks
+/// from `cell` in `(dx, dy)`, summing the per-cell crossing penalty over the
+/// contiguous water, and returns `(far_bank_forage, span_cost)` at the first dry
+/// cell reached within `max_peek` steps. `None` when the step does not enter
+/// water, the water never ends within reach, or the path runs off the grid.
+///
+/// This is what lets a hungry herd "see" greener ground beyond a river it cannot
+/// otherwise perceive (the far bank sits past the grass-gradient radius), so the
+/// barrier becomes a decision instead of a wall.
+pub fn forage_across(
+    grid: &Grid,
+    cell: usize,
+    dx: isize,
+    dy: isize,
+    water_cost: f32,
+    ford_discount: f32,
+    max_peek: usize,
+) -> Option<(f32, f32)> {
+    let mut span_cost = 0.0;
+    let mut at = cell;
+    let mut crossed_water = false;
+    for _ in 0..max_peek {
+        let next = grid.step(at, dx, dy)?;
+        let water = grid.water(next);
+        if water < WATER_EPS {
+            // Dry cell: the far bank — but only if we actually crossed water.
+            return crossed_water.then(|| (grid.forage(next), span_cost));
+        }
+        span_cost += step_water_penalty(water, grid.is_ford(next), water_cost, ford_discount);
+        crossed_water = true;
+        at = next;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -744,5 +807,52 @@ mod tests {
     #[test]
     fn costlier_crossing_never_raises_cross_desire() {
         assert!(cross_desire(0.1, 0.1, 0.9, 0.5) <= cross_desire(0.1, 0.1, 0.9, 0.1));
+    }
+
+    // ── forage_across ─────────────────────────────────────────────────────────
+
+    /// A row world: dry start (0), two water cells (1,2), dry far bank (3) with grass.
+    fn river_row() -> Grid {
+        let mut grid = Grid::new(6, 1);
+        grid.set_water(1, 1.0);
+        grid.set_water(2, 1.0);
+        grid.set_grass(3, 0.5);
+        grid
+    }
+
+    #[test]
+    fn forage_across_finds_far_bank_and_sums_span_cost() {
+        let grid = river_row();
+        // Two non-ford water cells at water_cost 2.0 ⇒ span cost 4.0; far bank forage 0.5.
+        let (across, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
+        assert!((across - 0.5).abs() < 1e-6);
+        assert!((cost - 4.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn forage_across_is_none_when_step_is_dry() {
+        // Stepping the other way (−x off cell 0) and into dry land yields no crossing.
+        let mut grid = Grid::new(6, 1);
+        grid.set_grass(1, 0.5); // dry neighbour to the +x side
+        assert!(forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).is_none());
+    }
+
+    #[test]
+    fn forage_across_is_none_when_far_bank_out_of_reach() {
+        let mut grid = Grid::new(6, 1);
+        for i in 1..6 {
+            grid.set_water(i, 1.0); // water all the way to the edge — no far bank
+        }
+        assert!(forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).is_none());
+    }
+
+    #[test]
+    fn forage_across_charges_less_over_a_ford() {
+        let mut grid = river_row();
+        grid.set_ford(1, true);
+        grid.set_ford(2, true);
+        // ford_discount 0.1 ⇒ each water cell costs 0.2 instead of 2.0.
+        let (_, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
+        assert!((cost - 0.4).abs() < 1e-6, "ford span should cost 2×0.2 = 0.4, got {cost}");
     }
 }

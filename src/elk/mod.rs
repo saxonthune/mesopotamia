@@ -4,6 +4,7 @@ mod ledger;
 mod spawn;
 mod movement;
 mod metabolism;
+pub mod abundance;
 
 pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, Herds, LastDecision, Packs, Spawner};
 // Used by sim_harness probe infrastructure; not imported by the main binary.
@@ -39,6 +40,7 @@ impl Plugin for ElkSimPlugin {
             .init_resource::<ElkParams>()
             .init_resource::<Herds>()
             .init_resource::<EnergyFlows>()
+            .init_resource::<abundance::AbundanceParams>()
             .add_systems(Update, spawn::tally_herds)
             .add_systems(OnExit(Sim::Running), spawn::teardown)
             .add_systems(

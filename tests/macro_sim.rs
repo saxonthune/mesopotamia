@@ -99,7 +99,6 @@ fn grass_never_fully_collapses() {
 // ── Invariant 3: herds actually cross the map ──
 
 #[test]
-#[ignore = "herd far-edge traversal regressed (max_col ~87 vs target 246); disabled pending macro-balance retune"]
 fn herds_reach_the_far_edge() {
     // The herd migrates +x across the whole width, fording the rivers on the way,
     // so the time to traverse scales with GRID_WIDTH (and the crossings add slack).

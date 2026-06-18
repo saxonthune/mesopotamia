@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
+use crate::elk::abundance::AbundanceParams;
 use crate::elk::{Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples};
 use crate::events::EventLog;
 use crate::grid::{Fertility, Grid, GrowthRate};
@@ -74,16 +75,18 @@ enum Tab {
 enum Graph {
     Biomass,
     Histogram,
+    Abundance,
 }
 
 impl Graph {
-    const ALL: [Graph; 2] = [Graph::Biomass, Graph::Histogram];
+    const ALL: [Graph; 3] = [Graph::Biomass, Graph::Histogram, Graph::Abundance];
 
     /// The toggle-button label.
     fn label(self) -> &'static str {
         match self {
             Graph::Biomass => "biomass",
             Graph::Histogram => "histogram",
+            Graph::Abundance => "abundance",
         }
     }
 }
@@ -193,14 +196,17 @@ fn render_pie(ui: &mut egui::Ui, slices: &[(&str, f32, egui::Color32)]) {
         start += sweep;
     }
 
-    // Legend
-    for &(label, _, color) in slices {
-        ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 0.0, color);
-            ui.label(label);
-        });
-    }
+    // Legend: unlabelled colour swatches in a row. Each explains itself on hover
+    // (product rule: no labels, tooltips when feasible) so the panel stays quiet
+    // until the viewer asks what a slice means.
+    ui.horizontal(|ui| {
+        for &(explain, value, color) in slices {
+            let (rect, resp) =
+                ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
+            ui.painter().rect_filled(rect, 2.0, color);
+            resp.on_hover_text(format!("{explain}\n(weight {value:.2})"));
+        }
+    });
 }
 
 /// One self-contained control group: a heading and an ordered list of items.
@@ -279,19 +285,17 @@ fn graphs_bar(
         });
     });
 
-    // Biomass-type graphs: live in their own floating windows.
+    // Time-series graphs: live in their own floating windows.
     for g in Graph::ALL {
-        if state.visible.contains(&g) {
-            if let Graph::Biomass = g {
-                egui::Window::new(g.label())
-                    .default_size([360.0, 200.0])
-                    // The top-bar toggle already shows/hides the graph, so the
-                    // window's own collapse arrow is redundant.
-                    .collapsible(false)
-                    .show(ctx, |ui| {
-                        render_plot(ui, graph_plot(g, &history, ui.available_height()));
-                    });
-            }
+        if state.visible.contains(&g) && matches!(g, Graph::Biomass | Graph::Abundance) {
+            egui::Window::new(g.label())
+                .default_size([360.0, 200.0])
+                // The top-bar toggle already shows/hides the graph, so the
+                // window's own collapse arrow is redundant.
+                .collapsible(false)
+                .show(ctx, |ui| {
+                    render_plot(ui, graph_plot(g, &history, ui.available_height()));
+                });
         }
     }
 
@@ -336,6 +340,17 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
             series: vec![
                 ("grass", &history.grass_mass),
                 ("shrubs", &history.shrub_mass),
+            ],
+        },
+        // Forage-per-elk and the regrowth÷drain ratio over time. When the ratio
+        // line sits above 1, herds' patches refill faster than they graze them —
+        // the quantitative reason they camp instead of migrating.
+        Graph::Abundance => PlotSpec {
+            id: "abundance",
+            height,
+            series: vec![
+                ("forage/elk", &history.abundance_per_elk),
+                ("regrowth÷drain", &history.regrowth_drain_ratio),
             ],
         },
         Graph::Histogram => unreachable!("Histogram is rendered by render_histogram, not graph_plot"),
@@ -415,6 +430,7 @@ fn control_panel(
     mut elk_params: ResMut<ElkParams>,
     mut growth: ResMut<GrowthRate>,
     mut fertility: ResMut<Fertility>,
+    mut ab_params: ResMut<AbundanceParams>,
     mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
     mut world_seed: ResMut<crate::worldgen::WorldSeed>,
@@ -451,6 +467,7 @@ fn control_panel(
                     Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut())),
                     // Behaviour carries the most rows, so give it a wider column.
                     Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut())))]).width(300.0),
+                    Panel::new("Abundance (measure)", abundance_items(ab_params.as_mut())),
                     Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                 ]),
                 Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history, &drive_samples, &last_decisions),
@@ -543,6 +560,18 @@ const DRIVE_COLORS: [egui::Color32; 5] = [
     egui::Color32::from_rgb(180, 60, 80),   // migration — crimson
 ];
 
+/// Plain-language explanation per drive, in the same order as `DRIVE_COLORS` and
+/// `Drives::contributions`. Shown on hover rather than as a label — the panel
+/// stays unlabelled and explains itself when asked (product rule: no labels,
+/// tooltips when feasible).
+const DRIVE_EXPLAIN: [&str; 5] = [
+    "Separation — spacing out so the herd doesn't pile onto one cell",
+    "Cohesion — drifting back toward packmates",
+    "Forage — pull up the grass/shrub gradient toward food",
+    "Foraging cue — drawn toward others already grazing",
+    "Migration — the slow push toward the far side of the map",
+];
+
 fn herd_details(
     ui: &mut egui::Ui,
     code: u32,
@@ -569,14 +598,13 @@ fn herd_details(
     // Drive-split pie for this herd's slot.
     let slot = co.slot as usize;
     if let Some(ds) = drive_samples.per_slot.get(slot) {
-        let pie_slices = vec![
-            ("sep",       ds.sep,       DRIVE_COLORS[0]),
-            ("coh",       ds.coh,       DRIVE_COLORS[1]),
-            ("grass",     ds.grass,     DRIVE_COLORS[2]),
-            ("social",    ds.social,    DRIVE_COLORS[3]),
-            ("migration", ds.migration, DRIVE_COLORS[4]),
-        ];
-        ui.label("drive split (this tick)");
+        let mags = [ds.sep, ds.coh, ds.grass, ds.social, ds.migration];
+        let pie_slices: Vec<(&str, f32, egui::Color32)> = DRIVE_EXPLAIN
+            .iter()
+            .zip(mags)
+            .zip(DRIVE_COLORS)
+            .map(|((&explain, mag), color)| (explain, mag, color))
+            .collect();
         render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
     }
 
@@ -611,32 +639,54 @@ fn herd_details(
     }
 }
 
+/// Compass glyph for a unit step in grid space (world +y is up, so +row points up).
+fn step_arrow(step: (isize, isize)) -> &'static str {
+    match step {
+        (1, 0) => "→",
+        (-1, 0) => "←",
+        (0, 1) => "↑",
+        (0, -1) => "↓",
+        _ => "•",
+    }
+}
+
 fn elk_decision_panel(ui: &mut egui::Ui, decision: &Decision) {
     ui.label("selected elk — last decision");
 
-    // Drive decomposition pie using Decomposable.
+    // Drive decomposition: the same hover-to-explain colour swatches as the herd
+    // pie. `contributions` is in DRIVE_COLORS/DRIVE_EXPLAIN order.
     let contributions = decision.drives.contributions();
     let pie_slices: Vec<(&str, f32, egui::Color32)> = contributions
         .iter()
-        .zip(DRIVE_COLORS.iter())
-        .map(|((label, vec), &color)| (*label, vec.length(), color))
+        .zip(DRIVE_EXPLAIN)
+        .zip(DRIVE_COLORS)
+        .map(|(((_, vec), explain), color)| (explain, vec.length(), color))
         .collect();
-    ui.label("drive decomposition");
     render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
 
-    // Step eval table.
+    // Step options as direction arrows — the chosen one tinted, the rest dimmed.
+    // Hover any arrow for its score / water penalty / pick chance, so there are no
+    // coordinate tuples or column headers to decode.
     let total_weight: f32 = decision.options.iter().map(|e| e.weight).sum();
-    ui.label(format!("step options (temperature {:.2}):", decision.temperature));
     if decision.options.is_empty() {
-        ui.weak("hemmed in — no valid steps");
-    }
-    for (idx, eval) in decision.options.iter().enumerate() {
-        let prob = if total_weight > 1e-6 { eval.weight / total_weight } else { 0.0 };
-        let marker = if decision.chosen == Some(idx) { "→" } else { "  " };
-        ui.label(format!(
-            "{marker} ({:+},{:+})  score {:.2}  penalty {:.2}  prob {:.0}%",
-            eval.step.0, eval.step.1, eval.score, eval.penalty, prob * 100.0
-        ));
+        ui.weak("hemmed in — nowhere to step");
+    } else {
+        ui.horizontal(|ui| {
+            for (idx, eval) in decision.options.iter().enumerate() {
+                let prob = if total_weight > 1e-6 { eval.weight / total_weight } else { 0.0 };
+                let chosen = decision.chosen == Some(idx);
+                let mut text = egui::RichText::new(step_arrow(eval.step)).size(20.0);
+                text = if chosen {
+                    text.strong().color(egui::Color32::from_rgb(120, 200, 120))
+                } else {
+                    text.weak()
+                };
+                ui.label(text).on_hover_text(format!(
+                    "score {:.2} · water penalty {:.2} · pick chance {:.0}%",
+                    eval.score, eval.penalty, prob * 100.0
+                ));
+            }
+        });
     }
 }
 
@@ -770,6 +820,15 @@ fn grass_items<'a>(growth: &'a mut GrowthRate, fertility: &'a mut Fertility) -> 
     ]
 }
 
+/// Sliders for the herd-abundance measurement. Pure view state — these only
+/// reshape the `abundance` graph, never the simulation.
+fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
+    vec![
+        Item::Slider { value: &mut p.radius, range: 1.0..=20.0, label: "nearby radius (cells)" },
+        Item::Slider { value: &mut p.energy_weight, range: 0.0..=1.0, label: "grass ↔ energy weight" },
+    ]
+}
+
 fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {
     ui.label("drive weights");
     slider(ui, &mut p.separation, 0.0..=3.0, "separation");
@@ -778,6 +837,7 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams) {
     slider(ui, &mut p.social, 0.0..=3.0, "social foraging");
     slider(ui, &mut p.migration, 0.0..=2.0, "migration (fallback)");
     slider(ui, &mut p.quiet, 0.05..=3.0, "migration crossover (quiet)");
+    slider(ui, &mut p.cross, 0.0..=4.0, "water crossing (× hunger)");
     ui.separator();
     ui.label("perception (cells)");
     slider(ui, &mut p.sep_radius, 1.0..=10.0, "separation radius");
