@@ -333,8 +333,12 @@ mod tests {
     /// Assert that lakes add full-depth standing water beyond what channels alone produce.
     #[test]
     fn lakes_are_seeded() {
-        let spec_with = RiverSpec::default(); // lake_count = 3
-        let spec_none = RiverSpec { lake_count: 0, ..RiverSpec::default() };
+        let spec_with = RiverSpec::default(); // big_lake_count = 3, minor_lake_count = 3
+        let spec_none = RiverSpec {
+            big_lake_count: 0,
+            minor_lake_count: 0,
+            ..RiverSpec::default()
+        };
 
         let mut g_with = Grid::new(128, 96);
         let mut g_none = Grid::new(128, 96);

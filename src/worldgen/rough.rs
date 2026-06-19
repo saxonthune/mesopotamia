@@ -8,14 +8,28 @@
 //! not in scope here. The per-cell decision is kept pure and small so the
 //! placement internals can be swapped later without disturbing the seam.
 
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
 use crate::field;
 use crate::grid::{Grid, MAX_ROUGH};
 
 const ROUGH_PASSES: usize = 5;
-const ROUGH_THRESHOLD: f32 = 0.6; // only the densest noise becomes a rough patch
+const ROUGH_THRESHOLD: f32 = 0.6; // only the ridge crests become a rough patch
+
+/// Horizontal:vertical correlation-length ratio of the noise feeding the rough
+/// mask. Above 1 the blur reaches further along x than y, so patches elongate
+/// into roughly horizontal strands instead of round blobs — the seed of the
+/// horizontal directional grain the methodology calls for.
+const ROUGH_ANISOTROPY: f32 = 5.0;
+
+/// Fold a normalized noise value into a ridge: filled blobs become thin connected
+/// crest lines. Symmetric tent peaking at 1 for `v == 0.5` and falling to 0 at
+/// `v ∈ {0, 1}`, so thresholding the result keeps only the crests — the
+/// blob-to-strand transform.
+fn ridged(v: f32) -> f32 {
+    1.0 - (2.0 * v - 1.0).abs()
+}
 
 /// Per-cell rough-terrain decision, extracted pure so the placement contract is
 /// pinned by tests rather than read off the screen.
@@ -40,12 +54,20 @@ fn rough_at(dryness: f32, noise: f32, water: f32, threshold: f32, max: f32) -> f
 /// from the master world seed.
 pub(super) fn seed_rough(grid: &mut Grid, rough_seed: u64) {
     let mut rng = StdRng::seed_from_u64(rough_seed);
-    let patch = field::normalize(&field::value_noise(
+    // Smooth the white noise anisotropically so features stretch horizontally,
+    // then fold through `ridged` to thin the elongated blobs into crest strands.
+    let white: Vec<f32> = (0..grid.width() * grid.height())
+        .map(|_| rng.random::<f32>())
+        .collect();
+    let noise = field::normalize(&field::smooth_anisotropic(
+        &white,
         grid.width(),
         grid.height(),
         ROUGH_PASSES,
-        &mut rng,
+        ROUGH_ANISOTROPY,
+        1.0,
     ));
+    let patch = field::normalize(&noise.iter().map(|&v| ridged(v)).collect::<Vec<_>>());
     for (i, &p) in patch.iter().enumerate() {
         // Dryness: far from water → 1, beside it → 0. Rough ground wants the steppe.
         let dryness = 1.0 - grid.water_prox(i);
@@ -68,6 +90,25 @@ mod tests {
     fn zero_below_threshold() {
         let n = ROUGH_THRESHOLD - 0.01;
         assert_eq!(rough_at(1.0, n, 0.0, ROUGH_THRESHOLD, MAX_ROUGH), 0.0);
+    }
+
+    #[test]
+    fn ridged_peaks_at_midpoint() {
+        assert!((ridged(0.5) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ridged_is_zero_at_extremes() {
+        assert!(ridged(0.0).abs() < 1e-6);
+        assert!(ridged(1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ridged_falls_off_either_side_of_the_crest() {
+        // Off the crest in both directions the value drops below the peak — the
+        // crest is a thin ridge, not a plateau.
+        assert!(ridged(0.3) < ridged(0.5));
+        assert!(ridged(0.7) < ridged(0.5));
     }
 
     #[test]

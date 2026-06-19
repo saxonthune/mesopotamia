@@ -66,13 +66,24 @@ pub struct RiverSpec {
     pub drift_spread: f32,
     /// Additive jitter on each river's bendiness (clamped to [0, 1]).
     pub bendiness_spread: f32,
-    /// Number of lakes, seated at blue-noise positions (Mitchell's best-candidate)
-    /// so they spread rather than clump.
-    pub lake_count: usize,
-    /// Base metaball kernel radius for each lake, in cells. The first kernel sits
+    /// Number of big lakes, seated at blue-noise positions (Mitchell's best-candidate)
+    /// among genuinely interior cells (high distance-to-water) so they pool in the
+    /// centers of the open spaces the rivers leave.
+    pub big_lake_count: usize,
+    /// Base metaball kernel radius for each big lake, in cells. The first kernel sits
     /// at the lake center with this radius; the summed metaball field, cut at
     /// `lake_iso`, is the basin footprint and its depth.
-    pub lake_radius: isize,
+    pub big_lake_radius: isize,
+    /// Number of minor scattered lakes, seated at blue-noise positions among all
+    /// lake sites (no interior requirement) and repelled by the big-lake centers.
+    pub minor_lake_count: usize,
+    /// Base metaball kernel radius for each minor lake, in cells — smaller than
+    /// `big_lake_radius` so minors read as small pools.
+    pub minor_lake_radius: isize,
+    /// Fraction of the max distance-to-water a cell must clear to be a big-lake
+    /// candidate (default 0.6): only cells deep in the open space between rivers
+    /// qualify, so big lakes sit at the interior peaks.
+    pub big_lake_dist_frac: f32,
     /// Max lobe count per lake (range `1..=lake_lobes_max`, biased low). 1 reads
     /// round; 2+ offset kernels read as a peanut or oblong bulge.
     pub lake_lobes_max: usize,
@@ -83,7 +94,8 @@ pub struct RiverSpec {
     /// hold no lake water, above it take a depth rising with the field.
     pub lake_iso: f32,
     /// Best-candidate sample count K: each lake after the first is the farthest of
-    /// `lake_samples` random candidates from the lakes already placed.
+    /// `lake_samples` random candidates from the lakes already placed. Shared across
+    /// both passes.
     pub lake_samples: usize,
     /// Confluence pairs `(child, parent)`: the child main merges into the parent
     /// instead of running to the bottom edge. Requires `parent < child` so the
@@ -115,8 +127,11 @@ impl Default for RiverSpec {
             riffle_passes: 6,
             drift_spread: 0.2,
             bendiness_spread: 0.2,
-            lake_count: 3,
-            lake_radius: 4,
+            big_lake_count: 3,
+            big_lake_radius: 5,
+            minor_lake_count: 3,
+            minor_lake_radius: 2,
+            big_lake_dist_frac: 0.6,
             lake_lobes_max: 3,
             lake_offset: 4.0,
             lake_iso: 0.5,

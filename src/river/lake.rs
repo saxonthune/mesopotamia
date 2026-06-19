@@ -1,9 +1,15 @@
-//! Lakes as a real algorithm: blue-noise positions via Mitchell's best-candidate
-//! so they spread rather than clump, and metaball footprints (summed radial
-//! kernels cut at an iso-level) so each basin is filled-in but varied — round,
-//! peanut, or oblong bulge — never a stamped circle. The summed field doubles as
-//! depth: deepest at the kernels, shallow at the rim. Pure placement and shape
-//! functions are tested below; `generate_lakes` wires them to the grid.
+//! Lakes as a real algorithm, in two passes: a few BIG lakes pooled at the
+//! interior peaks of the open spaces the rivers leave (cells with the highest
+//! distance-to-water), then a couple of MINOR lakes scattered anywhere and
+//! repelled by the big ones. Both passes seat blue-noise positions via Mitchell's
+//! best-candidate so lakes spread rather than clump, and stamp metaball footprints
+//! (summed radial kernels cut at an iso-level) so each basin is filled-in but
+//! varied — round, peanut, or oblong bulge — never a stamped circle. The summed
+//! field doubles as depth: deepest at the kernels, shallow at the rim. Pure
+//! placement, distance, and shape functions are tested below; `generate_lakes`
+//! wires them to the grid.
+
+use std::collections::VecDeque;
 
 use rand::Rng;
 use rand::rngs::StdRng;
@@ -17,6 +23,11 @@ use super::spec::RiverSpec;
 /// draws no entropy from the shared oxbow/tributary stream — those stay
 /// byte-identical regardless of lake knobs.
 const LAKE_SALT: u64 = 0x1A4E;
+
+/// Per-pass child-seed salts, so the two passes' per-lake shape RNGs never
+/// collide even when a big lake and a minor lake share a lake index.
+const BIG_SALT: u64 = 0xB16;
+const MINOR_SALT: u64 = 0x5A11;
 
 const NEIGHBORS: [(i32, i32); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
 
@@ -33,16 +44,53 @@ fn is_lake_site(grid: &Grid, i: usize) -> bool {
         })
 }
 
+/// Uncapped graph distance to the nearest water cell, for every cell, via a
+/// multi-source BFS seeded from all `water(i) > 0.0` cells (4-connectivity).
+/// Mirrors `prox::compute_water_prox` but WITHOUT the reach cap: the raw ring
+/// distance survives, so high values mark cells deep in the open space between
+/// rivers. A cell adjacent to water is 1; a cell with no water anywhere stays
+/// `u32::MAX`. The "center of the open spaces" signal pass 1 keys off.
+fn dist_to_water(grid: &Grid) -> Vec<u32> {
+    let len = grid.len();
+    let mut dist = vec![u32::MAX; len];
+    let mut queue = VecDeque::new();
+
+    for (i, d) in dist.iter_mut().enumerate() {
+        if grid.water(i) > 0.0 {
+            *d = 0;
+            queue.push_back(i);
+        }
+    }
+
+    while let Some(index) = queue.pop_front() {
+        let d = dist[index];
+        for &(dx, dy) in NEIGHBORS.iter() {
+            if let Some(n) = grid.step(index, dx as isize, dy as isize)
+                && dist[n] == u32::MAX
+            {
+                dist[n] = d + 1;
+                queue.push_back(n);
+            }
+        }
+    }
+    dist
+}
+
 /// Mitchell's best-candidate: pick `count` cells from `candidates` so they spread
-/// with blue-noise spacing. The first is a random candidate; each subsequent pick
-/// draws `samples` random candidates and keeps the one whose nearest already-placed
-/// lake is farthest (Euclidean on `(col, row)`, `col = i % width`). Each pick is
-/// thus repelled by the lakes already down. Returns the chosen center indices.
+/// with blue-noise spacing, repelled by both each other AND the `preseed`
+/// repellers (already-placed centers from an earlier pass). Each pick draws
+/// `samples` random candidates and keeps the one whose nearest already-placed-or-
+/// preseeded center is farthest (Euclidean on `(col, row)`, `col = i % width`).
+/// With an empty `preseed` the first pick is a single random candidate (the
+/// original blue-noise seed); with a non-empty `preseed` even the first pick is
+/// repelled, so a minor lake never lands on a big lake. Returns only the newly
+/// chosen center indices (not the preseed).
 fn lake_positions(
     candidates: &[usize],
     count: usize,
     samples: usize,
     width: usize,
+    preseed: &[usize],
     rng: &mut StdRng,
 ) -> Vec<usize> {
     if candidates.is_empty() || count == 0 {
@@ -50,24 +98,32 @@ fn lake_positions(
     }
     let coords = |i: usize| ((i % width) as f32, (i / width) as f32);
 
+    // Nearest squared distance from `cand` to any repeller (preseed + chosen).
+    let repels = |chosen: &[usize], cand: usize| -> f32 {
+        let (cx, cy) = coords(cand);
+        preseed
+            .iter()
+            .chain(chosen.iter())
+            .map(|&p| {
+                let (px, py) = coords(p);
+                let (dx, dy) = (cx - px, cy - py);
+                dx * dx + dy * dy
+            })
+            .fold(f32::INFINITY, f32::min)
+    };
+
     let mut chosen: Vec<usize> = Vec::with_capacity(count.min(candidates.len()));
-    let first = candidates[rng.random_range(0..candidates.len())];
-    chosen.push(first);
+    if preseed.is_empty() {
+        // No repellers yet: seed with a single random candidate.
+        chosen.push(candidates[rng.random_range(0..candidates.len())]);
+    }
 
     while chosen.len() < count.min(candidates.len()) {
         let mut best = candidates[0];
         let mut best_dist = -1.0f32;
         for _ in 0..samples.max(1) {
             let cand = candidates[rng.random_range(0..candidates.len())];
-            let (cx, cy) = coords(cand);
-            let min_dist = chosen
-                .iter()
-                .map(|&p| {
-                    let (px, py) = coords(p);
-                    let (dx, dy) = (cx - px, cy - py);
-                    dx * dx + dy * dy
-                })
-                .fold(f32::INFINITY, f32::min);
+            let min_dist = repels(&chosen, cand);
             if min_dist > best_dist {
                 best_dist = min_dist;
                 best = cand;
@@ -140,22 +196,21 @@ fn lake_kernels(
     kernels
 }
 
-/// Place all lakes: pick spaced centers (best-candidate) and stamp a metaball
-/// basin at each (summed kernels cut at `lake_iso`, the field doubling as depth).
-/// Builds its own dedicated lake RNG from `spec.seed`, so it draws nothing from
-/// the shared oxbow/tributary stream. Lakes max-merge with existing water, so
-/// they never erase deeper river water and merge cleanly where they touch.
-pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
-    if spec.lake_count == 0 {
-        return;
-    }
+/// Stamp one set of lake centers onto the grid: a metaball basin at each (summed
+/// kernels cut at `lake_iso`, the field doubling as depth), max-merging with
+/// existing water so deeper river water is never erased. `base_radius` and
+/// `lobes_max` are the per-pass shape knobs; `salt` separates each pass's per-lake
+/// child seeds so their shapes are independent and the world stays a pure function
+/// of the spec.
+fn stamp_lakes(
+    grid: &mut Grid,
+    centers: &[usize],
+    spec: &RiverSpec,
+    base_radius: f32,
+    lobes_max: usize,
+    salt: u64,
+) {
     let width = grid.width();
-    let mut rng = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT);
-
-    let candidates: Vec<usize> = (0..grid.len()).filter(|&i| is_lake_site(grid, i)).collect();
-    let centers = lake_positions(&candidates, spec.lake_count, spec.lake_samples, width, &mut rng);
-
-    let base_radius = spec.lake_radius as f32;
     // Bounding-box reach: a kernel center can sit `lake_offset` cells out, and its
     // jittered radius reaches up to 1.2× the base, so paint that far around center.
     let reach = (spec.lake_offset + base_radius * 1.2).ceil() as isize;
@@ -164,13 +219,14 @@ pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
         let center_col = (center % width) as f32;
         let center_row = (center / width) as f32;
         // Per-lake child RNG so each lake's shape is independently pinnable.
-        let mut child = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT ^ ((li as u64 + 1) << 24));
+        let mut child =
+            StdRng::seed_from_u64(spec.seed ^ LAKE_SALT ^ salt ^ ((li as u64 + 1) << 24));
         let kernels = lake_kernels(
             center_col,
             center_row,
             base_radius,
             spec.lake_offset,
-            spec.lake_lobes_max,
+            lobes_max,
             &mut child,
         );
 
@@ -190,9 +246,130 @@ pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
     }
 }
 
+/// Place all lakes in two passes. Pass 1: a few BIG lakes at the interior peaks —
+/// best-candidate over the lake sites whose distance-to-water clears
+/// `big_lake_dist_frac * max_distance`, stamped at `big_lake_radius`. Pass 2: a
+/// couple of MINOR scattered lakes — best-candidate over all lake sites, with the
+/// big-lake centers pre-seeded as repellers so minors avoid them, stamped at the
+/// smaller `minor_lake_radius` with a low lobe cap. Both passes draw from one
+/// dedicated lake RNG (`spec.seed ^ LAKE_SALT`), pass 1 fully then pass 2, so lake
+/// placement draws no entropy from the shared oxbow/tributary stream and stays a
+/// pure function of the spec. Lakes max-merge with existing water.
+pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
+    if spec.big_lake_count == 0 && spec.minor_lake_count == 0 {
+        return;
+    }
+    let width = grid.width();
+    let mut rng = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT);
+
+    let sites: Vec<usize> = (0..grid.len()).filter(|&i| is_lake_site(grid, i)).collect();
+
+    // Distance-to-water: high = deep in the open space the rivers leave.
+    let dist = dist_to_water(grid);
+    // Max over reachable sites (ignore u32::MAX islands with no water at all).
+    let max_dist = sites
+        .iter()
+        .map(|&i| dist[i])
+        .filter(|&d| d != u32::MAX)
+        .max()
+        .unwrap_or(0);
+    let threshold = (spec.big_lake_dist_frac * max_dist as f32).ceil() as u32;
+
+    // Pass 1 — big lakes at the interior peaks.
+    let interior: Vec<usize> = sites
+        .iter()
+        .copied()
+        .filter(|&i| dist[i] != u32::MAX && dist[i] >= threshold)
+        .collect();
+    let big_centers = lake_positions(
+        &interior,
+        spec.big_lake_count,
+        spec.lake_samples,
+        width,
+        &[],
+        &mut rng,
+    );
+    stamp_lakes(
+        grid,
+        &big_centers,
+        spec,
+        spec.big_lake_radius as f32,
+        spec.lake_lobes_max,
+        BIG_SALT,
+    );
+
+    // Pass 2 — minor scattered lakes, repelled by the big lakes and each other.
+    let minor_centers = lake_positions(
+        &sites,
+        spec.minor_lake_count,
+        spec.lake_samples,
+        width,
+        &big_centers,
+        &mut rng,
+    );
+    let minor_lobes = 2.min(spec.lake_lobes_max);
+    stamp_lakes(
+        grid,
+        &minor_centers,
+        spec,
+        spec.minor_lake_radius as f32,
+        minor_lobes,
+        MINOR_SALT,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build a grid with a single column of water down the middle, so the
+    /// distance-to-water field has a clean known structure for the BFS tests.
+    fn grid_with_center_water(width: usize, height: usize) -> Grid {
+        let mut g = Grid::new(width, height);
+        let mid = width / 2;
+        for row in 0..height {
+            g.set_water(row * width + mid, 1.0);
+        }
+        g
+    }
+
+    #[test]
+    fn dist_to_water_adjacency_is_one() {
+        let width = 16usize;
+        let height = 8usize;
+        let g = grid_with_center_water(width, height);
+        let dist = dist_to_water(&g);
+        let mid = width / 2;
+        // A cell directly beside the water column is distance 1.
+        let beside = 3 * width + (mid - 1);
+        assert_eq!(dist[beside], 1, "cell adjacent to water should be 1");
+        // The water cell itself is 0.
+        assert_eq!(dist[3 * width + mid], 0, "water cell is distance 0");
+    }
+
+    #[test]
+    fn dist_to_water_interior_is_larger() {
+        let width = 16usize;
+        let height = 8usize;
+        let g = grid_with_center_water(width, height);
+        let dist = dist_to_water(&g);
+        let mid = width / 2;
+        let beside = 3 * width + (mid - 1);
+        // A cell at the far edge sits deeper in the open space.
+        let far = 3 * width; // column 0
+        assert!(
+            dist[far] > dist[beside],
+            "interior cell {} (d={}) should exceed adjacency {} (d={})",
+            far, dist[far], beside, dist[beside]
+        );
+        assert_eq!(dist[far], mid as u32, "column 0 is `mid` steps from center water");
+    }
+
+    #[test]
+    fn dist_to_water_is_deterministic() {
+        let g = grid_with_center_water(16, 8);
+        assert_eq!(dist_to_water(&g), dist_to_water(&g), "BFS must be deterministic");
+    }
 
     #[test]
     fn lake_positions_are_spaced() {
@@ -202,7 +379,7 @@ mod tests {
         let candidates: Vec<usize> = (0..width * height).collect();
         let mut rng = StdRng::seed_from_u64(42);
         let count = 8;
-        let positions = lake_positions(&candidates, count, 16, width, &mut rng);
+        let positions = lake_positions(&candidates, count, 16, width, &[], &mut rng);
 
         assert_eq!(positions.len(), count, "should return `count` positions");
 
@@ -223,6 +400,78 @@ mod tests {
             min_pair > 8.0,
             "lakes should be blue-noise spaced; min pairwise distance was {min_pair}"
         );
+    }
+
+    #[test]
+    fn lake_positions_avoid_preseed() {
+        // Preseed a repeller in one corner; chosen centers should avoid it.
+        let width = 64usize;
+        let height = 64usize;
+        let candidates: Vec<usize> = (0..width * height).collect();
+        let preseed = vec![0usize]; // top-left corner
+        let mut rng = StdRng::seed_from_u64(7);
+        let positions = lake_positions(&candidates, 4, 32, width, &preseed, &mut rng);
+        let coords = |i: usize| ((i % width) as f32, (i / width) as f32);
+        for &p in &positions {
+            let (px, py) = coords(p);
+            let d = (px * px + py * py).sqrt();
+            assert!(
+                d > 8.0,
+                "minor lake at ({px},{py}) landed on the preseeded repeller corner (d={d})"
+            );
+        }
+    }
+
+    #[test]
+    fn big_lakes_are_interior() {
+        // Derive the two-pass placement on a real pre-lake water field (lakes
+        // disabled), exactly as `generate_lakes` does, then assert the big lakes
+        // clear the interior threshold and sit deeper than the minors.
+        use crate::river::{generate_water, RiverSpec};
+        let spec = RiverSpec::default();
+        let no_lake = RiverSpec { big_lake_count: 0, minor_lake_count: 0, ..RiverSpec::default() };
+        let mut g0 = Grid::new(128, 96);
+        generate_water(&mut g0, &no_lake);
+
+        let width = g0.width();
+        let sites0: Vec<usize> = (0..g0.len()).filter(|&i| is_lake_site(&g0, i)).collect();
+        let dist = dist_to_water(&g0);
+        let max_dist = sites0
+            .iter()
+            .map(|&i| dist[i])
+            .filter(|&d| d != u32::MAX)
+            .max()
+            .unwrap_or(0);
+        let threshold = (spec.big_lake_dist_frac * max_dist as f32).ceil() as u32;
+
+        let mut rng = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT);
+        let interior: Vec<usize> = sites0
+            .iter()
+            .copied()
+            .filter(|&i| dist[i] != u32::MAX && dist[i] >= threshold)
+            .collect();
+        let big = lake_positions(&interior, spec.big_lake_count, spec.lake_samples, width, &[], &mut rng);
+        let minor = lake_positions(&sites0, spec.minor_lake_count, spec.lake_samples, width, &big, &mut rng);
+
+        assert!(!big.is_empty(), "expected big-lake centers");
+        // Every big-lake center clears the interior threshold.
+        for &c in &big {
+            assert!(
+                dist[c] >= threshold,
+                "big lake at {c} (d={}) below interior threshold {threshold}",
+                dist[c]
+            );
+        }
+        // Bigs sit deeper than the minors' mean distance-to-water.
+        if !minor.is_empty() {
+            let big_mean: f32 = big.iter().map(|&c| dist[c] as f32).sum::<f32>() / big.len() as f32;
+            let minor_mean: f32 =
+                minor.iter().map(|&c| dist[c] as f32).sum::<f32>() / minor.len() as f32;
+            assert!(
+                big_mean > minor_mean,
+                "big lakes ({big_mean}) should sit deeper than minors ({minor_mean})"
+            );
+        }
     }
 
     #[test]

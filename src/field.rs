@@ -56,6 +56,40 @@ pub fn smooth(field: &[f32], width: usize, height: usize, passes: usize) -> Vec<
     cur
 }
 
+/// Direction-weighted box-blur: like [`smooth`], but each neighbour is averaged
+/// in with a weight set by its axis, so the field can spread further along one
+/// axis than the other. `wx`/`wy` are the horizontal/vertical neighbour weights
+/// (the centre cell always carries weight 1). With `wx > wy` the correlation
+/// length grows longer horizontally than vertically, stretching round blobs into
+/// roughly horizontal strands. `wx == wy == 1` reproduces [`smooth`].
+pub fn smooth_anisotropic(
+    field: &[f32],
+    width: usize,
+    height: usize,
+    passes: usize,
+    wx: f32,
+    wy: f32,
+) -> Vec<f32> {
+    let mut cur = field.to_vec();
+    for _ in 0..passes {
+        let mut next = cur.clone();
+        for i in 0..cur.len() {
+            let mut sum = cur[i];
+            let mut count = 1.0;
+            for (dx, dy) in NEIGHBORS {
+                if let Some(n) = step(i, dx, dy, width, height) {
+                    let w = if dx != 0 { wx } else { wy };
+                    sum += w * cur[n];
+                    count += w;
+                }
+            }
+            next[i] = sum / count;
+        }
+        cur = next;
+    }
+    cur
+}
+
 /// White noise smoothed into spatially-correlated value noise. Raw output sits in
 /// [0, 1] but bunches toward 0.5 as `passes` rises — `normalize` to restore contrast.
 pub fn value_noise(width: usize, height: usize, passes: usize, rng: &mut impl Rng) -> Vec<f32> {
@@ -144,5 +178,34 @@ mod tests {
     fn bare_field_with_no_floor_stays_bare() {
         let next = spread_grow(&[0.0; 4], &[1.0; 4], 2, 2, 0.0, 0.9);
         assert!(next.iter().all(|&v| v == 0.0));
+    }
+
+    // Equal weights collapse the anisotropic blur back onto the isotropic one.
+    #[test]
+    fn anisotropic_with_equal_weights_matches_smooth() {
+        let white: Vec<f32> = (0..36).map(|i| (i % 5) as f32 * 0.2).collect();
+        let iso = smooth(&white, 6, 6, 3);
+        let aniso = smooth_anisotropic(&white, 6, 6, 3, 1.0, 1.0);
+        assert!(iso.iter().zip(&aniso).all(|(a, b)| (a - b).abs() < 1e-6));
+    }
+
+    // Horizontal-leaning weights spread a point source further along x than y:
+    // after blurring a single spike, the horizontal neighbour carries more than
+    // the vertical one. This is the longer-horizontal-correlation the rough wisps
+    // need, asserted structurally on a known source.
+    #[test]
+    fn anisotropic_spreads_further_horizontally() {
+        const W: usize = 7;
+        const H: usize = 7;
+        let mut spike = vec![0.0; W * H];
+        let centre = (H / 2) * W + (W / 2);
+        spike[centre] = 1.0;
+        let out = smooth_anisotropic(&spike, W, H, 2, 4.0, 1.0);
+        let right = out[centre + 1];
+        let down = out[centre + W];
+        assert!(
+            right > down,
+            "horizontal neighbour ({right}) should carry more than vertical ({down})"
+        );
     }
 }
