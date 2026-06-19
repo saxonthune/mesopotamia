@@ -34,7 +34,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 
 | doc01.00 | `00-index.md` |  |  | — | — | — |
 | doc01.01 | `01-exploratory.md` | Product vision — emergent agent-based simulation of ancient Mesopotamian debt and ecological cycles, the historical arc it dramatizes, and architecture/visualization directions | product, simulation, abm, history, vision | — | doc01.02.01.00, doc01.03, doc03.01.00, doc03.01.01 | — |
-| doc01.03 | `03-unfolding-and-co-evolution.md` | The artifact's two generative processes — a backtrack-free unfolding that builds the world, and a dialectical loop where actors and environment co-determine each other until quantitative accumulation crosses into qualitative change — and the seam between them | product, generation, worldgen, dialectics, emergence, loop-vs-accumulator, philosophy | doc01.01, doc01.02.01.00, doc03.01.06, doc02.01 | — | — |
+| doc01.03 | `03-unfolding-and-co-evolution.md` | The artifact's two generative processes — a backtrack-free unfolding that builds the world, and a dialectical loop where actors and environment co-determine each other until quantitative accumulation crosses into qualitative change — and the seam between them | product, generation, worldgen, dialectics, emergence, loop-vs-accumulator, philosophy | doc01.01, doc01.02.01.00, doc03.01.06, doc02.01 | doc03.02.00, doc03.02.01 | — |
 
 ### Research Sessions
 
@@ -77,6 +77,14 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc03.01.05 | `01-grazers/05-herd-and-flocking-research.md` | Research session — boids' separation/alignment/cohesion adapted from velocity-steering to per-neighbor move-scoring on a lattice; social foraging (local enhancement) as a two-radius forage sense; a time-growing migration drive; pack affiliation as a partition over bodies; and the two-phase snapshot-then-move ECS pattern that scales to hundreds of bodies | research, exploration, herd, flocking, boids, foraging, migration, ecs, scale | doc03.01.01, doc03.01.04 | — | — |
 | doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a function from seed and a declarative spec to content; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; directed least-cost (Dijkstra) carving as a geodesic in an anisotropic metric, with heading, drift, and bendiness; several rivers from one shared cost field spaced by a period; rasterizing a centerline to width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | doc01.03 | — |
 
+### Hotspot
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc03.02.00 | `02-hotspot/00-index.md` | Second milestone — a rendered ocean-and-sky scene centered on a volcanic hot spot, where islands build up over the source and melt away as they drift off it, carrying their vegetation forward to the next island | milestone, rendering, procgen, lifecycle, co-evolution | doc01.03 | — | — |
+| doc03.02.01 | `02-hotspot/01-goal.md` | The hotspot milestone's destination — a rendered ocean-and-sky scene where islands build up over a fixed volcanic source and melt away as they drift off it, with vegetation that co-evolves with the land and jumps from a dying island to a young one | milestone, rendering, procgen, lifecycle, co-evolution | doc01.03 | — | — |
+
 ## 04-modeling — Mathematical Modeling
 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
@@ -108,6 +116,7 @@ Quick lookup for file-path→doc mapping:
 | `bfs` | doc03.01.06 |
 | `boids` | doc03.01.05 |
 | `cargo` | doc03.01.02 |
+| `co-evolution` | doc03.02.00, doc03.02.01 |
 | `code` | doc05.00, doc05.01 |
 | `collapse` | doc01.02.01.02 |
 | `conventions` | doc00.03 |
@@ -140,6 +149,7 @@ Quick lookup for file-path→doc mapping:
 | `lagrangian` | doc03.01.04 |
 | `land-tenure` | doc01.02.01.02 |
 | `layout` | doc03.01.02 |
+| `lifecycle` | doc03.02.00, doc03.02.01 |
 | `loop-vs-accumulator` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc01.03 |
 | `maintenance` | doc00.02, doc05.00 |
 | `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |
@@ -147,7 +157,7 @@ Quick lookup for file-path→doc mapping:
 | `methodology` | doc04.02 |
 | `metrics` | doc02.01, doc04.00, doc04.01 |
 | `migration` | doc03.01.05, doc04.01 |
-| `milestone` | doc03.00, doc03.01.00, doc03.01.01 |
+| `milestone` | doc03.00, doc03.01.00, doc03.01.01, doc03.02.00, doc03.02.01 |
 | `modeling` | doc04.00, doc04.02 |
 | `modules` | doc05.01 |
 | `movement` | doc04.01 |
@@ -163,8 +173,9 @@ Quick lookup for file-path→doc mapping:
 | `political-economy` | doc01.02.01.00 |
 | `polity` | doc01.02.01.02 |
 | `population` | doc01.02.01.02 |
-| `procgen` | doc03.01.06 |
+| `procgen` | doc03.01.06, doc03.02.00, doc03.02.01 |
 | `product` | doc01.01, doc01.03 |
+| `rendering` | doc03.02.00, doc03.02.01 |
 | `research` | doc01.02.00, doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
 | `resources` | doc02.01 |
 | `retrieval` | doc00.04 |

@@ -25,6 +25,9 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
+        // The droppings nutrient cycle (poop → grass) is built and tested but
+        // intentionally disabled in the shipped sim. To re-enable, add
+        // `mesopotamia::droppings::DroppingsPlugin` to this tuple (and import it).
         .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
         .insert_resource(settings);
 

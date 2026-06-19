@@ -1,5 +1,6 @@
 pub mod field;
 pub mod grid;
+pub mod droppings;
 pub mod elk;
 pub mod events;
 pub mod metrics;

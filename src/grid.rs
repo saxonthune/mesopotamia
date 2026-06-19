@@ -58,21 +58,6 @@ impl Default for GrowthRate {
     }
 }
 
-/// Controls the poop → grass conversion that runs every tick.
-#[derive(Resource)]
-pub struct Fertility {
-    /// Poop consumed per cell per tick.
-    pub rate: f32,
-    /// Fraction of consumed poop that becomes grass; the rest (1 - efficiency) is lost.
-    pub efficiency: f32,
-}
-
-impl Default for Fertility {
-    fn default() -> Self {
-        Self { rate: 0.05, efficiency: 0.5 }
-    }
-}
-
 impl Grid {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -245,8 +230,7 @@ impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
             .init_resource::<GrowthRate>()
-            .init_resource::<Fertility>()
-            .add_systems(FixedUpdate, (growth, grow_shrubs, fertilize).run_if(in_state(Sim::Running)));
+            .add_systems(FixedUpdate, (growth, grow_shrubs).run_if(in_state(Sim::Running)));
     }
 }
 
@@ -276,17 +260,6 @@ fn grow_shrubs(mut grid: ResMut<Grid>) {
         SHRUB_REGROW,
         0.0,
     );
-}
-
-fn fertilize(mut grid: ResMut<Grid>, fertility: Res<Fertility>) {
-    for index in 0..grid.len() {
-        let consumed = grid.poop(index).min(fertility.rate);
-        if consumed <= 0.0 {
-            continue;
-        }
-        grid.add_poop(index, -consumed);
-        grid.grow_grass(index, consumed * fertility.efficiency);
-    }
 }
 
 #[cfg(test)]

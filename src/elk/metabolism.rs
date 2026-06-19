@@ -6,9 +6,6 @@ use crate::grid::Grid;
 use super::components::{Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
 use super::ledger::EnergyFlows;
 
-const POOP_PER_GRAZE: f32 = 0.3;
-const DIGEST_TICKS: u32 = 20;
-
 pub(super) fn migrate_pressure(params: Res<ElkParams>, mut packs: ResMut<Packs>) {
     for i in 0..packs.migration.len() {
         let g = packs.growth[i] * params.mig_growth;
@@ -54,7 +51,6 @@ pub(super) fn graze(
             elk.energy = (elk.energy + params.shrub_energy).min(1.0);
             intake_this_tick = elk.energy - before;
             flows.intake += intake_this_tick;
-            elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true;
         } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
             // Giving-up density: a bite takes only the grass above the floor and
@@ -66,7 +62,6 @@ pub(super) fn graze(
             elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
             intake_this_tick = elk.energy - before;
             flows.intake += intake_this_tick;
-            elk.digesting.push(DIGEST_TICKS);
             elk.grazing = true; // raise the beacon other elk forage toward
         } else {
             intake_this_tick = 0.0;
@@ -78,23 +73,6 @@ pub(super) fn graze(
     }
 
     habitat_intake.mean = if count > 0 { sum / count as f32 } else { 0.0 };
-}
-
-/// Counts down each pending meal; when one expires, drop poop at the elk's
-/// *current* cell — so nutrients move with the body, not back to the eat-site.
-pub(super) fn digest(mut grid: ResMut<Grid>, mut elk: Query<&mut Elk>) {
-    for mut elk in &mut elk {
-        let cell = elk.cell;
-        elk.digesting.retain_mut(|t| {
-            if *t == 0 {
-                grid.add_poop(cell, POOP_PER_GRAZE);
-                false
-            } else {
-                *t -= 1;
-                true
-            }
-        });
-    }
 }
 
 /// Every tick the elk spends energy just being alive; an elk that runs out

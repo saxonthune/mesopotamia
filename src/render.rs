@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::camera::{visibility::RenderLayers, CameraOutputMode};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::gestures::PinchGesture;
+use bevy::window::{CursorLeft, WindowFocused};
 use bevy::ecs::schedule::common_conditions::not;
 use bevy::render::render_resource::BlendState;
 use bevy_egui::input::egui_wants_any_pointer_input;
@@ -25,9 +26,11 @@ impl Plugin for RenderPlugin {
                     // so scrolling/zooming inside the panel doesn't also move the
                     // world behind it.
                     (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
+                    release_buttons_on_focus_loss,
                     sync_tiles,
                     sync_poop,
                     sync_shrubs,
+                    sync_grass_digits,
                     apply_camera,
                     sync_elk_transform,
                     sync_elk_color,
@@ -68,6 +71,11 @@ struct PoopDot {
 
 #[derive(Component)]
 struct ShrubDot {
+    index: usize,
+}
+
+#[derive(Component)]
+struct GrassDigit {
     index: usize,
 }
 
@@ -139,16 +147,46 @@ fn setup(
                 .with_scale(Vec3::ZERO),
             ShrubDot { index }
         ));
+
+        // Lime-green grass digit, sitting above poop/shrub and below the elk.
+        // `sync_grass_digits` fills the glyph from the cell's grass bucket.
+        commands.spawn((
+            Text2d::new(""),
+            TextFont { font_size: 9.0, ..default() },
+            TextColor(Color::srgb(0.55, 0.95, 0.15)),
+            Transform::from_xyz(pos.x, pos.y, 0.6),
+            GrassDigit { index }
+        ));
     }
 }
 
-/// Scroll input means different things per device. A mouse wheel reports in
-/// `Line` units → zoom. A trackpad two-finger drag reports in `Pixel` units →
-/// pan. Telling them apart by `unit` is what lets one event source do both.
+/// Scroll input means different things per device. Natively, a mouse wheel
+/// reports in `Line` units → zoom, while a trackpad two-finger drag reports in
+/// `Pixel` units → pan; telling them apart by `unit` lets one event source do
+/// both. On the web that distinction is unreliable, so scroll always zooms (see
+/// the wasm branch below).
 fn scroll_input(scroll: Res<AccumulatedMouseScroll>, mut settings: ResMut<CameraSettings>) {
     if scroll.delta == Vec2::ZERO {
         return;
     }
+
+    // On the web, browsers report wheel deltas inconsistently — whether a mouse
+    // wheel arrives as `Line` or `Pixel` depends on the browser, not the device
+    // — so the native pan/zoom split by unit is unreliable. Treat all scroll as
+    // zoom there; pan stays on drag and the on-screen sliders. The two unit
+    // scales differ only so a notch feels the same: `Line` is ~1 per notch,
+    // `Pixel` ~100, hence the 0.01 normalization on the latter.
+    #[cfg(target_arch = "wasm32")]
+    {
+        let step = match scroll.unit {
+            MouseScrollUnit::Line => scroll.delta.y,
+            MouseScrollUnit::Pixel => scroll.delta.y * 0.01,
+        };
+        let factor = 1.0 - step * 0.1;
+        settings.zoom = (settings.zoom * factor).clamp(0.1, 10.0);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     match scroll.unit {
         MouseScrollUnit::Line => {
             let factor = 1.0 - scroll.delta.y * 0.1;
@@ -190,6 +228,23 @@ fn pan(
     settings.pan.y += delta.y * zoom;
 }
 
+/// Belt-and-suspenders against a stuck pan. The right/middle-drag pan reads
+/// `ButtonInput` each frame, so it relies on a matching button-up to stop. If
+/// the window loses focus or the cursor leaves it mid-drag, that up can be
+/// missed (the browser eats it), leaving the button "held" forever. Releasing
+/// all mouse buttons on either event clears the phantom press.
+fn release_buttons_on_focus_loss(
+    mut focus: MessageReader<WindowFocused>,
+    mut cursor_left: MessageReader<CursorLeft>,
+    mut buttons: ResMut<ButtonInput<MouseButton>>,
+) {
+    let lost_focus = focus.read().any(|e| !e.focused);
+    let cursor_left = cursor_left.read().count() > 0;
+    if lost_focus || cursor_left {
+        buttons.release_all();
+    }
+}
+
 fn apply_camera(
     mut settings: ResMut<CameraSettings>,
     camera: Single<(&mut Transform, &mut Projection), With<WorldCamera>>,
@@ -212,13 +267,12 @@ fn apply_camera(
 
 fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
     for (tile, mut sprite) in &mut tiles {
-        let steppe_dirt = Vec3::new(0.80, 0.72, 0.52);   // pale dry
-        let riparian_dirt = Vec3::new(0.45, 0.38, 0.26); // dark moist
-        let dirt = steppe_dirt.lerp(riparian_dirt, grid.soil_type(tile.index));
-
-        let h = grid.grass(tile.index) / MAX_GRASS;
-        let green = Vec3::new(0.2, 0.7, 0.3);
-        let c = dirt.lerp(green, h);
+        // The dirt tint rides `water_prox` — the same field that caps grass — so
+        // a hydrated cell reads as dark, moist soil and the lime grass digit on
+        // top tells one continuous story: wetter ground supports more grass.
+        let dry = Vec3::new(0.80, 0.72, 0.52);       // water_prox = 0, pale tan
+        let hydrated = Vec3::new(0.40, 0.30, 0.18);  // water_prox = 1, dark brown
+        let c = dry.lerp(hydrated, grid.water_prox(tile.index));
 
         let w = grid.water(tile.index) / MAX_WATER;
         let water = Vec3::new(0.1, 0.3, 0.7);
@@ -239,6 +293,35 @@ fn sync_shrubs(grid: Res<Grid>, mut dots: Query<(&ShrubDot, &mut Transform)>) {
     for (dot, mut transform) in &mut dots {
         let s = grid.shrubs(dot.index) / MAX_SHRUBS;
         transform.scale = Vec3::splat(s);
+    }
+}
+
+/// Number of equal-width grass bands the digit overlay reports.
+const GRASS_BUCKETS: u8 = 4;
+
+/// Bucket a cell's grass into 0..=`GRASS_BUCKETS`: 0 when there is no meaningful
+/// grass, else 1..=4 over four equal-width bands of `[0, max]`. Pure so the
+/// banding contract is pinned by tests rather than read off the screen.
+fn grass_bucket(grass: f32, max: f32) -> u8 {
+    if max <= 0.0 {
+        return 0;
+    }
+    let frac = (grass / max).clamp(0.0, 1.0);
+    if frac <= 1e-4 {
+        return 0;
+    }
+    ((frac * GRASS_BUCKETS as f32).ceil() as u8).min(GRASS_BUCKETS)
+}
+
+/// Paint each cell's grass digit from its bucket: blank for 0, else "1".."4".
+fn sync_grass_digits(grid: Res<Grid>, mut digits: Query<(&GrassDigit, &mut Text2d)>) {
+    const DIGITS: [&str; 5] = ["", "1", "2", "3", "4"];
+    for (d, mut text) in &mut digits {
+        let b = grass_bucket(grid.grass(d.index), MAX_GRASS);
+        let s = DIGITS[b as usize];
+        if text.0.as_str() != s {
+            text.0 = s.to_string();
+        }
     }
 }
 
@@ -266,6 +349,32 @@ fn sync_elk_transform(time: Res<Time<Fixed>>, mut elk: Query<(&Elk, &mut Transfo
 fn sync_elk_color(mut elk: Query<(&Elk, &mut Sprite)>) {
     for (elk, mut sprite) in &mut elk {
         sprite.color = elk_color(elk.slot as usize, elk.grazing);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grass_bucket_bands() {
+        assert_eq!(grass_bucket(0.0, 1.0), 0);
+        assert_eq!(grass_bucket(0.01, 1.0), 1); // tiny positive lands in band 1
+        assert_eq!(grass_bucket(0.25, 1.0), 1);
+        assert_eq!(grass_bucket(0.26, 1.0), 2);
+        assert_eq!(grass_bucket(0.5, 1.0), 2);
+        assert_eq!(grass_bucket(0.75, 1.0), 3);
+        assert_eq!(grass_bucket(1.0, 1.0), 4);
+    }
+
+    #[test]
+    fn grass_bucket_clamps_over_max() {
+        assert_eq!(grass_bucket(2.0, 1.0), 4);
+    }
+
+    #[test]
+    fn grass_bucket_zero_max() {
+        assert_eq!(grass_bucket(1.0, 0.0), 0);
     }
 }
 

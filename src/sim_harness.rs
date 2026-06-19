@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::elk::{Decision, DriveSamples, Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herds, LastDecision, ProbeSeed, Spawner};
 use crate::elk::{combine_drives, grass_gradient, step_water_penalty, StepEval};
+use crate::droppings::DroppingsPlugin;
 use crate::grid::{Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
 use crate::worldgen::WorldgenPlugin;
@@ -20,7 +21,7 @@ pub fn make_app() -> App {
         .insert_resource(Time::<Fixed>::from_hz(HZ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
         .add_plugins(StatesPlugin)
-        .add_plugins((GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin));
+        .add_plugins((GridPlugin, DroppingsPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin));
     app
 }
 
@@ -174,7 +175,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
         .insert_resource(Time::<Fixed>::from_hz(HZ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
         .add_plugins(StatesPlugin)
-        .add_plugins((GridPlugin, ElkSimPlugin, SimStatePlugin))
+        .add_plugins((GridPlugin, DroppingsPlugin, ElkSimPlugin, SimStatePlugin))
         // Override the GridPlugin's default with the probe grid.
         .insert_resource(grid)
         // Freeze the spawner so spawn_waves never fires (cooldown stays maxed).

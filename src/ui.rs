@@ -1,11 +1,14 @@
+use std::time::Duration;
+
 use bevy::prelude::*;
 use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
 use crate::elk::{Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls};
+use crate::droppings::Fertility;
 use crate::events::EventLog;
-use crate::grid::{Fertility, Grid, GrowthRate};
+use crate::grid::{Grid, GrowthRate};
 use crate::history::History;
 use crate::render::{cell_world_pos, CameraSettings, WorldCamera};
 
@@ -429,7 +432,7 @@ fn control_panel(
     mut elk_params: ResMut<ElkParams>,
     mut ratio_controls: ResMut<RatioControls>,
     mut growth: ResMut<GrowthRate>,
-    mut fertility: ResMut<Fertility>,
+    mut fertility: Option<ResMut<Fertility>>,
     mut ab_params: ResMut<AbundanceParams>,
     mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
@@ -469,7 +472,7 @@ fn control_panel(
                     let bite_ratio = &mut rc.bite_ratio;
                     let cross_ratio = &mut rc.cross_ratio;
                     panel_flow(ui, vec![
-                        Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut(), regrow_ratio)),
+                        Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
                         // Behaviour carries the most rows, so give it a wider column.
                         Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio)))]).width(300.0),
                         Panel::new("Abundance (measure)", abundance_items(ab_params.as_mut())),
@@ -795,6 +798,37 @@ fn set_camera_viewport(
     Ok(())
 }
 
+/// Most virtual time `FixedUpdate` is allowed to advance in a single rendered
+/// frame. Bevy runs one fixed step per `1 / fixed_hz` of virtual time, so this
+/// caps how many simulation steps execute per frame and keeps high speeds from
+/// starving the window/OS event loop. At the 10 Hz fixed rate, 500 ms ≈ 5
+/// steps/frame, which is the effective speed ceiling (~30× at 60 FPS). Raise it
+/// to let the simulation run faster, lower it to favour responsiveness.
+const FRAME_SIM_BUDGET: Duration = Duration::from_millis(500);
+
+/// Bevy's engine default cap on a single frame's *raw* delta. We never loosen it
+/// (slow speeds keep the default); we only tighten it for fast speeds.
+const DEFAULT_MAX_DELTA: Duration = Duration::from_millis(250);
+
+/// The `Time<Virtual>` max-delta that bounds the *scaled* per-frame advance to
+/// `budget`. Bevy clamps the raw frame delta to max-delta *before* multiplying by
+/// `speed`, so the default 250 ms cap does nothing against a large multiplier — a
+/// slow frame's raw delta gets scaled, `FixedUpdate` runs many catch-up steps,
+/// the next frame is slower still, and the loop freezes the UI. Dividing the
+/// budget by `speed` makes the scaled advance — and thus fixed-steps-per-frame —
+/// independent of the multiplier. Below ~2× the engine default already wins, so
+/// `.min` leaves slow/normal play untouched.
+fn sim_max_delta(budget: Duration, speed: f32) -> Duration {
+    budget.div_f32(speed.max(1.0)).min(DEFAULT_MAX_DELTA)
+}
+
+/// Set the requested speed and the matching per-frame budget together; every
+/// speed change must go through here so the responsiveness cap stays in sync.
+fn set_sim_speed(time: &mut Time<Virtual>, speed: f32) {
+    time.set_relative_speed(speed);
+    time.set_max_delta(sim_max_delta(FRAME_SIM_BUDGET, speed));
+}
+
 fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     const PRESETS: [(&str, f32); 5] =
         [("1x", 1.0), ("2x", 2.0), ("3x", 3.0), ("4x", 4.0), (">>", 64.0)];
@@ -808,7 +842,7 @@ fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     }
     for (label, mult) in PRESETS {
         if ui.selectable_label(current == mult, label).clicked() {
-            time.set_relative_speed(mult);
+            set_sim_speed(time, mult);
         }
     }
     let mut custom = current;
@@ -816,23 +850,28 @@ fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
         .add(egui::DragValue::new(&mut custom).range(0.0..=256.0).speed(0.1))
         .changed()
     {
-        time.set_relative_speed(custom);
+        set_sim_speed(time, custom);
     }
 }
 
-fn grass_items<'a>(growth: &'a mut GrowthRate, fertility: &'a mut Fertility, regrow_ratio: &'a mut f32) -> Vec<Item<'a>> {
-    vec![
+fn grass_items<'a>(growth: &'a mut GrowthRate, fertility: Option<&'a mut Fertility>, regrow_ratio: &'a mut f32) -> Vec<Item<'a>> {
+    let mut items = vec![
         Item::Slider { value: regrow_ratio, range: 0.0..=1.0, label: "regrowth ÷ drain" },
         Item::Slider { value: &mut growth.spread, range: 0.0..=0.3, label: "spread from neighbours" },
-        Item::Section {
+    ];
+    // The Fertility section only appears when the droppings cycle is enabled —
+    // its resource is absent when `DroppingsPlugin` is omitted from the binary.
+    if let Some(fertility) = fertility {
+        items.push(Item::Section {
             title: "Fertility",
             items: vec![
-                Item::Slider { value: &mut fertility.rate, range: 0.0..=0.5, label: "poop → grass / tick" },
+                Item::Slider { value: &mut fertility.rate, range: 0.0..=0.5, label: "droppings → grass / tick" },
                 Item::Slider { value: &mut fertility.efficiency, range: 0.0..=1.0, label: "conversion efficiency" },
             ],
             default_open: false,
-        },
-    ]
+        });
+    }
+    items
 }
 
 /// Sliders for the herd-abundance measurement. Pure view state — these only
@@ -915,6 +954,43 @@ fn view_tab(ui: &mut egui::Ui, cam: &mut CameraSettings) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The scaled per-frame advance (max_delta * speed) is bounded by the budget at
+    // any speed above the point where the engine default already wins (~2x at a
+    // 500ms budget). This is what stops FixedUpdate from running unbounded catch-up
+    // steps and freezing the UI at high multipliers.
+    #[test]
+    fn fast_speeds_bound_scaled_advance_to_budget() {
+        let budget = FRAME_SIM_BUDGET;
+        for speed in [4.0_f32, 16.0, 64.0, 256.0] {
+            let scaled = sim_max_delta(budget, speed).mul_f32(speed);
+            // Allow a millisecond of rounding slack from the f32 divide/multiply.
+            assert!(
+                scaled <= budget + Duration::from_millis(1),
+                "speed {speed}x scaled advance {scaled:?} exceeds budget {budget:?}",
+            );
+        }
+    }
+
+    // Higher speed never raises the per-frame cap — it only ever tightens it.
+    #[test]
+    fn max_delta_is_monotone_non_increasing_in_speed() {
+        let budget = FRAME_SIM_BUDGET;
+        let mut prev = sim_max_delta(budget, 1.0);
+        for speed in [2.0_f32, 4.0, 8.0, 64.0, 256.0] {
+            let next = sim_max_delta(budget, speed);
+            assert!(next <= prev, "max_delta grew from {prev:?} to {next:?} at {speed}x");
+            prev = next;
+        }
+    }
+
+    // Slow and normal play keep Bevy's engine default; the cap only kicks in for
+    // fast-forward.
+    #[test]
+    fn slow_speeds_keep_engine_default() {
+        assert_eq!(sim_max_delta(FRAME_SIM_BUDGET, 0.5), DEFAULT_MAX_DELTA);
+        assert_eq!(sim_max_delta(FRAME_SIM_BUDGET, 1.0), DEFAULT_MAX_DELTA);
+    }
 
     // A 1280x960 window at scale 1 with no panel: the world fills it.
     #[test]

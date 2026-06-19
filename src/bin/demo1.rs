@@ -13,6 +13,11 @@ use bevy_egui::EguiPlugin;
 mod field;
 #[path = "../grid.rs"]
 mod grid;
+// The droppings cycle compiles into this crate but is never constructed here
+// (it's omitted from the plugin tuple below), so the module is dead code.
+#[path = "../droppings.rs"]
+#[allow(dead_code)]
+mod droppings;
 #[path = "../elk/mod.rs"]
 mod elk;
 #[path = "../events.rs"]
@@ -71,6 +76,9 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
+        // The droppings nutrient cycle (poop → grass) is built and tested but
+        // intentionally disabled in the shipped demo. To re-enable, add
+        // `droppings::DroppingsPlugin` to this tuple.
         .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
         .insert_resource(settings);
 

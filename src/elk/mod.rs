@@ -52,7 +52,6 @@ impl Plugin for ElkSimPlugin {
                 (
                     movement::herd_move,
                     metabolism::graze,
-                    metabolism::digest,
                     metabolism::metabolize,
                     metabolism::migrate_pressure,
                     spawn::spawn_waves,

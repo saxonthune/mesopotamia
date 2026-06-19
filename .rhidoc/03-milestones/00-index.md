@@ -14,3 +14,4 @@ Read a milestone doc to know what "done" looks like for that slice. The mileston
 ## Contents
 
 - **doc03.01 Grazers** — grass grows and elk graze on a 2D grid; the first working ECS loop.
+- **doc03.02 Hotspot** — a rendered ocean-and-sky scene where islands build up over a volcanic hot spot and melt away as they drift off it, their vegetation jumping to the next island; the first continuous-space rendering slice.

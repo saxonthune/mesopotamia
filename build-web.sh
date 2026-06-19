@@ -15,12 +15,22 @@
 #   cargo install wasm-opt           # (binaryen) optional but strongly advised
 set -euo pipefail
 
+# Build mode: `release` (default, optimized + wasm-opt, the deploy artifact) or
+# `dev` (debug, no wasm-opt — compiles far faster for the tweak/refresh loop).
+MODE="${1:-release}"
+
 # --- the demo list. One entry per binary in src/bin/. Add demos here. ---
 DEMOS=(demo1)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST="$ROOT/dist"
-TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/release"
+if [[ "$MODE" == "dev" ]]; then
+    CARGO_PROFILE_FLAGS=()
+    TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/debug"
+else
+    CARGO_PROFILE_FLAGS=(--release)
+    TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/release"
+fi
 
 echo "==> cleaning dist/"
 rm -rf "$DIST"
@@ -30,8 +40,8 @@ mkdir -p "$DIST/demos"
 cp "$ROOT/web/index.html" "$DIST/index.html"
 
 for demo in "${DEMOS[@]}"; do
-    echo "==> building $demo (release, wasm32)"
-    cargo build --release --bin "$demo" --target wasm32-unknown-unknown
+    echo "==> building $demo ($MODE, wasm32)"
+    cargo build "${CARGO_PROFILE_FLAGS[@]}" --bin "$demo" --target wasm32-unknown-unknown
 
     out="$DIST/demos/$demo"
     mkdir -p "$out"
@@ -41,7 +51,9 @@ for demo in "${DEMOS[@]}"; do
         --out-dir "$out" --out-name "$demo" \
         "$TARGET_DIR/$demo.wasm"
 
-    if command -v wasm-opt >/dev/null 2>&1; then
+    if [[ "$MODE" == "dev" ]]; then
+        echo "    (dev build — skipping wasm-opt)"
+    elif command -v wasm-opt >/dev/null 2>&1; then
         echo "==> wasm-opt -Oz $demo"
         # Rust's wasm32 output uses post-MVP features (bulk memory, sign
         # extension, etc.). wasm-opt must be told to accept them or it rejects
