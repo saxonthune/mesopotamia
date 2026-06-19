@@ -66,12 +66,25 @@ pub struct RiverSpec {
     pub drift_spread: f32,
     /// Additive jitter on each river's bendiness (clamped to [0, 1]).
     pub bendiness_spread: f32,
-    /// Number of large standing-water lakes seeded at the deepest basins.
+    /// Number of lakes, seated at blue-noise positions (Mitchell's best-candidate)
+    /// so they spread rather than clump.
     pub lake_count: usize,
-    /// Raster radius for each lake (cells from center to shore).
+    /// Base metaball kernel radius for each lake, in cells. The first kernel sits
+    /// at the lake center with this radius; the summed metaball field, cut at
+    /// `lake_iso`, is the basin footprint and its depth.
     pub lake_radius: isize,
-    /// Full-depth core radius for each lake.
-    pub lake_core: isize,
+    /// Max lobe count per lake (range `1..=lake_lobes_max`, biased low). 1 reads
+    /// round; 2+ offset kernels read as a peanut or oblong bulge.
+    pub lake_lobes_max: usize,
+    /// Max kernel offset in cells for extra lobes. Small offsets bulge, medium ones
+    /// read as a peanut — the knob that controls non-circularity.
+    pub lake_offset: f32,
+    /// Iso-level the summed metaball field is cut at: cells whose field is below it
+    /// hold no lake water, above it take a depth rising with the field.
+    pub lake_iso: f32,
+    /// Best-candidate sample count K: each lake after the first is the farthest of
+    /// `lake_samples` random candidates from the lakes already placed.
+    pub lake_samples: usize,
     /// Confluence pairs `(child, parent)`: the child main merges into the parent
     /// instead of running to the bottom edge. Requires `parent < child` so the
     /// parent is already carved when the child is carved (mains carved in index order).
@@ -104,7 +117,10 @@ impl Default for RiverSpec {
             bendiness_spread: 0.2,
             lake_count: 3,
             lake_radius: 4,
-            lake_core: 2,
+            lake_lobes_max: 3,
+            lake_offset: 4.0,
+            lake_iso: 0.5,
+            lake_samples: 16,
             confluence_pairs: vec![(1, 0)],
         }
     }

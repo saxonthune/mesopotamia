@@ -9,7 +9,7 @@ use bevy_egui::input::egui_wants_any_pointer_input;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
 use crate::elk::{Elk, elk_color};
-use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_WATER};
+use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_ROUGH, MAX_WATER};
 
 pub const TILE_SIZE: f32 = 16.0;
 
@@ -273,6 +273,13 @@ fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
         let dry = Vec3::new(0.80, 0.72, 0.52);       // water_prox = 0, pale tan
         let hydrated = Vec3::new(0.40, 0.30, 0.18);  // water_prox = 1, dark brown
         let c = dry.lerp(hydrated, grid.water_prox(tile.index));
+
+        // Rough terrain sits on top of soil: where present it pulls the tan
+        // toward a dull grey-brown, scaled by intensity, so broken ground reads
+        // distinctly against the pale-tan/dark-brown soil ramp.
+        let r = grid.rough(tile.index) / MAX_ROUGH;
+        let rough = Vec3::new(0.42, 0.38, 0.33); // dull grey-brown
+        let c = c.lerp(rough, r);
 
         let w = grid.water(tile.index) / MAX_WATER;
         let water = Vec3::new(0.1, 0.3, 0.7);

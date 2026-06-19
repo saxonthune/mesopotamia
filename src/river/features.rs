@@ -1,6 +1,6 @@
-//! Features layered on top of the main channels — oxbow pools, lakes, and
-//! tributaries. Each composes the shared cost field with `carve` and `rasterize`;
-//! none authors a main channel itself.
+//! Features layered on top of the main channels — oxbow pools and tributaries.
+//! Each composes the shared cost field with `carve` and `rasterize`; none authors
+//! a main channel itself. Lakes are their own algorithm and live in `lake`.
 
 use rand::Rng;
 use rand::rngs::StdRng;
@@ -36,22 +36,6 @@ pub(super) fn place_oxbows(grid: &mut Grid, cost: &[u32], rng: &mut StdRng, spec
         let ci = rng.random_range(0..cands.len());
         let center = cands.swap_remove(ci);
         rasterize(grid, &[center], spec.oxbow_radius, spec.core, spec.oxbow_depth);
-    }
-}
-
-/// Lakes: larger full-depth standing water at the deepest dry basins. Re-collects
-/// candidates so oxbow-painted cells are excluded, and picks the lowest-cost
-/// (deepest) basins for deterministic, intentional placement.
-pub(super) fn place_lakes(grid: &mut Grid, cost: &[u32], spec: &RiverSpec) {
-    if spec.lake_count == 0 {
-        return;
-    }
-    let mut lake_cands: Vec<usize> = (0..grid.len())
-        .filter(|&i| is_dry_basin(grid, cost, i))
-        .collect();
-    lake_cands.sort_by_key(|&i| cost[i]);
-    for &center in lake_cands.iter().take(spec.lake_count) {
-        rasterize(grid, &[center], spec.lake_radius, spec.lake_core, 1.0);
     }
 }
 

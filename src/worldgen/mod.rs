@@ -5,6 +5,7 @@
 //! storage and runtime dynamics (growth, grazing, fertilising); it does not own
 //! generation. Adding a layer means adding a module and one line to `generate_world`.
 
+mod rough;
 mod soil;
 mod soil_type;
 mod vegetation;
@@ -43,6 +44,7 @@ pub struct WorldSpec {
     pub river: RiverSpec,
     pub soil_seed: u64,
     pub macro_seed: u64,
+    pub rough_seed: u64,
     pub shrub_seed: u64,
 }
 
@@ -56,6 +58,7 @@ impl WorldSpec {
             river: RiverSpec { seed: rng.random(), ..default() },
             soil_seed: rng.random(),
             macro_seed: rng.random(),
+            rough_seed: rng.random(),
             shrub_seed: rng.random(),
         }
     }
@@ -80,7 +83,13 @@ fn generate_world(mut grid: ResMut<Grid>, seed: Res<WorldSeed>, mut next: ResMut
     // 3. Soil type — riparian/steppe gradient derived from water proximity.
     soil_type::seed_soil_type(&mut grid);
 
-    // 4. Vegetation — shrub capacity on the dry ground away from water.
+    // 4. Rough terrain — broken-ground patches on the dry steppe away from water.
+    //    Runs after soil_type (reads the already-computed water field) and before
+    //    vegetation, establishing the seam where vegetation could later read rough
+    //    — though that connection is deliberately left unmade for now.
+    rough::seed_rough(&mut grid, spec.rough_seed);
+
+    // 5. Vegetation — shrub capacity on the dry ground away from water.
     vegetation::seed_shrub_cap(&mut grid, spec.shrub_seed);
 
     next.set(Sim::Running);

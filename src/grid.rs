@@ -10,6 +10,7 @@ pub const MAX_GRASS: f32 = 1.0;
 pub const MAX_POOP: f32 = 1.0;
 pub const MAX_WATER: f32 = 1.0;
 pub const MAX_SHRUBS: f32 = 1.0;
+pub const MAX_ROUGH: f32 = 1.0;
 
 #[derive(Resource)]
 pub struct Grid {
@@ -39,6 +40,11 @@ pub struct Grid {
     /// water-proximity field after the water layer runs. Drives two-tone dirt render
     /// and a gentle shrub-capacity nudge away from the riparian band.
     soil_type: Vec<f32>,
+    /// Rough-terrain presence/intensity per cell, [0, MAX_ROUGH]. Noise-thresholded
+    /// patches of broken ground that clump on the dry steppe far from water and are
+    /// excluded from water cells. Authored by `seed_rough`; purely data + render for
+    /// now, with no traversal hookup.
+    rough: Vec<f32>,
 }
 
 /// How fast grass regrows under the reaction-diffusion model: a cell gains
@@ -75,6 +81,7 @@ impl Grid {
             shrub_cap: vec![0.0; width * height],
             ford: vec![false; width * height],
             soil_type: vec![0.0; width * height],
+            rough: vec![0.0; width * height],
         }
     }
 
@@ -182,6 +189,16 @@ impl Grid {
 
     pub fn set_soil_type(&mut self, index: usize, value: f32) {
         self.soil_type[index] = value.clamp(0.0, 1.0);
+    }
+
+    pub fn rough(&self, index: usize) -> f32 {
+        self.rough[index]
+    }
+
+    /// Set rough-terrain intensity for a cell. Authored by the world-gen rough
+    /// layer; the render reads it to override tan soil with grey-brown.
+    pub fn set_rough(&mut self, index: usize, value: f32) {
+        self.rough[index] = value.clamp(0.0, MAX_ROUGH);
     }
 
     pub fn shrubs(&self, index: usize) -> f32 {

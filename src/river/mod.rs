@@ -1,12 +1,14 @@
 //! Procedural watershed generation. The pipeline composes the submodules: a
 //! shared smoothed cost field and least-cost carve (`cost`), water stamped onto
 //! the grid plus ford bands (`raster`), features layered on top (`features`:
-//! oxbows, lakes, tributaries), and finally the water-proximity capacity field
+//! oxbows, tributaries), metaball lakes at blue-noise positions (`lake`), and finally
+//! the water-proximity capacity field
 //! (`prox`). Every knob lives in `RiverSpec` (`spec`), seed included; the whole
 //! water field is a pure function of that spec.
 
 mod cost;
 mod features;
+mod lake;
 mod prox;
 mod raster;
 mod spec;
@@ -99,10 +101,11 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         mains.push(cl);
     }
 
-    // Features layered on the main channels, in order: oxbows, then lakes (which
-    // re-collect candidates so oxbow cells are excluded), then tributaries.
+    // Features layered on the main channels, in order: oxbows, then lakes (placed
+    // at blue-noise positions with metaball footprints, drawing from a dedicated
+    // lake RNG so the oxbow/tributary streams stay unchanged), then tributaries.
     features::place_oxbows(grid, &cost, &mut rng, spec);
-    features::place_lakes(grid, &cost, spec);
+    lake::generate_lakes(grid, &cost, spec);
     let tribs = features::carve_tributaries(grid, &cost, &mut rng, spec, &mains);
 
     tag_shallows_as_fords(grid, spec.riffle_ford_threshold);
