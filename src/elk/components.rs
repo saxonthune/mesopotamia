@@ -112,6 +112,8 @@ pub struct ElkParams {
     pub social_radius: f32, // how far a grazing elk is noticed — longer than grass
     pub temperature: f32,   // step randomness; higher = more diffuse
     pub bite: f32,        // max grass eaten per graze (capped by what sits above the floor)
+    /// Weight on the graze candidate's value, in desire-magnitude units; higher = elk pause to feed more readily.
+    pub dwell: f32,
     pub graze_yield: f32, // energy per unit of grass actually consumed (proportional intake)
     pub graze_floor: f32, // giving-up density as a fraction of capacity; grass below isn't worth biting
     pub energy_drain: f32, // energy lost per tick; reaching 0 starves the elk
@@ -202,12 +204,14 @@ impl Default for ElkParams {
             grass_radius: 5.0,
             social_radius: 16.0,
             temperature: 0.6,
-            bite: 0.5,
+            // Retuned down from 0.5 so a committed graze depletes a patch over
+            // several ticks rather than one — turning the pause into a visible
+            // multi-tick dwell. Sustainability bound still holds: intrinsic · cap · graze_yield < drain.
+            bite: 0.12,
+            dwell: 1.5,
             // Energy is proportional to grass actually eaten. A full fresh bite
-            // (bite · this ≈ 0.0125) pays a few × drain, but a near-floor nibble
-            // pays almost nothing — so a grazed-down cell can't sustain an elk and
-            // the herd must keep moving to fresh forage. Derived (doc02.02): for a
-            // camped cell to starve, intrinsic · cap · this < drain ⇒ this < 0.2.
+            // (bite · this ≈ 0.0042) pays roughly drain, building up only over a
+            // multi-tick graze — the herd must commit to a patch and dwell.
             graze_yield: 0.035,
             // Giving-up density: leave 30% of each cell's capacity uneaten. Grass
             // below graze_floor · capacity isn't worth biting, which seeds regrowth

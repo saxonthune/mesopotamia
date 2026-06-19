@@ -5,6 +5,7 @@ use crate::grid::Grid;
 
 use super::components::{Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
 use super::ledger::EnergyFlows;
+use super::movement::Act;
 
 pub(super) fn migrate_pressure(params: Res<ElkParams>, mut packs: ResMut<Packs>) {
     for i in 0..packs.migration.len() {
@@ -33,7 +34,7 @@ fn worthwhile_bite(grid: &Grid, cell: usize, params: &ElkParams) -> Option<f32> 
 pub(super) fn graze(
     mut grid: ResMut<Grid>,
     params: Res<ElkParams>,
-    mut elk: Query<&mut Elk>,
+    mut elk: Query<(&mut Elk, &LastDecision)>,
     mut flows: ResMut<EnergyFlows>,
     mut habitat_intake: ResMut<HabitatIntake>,
 ) {
@@ -41,29 +42,36 @@ pub(super) fn graze(
     let mut sum = 0.0_f32;
     let mut count = 0u32;
 
-    for mut elk in &mut elk {
+    for (mut elk, last_decision) in &mut elk {
         let intake_this_tick;
-        if grid.shrubs(elk.cell) > 0.05 {
-            // Shrubs first: a big, concentrated bite that strips the shrub and
-            // pays more energy than grass — the reward for crossing dry ground.
-            grid.eat_shrubs(elk.cell, params.shrub_bite);
-            let before = elk.energy;
-            elk.energy = (elk.energy + params.shrub_energy).min(1.0);
-            intake_this_tick = elk.energy - before;
-            flows.intake += intake_this_tick;
-            elk.grazing = true;
-        } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
-            // Giving-up density: a bite takes only the grass above the floor and
-            // pays energy in proportion. A grazed-down or thin cell yields nothing
-            // worth biting, so the elk moves on instead of camping a patch and
-            // sipping its regrowth forever.
-            grid.grow_grass(elk.cell, -bitten);
-            let before = elk.energy;
-            elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
-            intake_this_tick = elk.energy - before;
-            flows.intake += intake_this_tick;
-            elk.grazing = true; // raise the beacon other elk forage toward
+        if last_decision.0.chosen_act == Act::Graze {
+            if grid.shrubs(elk.cell) > 0.05 {
+                // Shrubs first: a big, concentrated bite that strips the shrub and
+                // pays more energy than grass — the reward for crossing dry ground.
+                grid.eat_shrubs(elk.cell, params.shrub_bite);
+                let before = elk.energy;
+                elk.energy = (elk.energy + params.shrub_energy).min(1.0);
+                intake_this_tick = elk.energy - before;
+                flows.intake += intake_this_tick;
+                elk.grazing = true;
+            } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
+                // Giving-up density: a bite takes only the grass above the floor and
+                // pays energy in proportion. A grazed-down or thin cell yields nothing
+                // worth biting, so the elk moves on instead of camping a patch and
+                // sipping its regrowth forever.
+                grid.grow_grass(elk.cell, -bitten);
+                let before = elk.energy;
+                elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
+                intake_this_tick = elk.energy - before;
+                flows.intake += intake_this_tick;
+                elk.grazing = true; // raise the beacon other elk forage toward
+            } else {
+                intake_this_tick = 0.0;
+                elk.grazing = false;
+            }
         } else {
+            // Mover or standee: no eating this tick, but still post 0-intake so
+            // the forage_gate signal stays well-defined.
             intake_this_tick = 0.0;
             elk.grazing = false;
         }
@@ -94,8 +102,11 @@ pub(super) fn metabolize(
             if let Some(c) = herds.cohorts.get_mut(&elk.code) {
                 c.deaths += 1;
             }
-            let chosen_step = last_decision
-                .and_then(|ld| ld.0.chosen.and_then(|i| ld.0.options.get(i).map(|e| e.step)));
+            let chosen_step = last_decision.and_then(|ld| {
+                ld.0.chosen.and_then(|i| ld.0.options.get(i).and_then(|e| {
+                    if let crate::elk::Act::Step(dx, dy) = e.act { Some((dx, dy)) } else { None }
+                }))
+            });
             event_log.push(Event {
                 tick: spawner.elapsed as u64,
                 cell: elk.cell,

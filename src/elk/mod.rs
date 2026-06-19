@@ -15,7 +15,7 @@ pub use components::ProbeSeed;
 #[allow(unused_imports)]
 pub use ledger::{energy_expected_delta, energy_ledger_closes, population_balances, EnergyFlows};
 #[allow(unused_imports)]
-pub use movement::{cell_water_penalty, combine_drives, cross_desire, forage_gate, grass_gradient, migration_residual, step_water_penalty, Decomposable, Decision, Drives, StepEval};
+pub use movement::{cell_water_penalty, combine_drives, cross_desire, forage_gate, grass_gradient, graze_value, migration_residual, stand_value, step_water_penalty, Act, Candidate, Decomposable, Decision, Drives};
 // Lifecycle constants the macro-sim harness asserts against — exported so the
 // tests read the single source of truth instead of mirroring magic numbers.
 #[allow(unused_imports)]

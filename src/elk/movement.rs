@@ -13,9 +13,20 @@ pub trait Decomposable {
     fn contributions(&self) -> Vec<(&'static str, Vec2)>;
 }
 
-/// One candidate step evaluated by the softmax decision.
-pub struct StepEval {
-    pub step: (isize, isize),
+/// What an elk commits to this tick. Step travels to a cardinal neighbour;
+/// Stand and Graze both hold position (Graze additionally feeds, in Phase 2).
+/// Stored as a field on the decision record — never a marker component — so an
+/// elk's archetype never churns (see doc03.01.07).
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Act {
+    Step(isize, isize),
+    Stand,
+    Graze,
+}
+
+/// One candidate action evaluated by the softmax decision.
+pub struct Candidate {
+    pub act: Act,
     pub score: f32,
     pub penalty: f32,
     pub weight: f32,
@@ -24,9 +35,10 @@ pub struct StepEval {
 /// Full per-elk, per-tick decision record captured by `herd_move`.
 pub struct Decision {
     pub drives: Drives,
-    pub options: Vec<StepEval>,
+    pub options: Vec<Candidate>,
     /// Index into `options` of the chosen step; None when hemmed in.
     pub chosen: Option<usize>,
+    pub chosen_act: Act,
     pub temperature: f32,
 }
 
@@ -42,9 +54,25 @@ impl Default for Decision {
             },
             options: Vec::new(),
             chosen: None,
+            chosen_act: Act::Stand,
             temperature: 0.0,
         }
     }
+}
+
+/// Value of grazing the current cell, in the same units as a move's
+/// `desire·dir − penalty` score. Marginal value of intake declines with the
+/// store: the `(1 − energy)` factor sends it to 0 at satiation, so a full elk is
+/// indifferent between Graze and Stand. `here_forage` is `grid.forage(cell)`.
+pub fn graze_value(here_forage: f32, energy: f32, dwell: f32) -> f32 {
+    dwell * (1.0 - energy).clamp(0.0, 1.0) * here_forage.max(0.0)
+}
+
+/// Value of standing still — the conserve baseline. Holding position is the zero
+/// reference a move must beat (a move scores `desire·dir − penalty`, which is 0
+/// when the desire vector is orthogonal to the step and there's no penalty).
+pub fn stand_value() -> f32 {
+    0.0
 }
 
 /// Step cost for entering a water cell. On a ford the cost is reduced by
@@ -297,10 +325,11 @@ pub(super) fn herd_move(
         let appetite = 0.25 + 0.75 * (1.0 - elk.energy);
         let here_forage = grid.forage(elk.cell);
 
-        // Score each valid step, then softmax for a weighted-random pick.
-        let mut scores = [f32::NEG_INFINITY; 4];
-        let mut cells: [Option<usize>; 4] = [None; 4];
-        let mut penalties = [0.0_f32; 4];
+        // Score each valid step (indices 0-3), then Stand (4) and Graze (5).
+        // Softmax over all six for a weighted-random pick.
+        let mut scores = [f32::NEG_INFINITY; 6];
+        let mut cells: [Option<usize>; 6] = [None; 6];
+        let mut penalties = [0.0_f32; 6];
         for (k, &(dx, dy)) in steps.iter().enumerate() {
             if let Some(next) = grid.step(elk.cell, dx, dy) {
                 // Fording is costly — deep water repels, a ford less so. This
@@ -332,6 +361,10 @@ pub(super) fn herd_move(
                 cells[k] = Some(next);
             }
         }
+        // Stand and Graze candidates: no destination cell, no penalty.
+        scores[4] = stand_value();
+        scores[5] = graze_value(here_forage, elk.energy, params.dwell);
+
         let max = scores.iter().copied().fold(f32::NEG_INFINITY, f32::max);
         if !max.is_finite() {
             // Hemmed in — write an empty Decision so the UI can show the state.
@@ -339,31 +372,34 @@ pub(super) fn herd_move(
                 drives: decision_drives,
                 options: Vec::new(),
                 chosen: None,
+                chosen_act: Act::Stand,
                 temperature: params.temperature,
             };
             continue;
         }
-        let mut weights = [0.0_f32; 4];
-        for k in 0..4 {
+        let mut weights = [0.0_f32; 6];
+        for k in 0..6 {
             if scores[k].is_finite() {
                 weights[k] = ((scores[k] - max) / params.temperature).exp();
             }
         }
 
         // Build the per-candidate record before the pick so chosen maps into options.
-        let mut options = Vec::with_capacity(4);
+        let mut options = Vec::with_capacity(6);
         for (k, &(dx, dy)) in steps.iter().enumerate() {
             if scores[k].is_finite() {
-                options.push(StepEval {
-                    step: (dx, dy),
+                options.push(Candidate {
+                    act: Act::Step(dx, dy),
                     score: scores[k],
                     penalty: penalties[k],
                     weight: weights[k],
                 });
             }
         }
+        options.push(Candidate { act: Act::Stand, score: scores[4], penalty: 0.0, weight: weights[4] });
+        options.push(Candidate { act: Act::Graze, score: scores[5], penalty: 0.0, weight: weights[5] });
 
-        // The max-scored step always has weight 1, so total >= 1 (no div-by-0).
+        // The max-scored candidate has weight 1, so total >= 1 (no div-by-0).
         let total: f32 = weights.iter().sum();
         // Use the persistent probe RNG (same state across ticks) for
         // determinism, or the thread RNG for normal simulation runs.
@@ -374,21 +410,38 @@ pub(super) fn herd_move(
         };
         let mut option_counter = 0usize;
         let mut chosen_k: Option<usize> = None;
-        for k in 0..4 {
-            let Some(next) = cells[k] else { continue };
-            if pick < weights[k] {
-                elk.cell = next;
-                chosen_k = Some(option_counter);
-                break;
+        let mut chosen_act = Act::Stand;
+        'pick: {
+            for k in 0..4 {
+                if !scores[k].is_finite() { continue; }
+                if pick < weights[k] {
+                    elk.cell = cells[k].unwrap();
+                    chosen_k = Some(option_counter);
+                    let (dx, dy) = steps[k];
+                    chosen_act = Act::Step(dx, dy);
+                    break 'pick;
+                }
+                pick -= weights[k];
+                option_counter += 1;
             }
-            pick -= weights[k];
+            // Stand candidate
+            if pick < weights[4] {
+                chosen_k = Some(option_counter);
+                chosen_act = Act::Stand;
+                break 'pick;
+            }
+            pick -= weights[4];
             option_counter += 1;
+            // Graze candidate — catches any floating-point remainder
+            chosen_k = Some(option_counter);
+            chosen_act = Act::Graze;
         }
 
         last_decision.0 = Decision {
             drives: decision_drives,
             options,
             chosen: chosen_k,
+            chosen_act,
             temperature: params.temperature,
         };
 
@@ -484,6 +537,50 @@ pub fn forage_across(
 mod tests {
     use super::*;
     use super::super::components::DriveSample;
+
+    // ── graze_value / stand_value ─────────────────────────────────────────────
+
+    // At satiation (energy == 1.0) graze_value is 0 regardless of forage.
+    #[test]
+    fn graze_value_is_zero_at_satiation() {
+        assert!((graze_value(1.0, 1.0, 1.5)).abs() < 1e-6);
+        assert!((graze_value(0.5, 1.0, 1.5)).abs() < 1e-6);
+        assert!((graze_value(0.0, 1.0, 1.5)).abs() < 1e-6);
+    }
+
+    // graze_value increases as here_forage rises (monotone in forage).
+    #[test]
+    fn graze_value_monotone_in_forage() {
+        let low = graze_value(0.2, 0.5, 1.5);
+        let high = graze_value(0.8, 0.5, 1.5);
+        assert!(high > low, "richer forage must raise graze_value");
+    }
+
+    // graze_value increases as hunger (1 − energy) rises (monotone in hunger).
+    #[test]
+    fn graze_value_monotone_in_hunger() {
+        let fed = graze_value(0.7, 0.9, 1.5);
+        let starving = graze_value(0.7, 0.1, 1.5);
+        assert!(starving > fed, "hungrier elk must have higher graze_value");
+    }
+
+    // A starving elk on rich grass has graze_value > stand_value() (graze beats rest when hungry on forage).
+    #[test]
+    fn graze_beats_stand_when_hungry_on_forage() {
+        let gv = graze_value(1.0, 0.0, 1.5);
+        assert!(gv > stand_value(), "graze must beat stand for a starving elk on rich grass");
+    }
+
+    // graze_value >= stand_value() always (eating is never worse than resting).
+    #[test]
+    fn graze_never_worse_than_stand() {
+        for &forage in &[0.0_f32, 0.3, 0.7, 1.0] {
+            for &energy in &[0.0_f32, 0.5, 0.9, 1.0] {
+                let gv = graze_value(forage, energy, 1.5);
+                assert!(gv >= stand_value(), "graze_value({forage}, {energy}) < stand_value()");
+            }
+        }
+    }
 
     // ── Decomposable ─────────────────────────────────────────────────────────
 

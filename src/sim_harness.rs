@@ -5,7 +5,7 @@ use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
 use crate::elk::{Decision, DriveSamples, Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herds, LastDecision, ProbeSeed, Spawner};
-use crate::elk::{combine_drives, grass_gradient, step_water_penalty, StepEval};
+use crate::elk::{combine_drives, grass_gradient, graze_value, stand_value, step_water_penalty, Act, Candidate};
 use crate::droppings::DroppingsPlugin;
 use crate::grid::{Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
@@ -250,7 +250,7 @@ impl Decider for FieldDecider {
         let desire = drives.total();
 
         let steps: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-        let mut options = Vec::with_capacity(4);
+        let mut options = Vec::with_capacity(6);
         let mut best_score = f32::NEG_INFINITY;
         let mut best_idx: Option<usize> = None;
 
@@ -265,12 +265,38 @@ impl Decider for FieldDecider {
                     best_score = score;
                     best_idx = Some(options.len());
                 }
-                options.push(StepEval { step: (dx, dy), score, penalty, weight: 1.0 });
+                options.push(Candidate { act: Act::Step(dx, dy), score, penalty, weight: 1.0 });
             }
         }
 
+        // Stand candidate
+        {
+            let score = stand_value();
+            if score > best_score {
+                best_score = score;
+                best_idx = Some(options.len());
+            }
+            options.push(Candidate { act: Act::Stand, score, penalty: 0.0, weight: 1.0 });
+        }
+
+        // Graze candidate
+        {
+            let here_forage = grid.forage(cell);
+            let score = graze_value(here_forage, self.energy, params.dwell);
+            if score > best_score {
+                best_score = score;
+                best_idx = Some(options.len());
+            }
+            options.push(Candidate { act: Act::Graze, score, penalty: 0.0, weight: 1.0 });
+        }
+
         let chosen = if best_score.is_finite() { best_idx } else { None };
-        Decision { drives, options, chosen, temperature: params.temperature }
+        let chosen_act = if let Some(idx) = chosen {
+            options[idx].act
+        } else {
+            Act::Stand
+        };
+        Decision { drives, options, chosen, chosen_act, temperature: params.temperature }
     }
 }
 

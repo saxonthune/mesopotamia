@@ -5,7 +5,7 @@ use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
-use crate::elk::{Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls};
+use crate::elk::{Act, Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
 use crate::grid::{Grid, GrowthRate};
@@ -667,6 +667,14 @@ fn step_arrow(step: (isize, isize)) -> &'static str {
     }
 }
 
+fn act_glyph(act: Act) -> String {
+    match act {
+        Act::Step(dx, dy) => step_arrow((dx, dy)).to_string(),
+        Act::Stand => "■".to_string(),
+        Act::Graze => "🌿".to_string(),
+    }
+}
+
 fn elk_decision_panel(ui: &mut egui::Ui, decision: &Decision) {
     ui.label("selected elk — last decision");
 
@@ -693,7 +701,7 @@ fn elk_decision_panel(ui: &mut egui::Ui, decision: &Decision) {
             for (idx, eval) in decision.options.iter().enumerate() {
                 let prob = if total_weight > 1e-6 { eval.weight / total_weight } else { 0.0 };
                 let chosen = decision.chosen == Some(idx);
-                let mut text = egui::RichText::new(step_arrow(eval.step)).size(20.0);
+                let mut text = egui::RichText::new(act_glyph(eval.act)).size(20.0);
                 text = if chosen {
                     text.strong().color(egui::Color32::from_rgb(120, 200, 120))
                 } else {
