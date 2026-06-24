@@ -12,14 +12,34 @@
 //! `evaluate_bundle` sweeps in the harness; when the simulation changes, re-run
 //! those sweeps and edit the table below — nothing else moves.
 //!
-//! The `HIGH_SCORE` values are **provisional**: with the green wave not yet
-//! carrying the herd on the natural drive, the score's optimum is still the
-//! degenerate "max pull + max scarcity". Once the green-wave / pull-penalty fix
-//! lands, re-sweep and replace it with the low-pull, skill-tuned values.
+//! These are the **working set** the current model is tuned around: `Default` is the
+//! broken stage-1 herd (resource defaults — mills and overcrowds, no green-wave
+//! following), `Can cross` is the forage-sticky regime that rolls and fords the river
+//! on the *natural* drives (the green wave, not the pull), and `Optimized` is the same
+//! movement under leaner scarcity — a stage-3 score target. `Can cross`/`Optimized`
+//! run at **zero pull**: the crossing is earned by chasing the green-up front across
+//! the water, which the bounded swim cost makes passable.
 
 use crate::grid::GreenWave;
 use super::components::ElkParams;
 use super::ratios::RatioControls;
+
+/// The forage-sticky movement the working presets share: the herd follows the
+/// green-up front (`freshness_weight`), leapfrogs forward off depleted ground
+/// (`sightline_*`), forms a rolling column (`cohesion_lead`), and moves as a sticky
+/// glob (`momentum`/`temperature`) on a lower drain so it survives the march to the
+/// river. Economy (bite/regrow) and the green wave are set per preset.
+fn forage_sticky(p: &mut ElkParams) {
+    p.grass = 2.0;
+    p.grass_radius = 8.0;
+    p.freshness_weight = 4.0;
+    p.sightline_range = 24.0;
+    p.sightline_weight = 3.0;
+    p.cohesion_lead = 1.0;
+    p.momentum = 0.5;
+    p.temperature = 0.4;
+    p.energy_drain = 0.003;
+}
 
 /// One named regime: the full set of tunables that define it.
 pub struct Preset {
@@ -38,23 +58,22 @@ pub struct Preset {
 
 // ── Per-preset ElkParams overrides ────────────────────────────────────────────
 
-/// Default regime keeps every drive weight at the resource default.
+/// Default regime keeps every drive weight at the resource default — the broken
+/// stage-1 herd that mills, overcrowds, and never follows the green wave.
 fn default_params(_p: &mut ElkParams) {}
 
-/// Crossing regime: lean hard on forage, focus the steps, and pay to ford.
-fn crossing_params(p: &mut ElkParams) {
-    p.grass = 2.0;
-    p.temperature = 0.35;
-    p.cross = 3.0;
+/// Can-cross regime: the forage-sticky movement, nothing added — it rolls with the
+/// green-up front and fords the river on the natural drives at zero pull.
+fn can_cross_params(p: &mut ElkParams) {
+    forage_sticky(p);
 }
 
-/// High-score regime (provisional): a strong forager that, under scarcity, rides
-/// the migration pull across — the current degenerate optimum.
-fn high_score_params(p: &mut ElkParams) {
-    p.grass = 2.5;
-    p.social = 2.0;
-    p.grass_radius = 10.0;
-    p.temperature = 0.4;
+/// Optimized regime: same forage-sticky movement, tuned a touch harder (sharper
+/// pick, longer sight) for a herd that has to hold together under scarcity.
+fn optimized_params(p: &mut ElkParams) {
+    forage_sticky(p);
+    p.temperature = 0.35;
+    p.sightline_range = 28.0;
 }
 
 // ── The table ─────────────────────────────────────────────────────────────────
@@ -63,31 +82,31 @@ fn high_score_params(p: &mut ElkParams) {
 // table is `const` and every value is visible in one place. Keep the DEFAULT rows
 // in sync with the resources' own `Default` impls.
 
-/// The three reference regimes, in display order.
+/// The three working regimes, in display order.
 pub const PRESETS: [Preset; 3] = [
     Preset {
         name: "Default",
         description: "Stock weights, weak pull, plenty of food — the herd mills and \
-                      overcrowds the first segment instead of crossing.",
+                      overcrowds the first segment instead of crossing (stage 1, broken).",
         ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.175, cross_ratio: 0.35 },
         green_wave: GreenWave { strength: 0.5, speed: 0.010, wavelength: 85.0 },
         apply_params: default_params,
     },
     Preset {
-        name: "Crossing",
-        description: "Tuned foraging + a real pull under mild scarcity — the herd \
-                      visibly crosses the map (the \"it works\" baseline).",
-        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.12, cross_ratio: 1.0 },
-        green_wave: GreenWave { strength: 1.0, speed: 0.010, wavelength: 85.0 },
-        apply_params: crossing_params,
+        name: "Can cross",
+        description: "Forage-sticky: follows the green-up front, rolls as a glob, and \
+                      fords the river on the natural drives at zero pull — easy economy.",
+        ratios: RatioControls { bite_ratio: 4.0, regrow_ratio: 0.25, cross_ratio: 0.0 },
+        green_wave: GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+        apply_params: can_cross_params,
     },
     Preset {
-        name: "High score",
-        description: "Provisional: hard scarcity + a strong pull drives the score into \
-                      the hundreds — the degenerate optimum, pending the green-wave fix.",
-        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.04, cross_ratio: 2.0 },
-        green_wave: GreenWave { strength: 0.0, speed: 0.010, wavelength: 85.0 },
-        apply_params: high_score_params,
+        name: "Optimized",
+        description: "The same natural-drive crossing under leaner scarcity — a stage-3 \
+                      score target where the model must hold together as food thins.",
+        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.12, cross_ratio: 0.0 },
+        green_wave: GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+        apply_params: optimized_params,
     },
 ];
 
@@ -150,17 +169,18 @@ mod tests {
     // Applying a non-default preset writes its bundle onto the resources.
     #[test]
     fn apply_writes_the_bundle() {
-        let crossing = &PRESETS[1];
+        let can_cross = &PRESETS[1];
         let mut ratios = RatioControls::default();
         let mut wave = GreenWave::default();
         let mut params = ElkParams::default();
 
-        apply(crossing, &mut ratios, &mut wave, &mut params);
+        apply(can_cross, &mut ratios, &mut wave, &mut params);
 
-        assert_eq!(ratios.cross_ratio, 1.0);
-        assert_eq!(ratios.regrow_ratio, 0.12);
-        assert_eq!(wave.strength, 1.0);
-        assert_eq!(params.grass, 2.0, "crossing preset raises the grass weight");
-        assert_eq!(params.cross, 3.0);
+        assert_eq!(ratios.cross_ratio, 0.0, "can-cross fords on natural drives, not the pull");
+        assert_eq!(ratios.regrow_ratio, 0.25);
+        assert_eq!(wave.strength, 0.4);
+        assert_eq!(params.grass, 2.0, "can-cross raises the grass weight");
+        assert_eq!(params.freshness_weight, 4.0, "can-cross follows the green-up front");
+        assert_eq!(params.sightline_weight, 3.0, "can-cross leapfrogs forward");
     }
 }

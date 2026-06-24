@@ -1237,6 +1237,32 @@ fn controlled_crossing_probe() {
     println!("(probe only — far_bank>0 means the natural crossing works)");
 }
 
+// Working-presets sanity: run the live PRESETS table over the real map and read
+// out survival / how far east / departures, so a preset that instantly collapses is
+// caught before it ships. Not a gate — just the readout for the demo's working set.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape working_presets_probe -- --ignored --nocapture"]
+fn working_presets_probe() {
+    use mesopotamia::elk::presets::{apply, PRESETS};
+    const TICKS: u32 = 1500;
+    const SEEDS: [u64; 2] = [7, 42];
+    for seed in SEEDS {
+        println!("\n=== seed {seed} ({TICKS} ticks) ===");
+        for preset in &PRESETS {
+            let mut ratios = RatioControls::default();
+            let mut wave = GreenWave::default();
+            let mut params = ElkParams::default();
+            apply(preset, &mut ratios, &mut wave, &mut params);
+            let o = evaluate_bundle_seeded(seed, ratios, wave, params, TICKS);
+            println!(
+                "{:<10} survival={:.2} centroid={:>5.1} max_col={:>3} diff={:.2} score_hi={:.0}",
+                preset.name, o.survival, o.centroid_col, o.max_col, o.difficulty, o.score_high
+            );
+        }
+    }
+    println!("\n(probe only — sanity check on the live working presets)");
+}
+
 // Leapfrog mechanisms probe: forage sightline (long-range eastward sight),
 // cohesion_lead (column formation), and slow chewing (lower `bite`, graze_yield
 // auto-scales so energy holds but patches last). All at zero pull on fixed maps;
