@@ -1140,6 +1140,103 @@ fn slow_chew_right_probe() {
     println!("\n(probe only — fewer/farther deaths under slow chew = stickier glob)");
 }
 
+// Controlled crossing probe: isolates the B+C crossing model from the approach-
+// survival problem. A cluster sits on a near bank; a wide river (a ford band down
+// the middle) separates it from a GREEN far bank. The question: with the bounded
+// swim cost + far-bank attractiveness, does a hungry herd actually cross — and does
+// it prefer the ford? Counts how many reach the far bank by the end.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape controlled_crossing_probe -- --ignored --nocapture"]
+fn controlled_crossing_probe() {
+    use mesopotamia::grid::Grid;
+    const GW: usize = 50;
+    const GH: usize = 20;
+    const RIVER0: usize = 12; // first water col
+    const RIVER_W: usize = 12; // river width
+    const FORD_ROW: usize = 10; // a ford band crosses here
+    const TICKS: u32 = 800;
+
+    let build = || {
+        let mut grid = Grid::new(GW, GH);
+        for row in 0..GH {
+            for col in 0..GW {
+                let i = row * GW + col;
+                if col >= RIVER0 && col < RIVER0 + RIVER_W {
+                    // Deep water, except a 3-row ford band that is shallow/fordable.
+                    let is_ford_row = row.abs_diff(FORD_ROW) <= 1;
+                    grid.set_water(i, if is_ford_row { 0.4 } else { 1.0 });
+                    grid.set_water_prox(i, 0.0);
+                    grid.set_ford(i, is_ford_row);
+                } else if col >= RIVER0 + RIVER_W {
+                    grid.set_grass(i, grid.capacity(i)); // green far bank
+                    grid.set_freshness(i, 0.25); // a green-up front the herd chases (C)
+                } else {
+                    // Near bank: lean (just above graze_floor) so the backward grass
+                    // pull is weak and the elk are hungry — the depleted-bank regime in
+                    // which the far bank is meant to win.
+                    grid.set_grass(i, 0.35 * grid.capacity(i));
+                }
+            }
+        }
+        grid
+    };
+
+    // A cluster on the near bank, a few cols from the water.
+    let mut starts = Vec::new();
+    for row in 4..16 {
+        for col in (6..11).step_by(2) {
+            starts.push((row * GW + col, 0u8));
+        }
+    }
+
+    let run = |tag: &str, tweak: fn(&mut ElkParams)| {
+        let mut p = ElkParams::default();
+        p.freshness_weight = 4.0; // far bank fully grown reads as attractive
+        tweak(&mut p);
+        let mut app = make_probe_app(build(), &starts);
+        app.insert_resource(p);
+        app.insert_resource(RatioControls { cross_ratio: 0.0, ..Default::default() });
+        // Start well-fed so the herd has time to deplete the near bank and commit to
+        // the crossing before starving — the question is whether it crosses, not whether
+        // it outlasts a famine.
+        {
+            let world = app.world_mut();
+            let mut q = world.query::<&mut mesopotamia::elk::Elk>();
+            for mut e in q.iter_mut(world) { e.energy = 0.85; }
+        }
+        let mut crossed_max = 0usize;
+        for _ in 0..TICKS {
+            // Re-stamp a persistent green-up front on the far bank (the growth system
+            // decays a one-time stamp away). This is the standing wave crest the herd
+            // is meant to chase across the river.
+            {
+                let mut grid = app.world_mut().get_resource_mut::<mesopotamia::grid::Grid>().unwrap();
+                for row in 0..GH {
+                    for col in (RIVER0 + RIVER_W)..GW {
+                        grid.set_freshness(row * GW + col, 0.25);
+                    }
+                }
+            }
+            app.update();
+            crossed_max = crossed_max.max(max_col_reached(app.world_mut()));
+        }
+        // Count survivors on the far bank.
+        let world = app.world_mut();
+        let mut q = world.query::<&mesopotamia::elk::Elk>();
+        let far = q.iter(world).filter(|e| e.cell % GW >= RIVER0 + RIVER_W).count();
+        let total = q.iter(world).count();
+        println!("{tag:<26} far_bank={far:>3}/{total:<3} max_col={crossed_max} (far bank starts col {})", RIVER0 + RIVER_W);
+    };
+
+    println!("\n=== controlled crossing (river cols {RIVER0}-{}, ford rows {}-{}, zero pull) ===",
+        RIVER0 + RIVER_W - 1, FORD_ROW - 1, FORD_ROW + 1);
+    run("default crossing", |_p| {});
+    run("cross 3.0", |p| { p.cross = 3.0; });
+    run("cross 5.0 + swim 0.2", |p| { p.cross = 5.0; p.swim_reluctance = 0.2; });
+    run("grass 0.4 (weak pull)", |p| { p.grass = 0.4; });
+    println!("(probe only — far_bank>0 means the natural crossing works)");
+}
+
 // Leapfrog mechanisms probe: forage sightline (long-range eastward sight),
 // cohesion_lead (column formation), and slow chewing (lower `bite`, graze_yield
 // auto-scales so energy holds but patches last). All at zero pull on fixed maps;

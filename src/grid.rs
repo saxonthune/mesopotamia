@@ -349,6 +349,13 @@ impl Grid {
         self.freshness[index]
     }
 
+    /// Set a cell's freshness directly. Normally the growth system writes this from
+    /// the green wave; exposed so headless probes can stamp a green-up front (e.g. a
+    /// fresh far bank) without running a wave to steady state.
+    pub fn set_freshness(&mut self, index: usize, value: f32) {
+        self.freshness[index] = value.max(0.0);
+    }
+
     /// Total forage an elk perceives at a cell — grass plus shrubs. The herd's
     /// grass-seeking drive steers up this combined field, so shrub clumps pull
     /// foragers the same way rich grass does.

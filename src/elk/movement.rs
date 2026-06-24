@@ -462,6 +462,13 @@ pub(super) fn herd_move(
         // now is the baseline a crossing must beat.
         let appetite = 0.25 + 0.75 * (1.0 - elk.energy);
         let here_forage = grid.forage(elk.cell);
+        // Forage attractiveness incl. the green-up front, the same measure the local
+        // gradient and sightline climb — so a fresh far bank pulls a crossing the way
+        // fresh grass ahead pulls a step. `here_attract` is the baseline a crossing
+        // must beat; `peek` bounds the across-water look (the crossing's perception).
+        let attract = |c: usize| grid.forage(c) + params.freshness_weight * grid.freshness(c);
+        let here_attract = attract(elk.cell);
+        let peek = params.cross_peek.max(1.0) as usize;
 
         // Score each valid step (indices 0-3), then Stand (4) and Graze (5).
         // Softmax over all six for a weighted-random pick.
@@ -470,17 +477,8 @@ pub(super) fn herd_move(
         let mut penalties = [0.0_f32; 6];
         for (k, &(dx, dy)) in steps.iter().enumerate() {
             if let Some(next) = grid.step(elk.cell, dx, dy) {
-                // Fording is costly — deep water repels, a ford less so. This
-                // is what turns a crossing into a decision: a herd only steps into
-                // water when the forage drive beyond outweighs the penalty.
-                let penalty = step_water_penalty(
-                    grid.water(next),
-                    grid.is_ford(next),
-                    params.water_cost,
-                    params.ford_discount,
-                );
                 let step_dir = Vec2::new(dx as f32, dy as f32);
-                let mut score = desire.dot(step_dir) - penalty;
+                let mut score = desire.dot(step_dir);
                 // Directional persistence: reward continuing last tick's heading,
                 // penalize reversing it. Strong in water so a crossing elk commits
                 // to the far bank instead of toe-dipping; gentle on land so it just
@@ -492,18 +490,31 @@ pub(super) fn herd_move(
                     params.momentum
                 };
                 score += persist * heading.dot(step_dir);
-                // Crossing incentive: when the step enters water, peek across for
-                // the far bank and add `cross_desire` — the forage gain over the
-                // best dry option, net of the whole span's cost. Scaled by hunger
-                // and the tunable `cross` weight, this is what lets a starving herd
-                // commit to a ford toward grass it cannot otherwise sense.
+                let mut penalty = 0.0;
+                // Entering water is a *crossing decision*, not a per-cell toll. Peek
+                // across for the far bank: if one is in reach, price the whole
+                // crossing with the bounded `swim_cost` and weigh the far bank's
+                // attractiveness against here — `cross_desire` is then the entire
+                // water term, attracting a hungry herd toward green far-bank forage
+                // and deterring a fed one, scale-independent of river width. With no
+                // far bank in reach (a span parallel to the river, or wider than the
+                // peek) the raw per-cell penalty stands: that water is still a wall.
                 if grid.water(next) >= WATER_EPS {
-                    if let Some((across, span_cost)) = forage_across(
-                        &grid, elk.cell, dx, dy, params.water_cost, params.ford_discount, MAX_PEEK,
-                    ) {
-                        let ahead = grid.forage(next);
-                        let incentive = cross_desire(here_forage, ahead, across, span_cost).max(0.0);
-                        score += params.cross * appetite * incentive;
+                    if let Some((far_cell, eff_cells)) =
+                        forage_across(&grid, elk.cell, dx, dy, params.ford_discount, peek)
+                    {
+                        let across = attract(far_cell);
+                        let ahead = attract(next); // a water cell ≈ 0 forage
+                        let cost = swim_cost(eff_cells, params.swim_reluctance);
+                        score += params.cross * appetite * cross_desire(here_attract, ahead, across, cost);
+                    } else {
+                        penalty = step_water_penalty(
+                            grid.water(next),
+                            grid.is_ford(next),
+                            params.water_cost,
+                            params.ford_discount,
+                        );
+                        score -= penalty;
                     }
                 }
                 scores[k] = score;
@@ -640,29 +651,41 @@ pub fn cross_desire(here: f32, ahead: f32, across: f32, cross_cost: f32) -> f32 
 /// crossing incentive; below it the step is dry land and scored normally.
 const WATER_EPS: f32 = 0.01;
 
-/// How far across a water span an elk looks for the far bank. Bounds the peek so
-/// a step parallel to a long river (which never reaches dry land) stops cheaply.
-const MAX_PEEK: usize = 12;
+/// Width scale (in effective water cells) of the crossing-cost saturation. A span
+/// a few of these long already costs nearly the full `swim_reluctance`; beyond it
+/// the cost barely grows. Sets how quickly a wider river stops mattering.
+const SWIM_SCALE: f32 = 4.0;
 
-/// Look across a water span for the far bank `cross_desire` would aim at. Walks
-/// from `cell` in `(dx, dy)`, summing the per-cell crossing penalty over the
-/// contiguous water, and returns `(far_bank_forage, span_cost)` at the first dry
-/// cell reached within `max_peek` steps. `None` when the step does not enter
-/// water, the water never ends within reach, or the path runs off the grid.
+/// The *decision* cost of committing to a crossing, saturating with span width.
+/// `effective_cells` is the ford-weighted count of water cells to traverse (a ford
+/// cell counts as `ford_discount` of a full cell). The cost rises from 0 toward
+/// `reluctance` as the span widens, so a one-cell stream is nearly free, a few-cell
+/// ford is cheap, and a wide deep river asymptotes to `reluctance` rather than a
+/// linear wall — the bounded "elk swim rivers" model. Pure; tested below.
+pub fn swim_cost(effective_cells: f32, reluctance: f32) -> f32 {
+    reluctance * (1.0 - (-effective_cells.max(0.0) / SWIM_SCALE).exp())
+}
+
+/// Look across a water span for the far bank a crossing would aim at. Walks from
+/// `cell` in `(dx, dy)` over contiguous water, accumulating the *ford-weighted*
+/// water-cell count (a ford counts as `ford_discount` of a full cell), and returns
+/// `(far_bank_cell, effective_cells)` at the first dry cell reached within
+/// `max_peek` steps. `None` when the step does not enter water, the water never
+/// ends within reach, or the path runs off the grid.
 ///
 /// This is what lets a hungry herd "see" greener ground beyond a river it cannot
-/// otherwise perceive (the far bank sits past the grass-gradient radius), so the
-/// barrier becomes a decision instead of a wall.
+/// otherwise perceive (the far bank sits past the grass-gradient radius). The
+/// caller prices the crossing with `swim_cost` and reads the far bank's
+/// attractiveness, so the barrier becomes a decision instead of a wall.
 pub fn forage_across(
     grid: &Grid,
     cell: usize,
     dx: isize,
     dy: isize,
-    water_cost: f32,
     ford_discount: f32,
     max_peek: usize,
-) -> Option<(f32, f32)> {
-    let mut span_cost = 0.0;
+) -> Option<(usize, f32)> {
+    let mut effective_cells = 0.0;
     let mut at = cell;
     let mut crossed_water = false;
     for _ in 0..max_peek {
@@ -670,9 +693,9 @@ pub fn forage_across(
         let water = grid.water(next);
         if water < WATER_EPS {
             // Dry cell: the far bank — but only if we actually crossed water.
-            return crossed_water.then(|| (grid.forage(next), span_cost));
+            return crossed_water.then_some((next, effective_cells));
         }
-        span_cost += step_water_penalty(water, grid.is_ford(next), water_cost, ford_discount);
+        effective_cells += if grid.is_ford(next) { ford_discount } else { 1.0 };
         crossed_water = true;
         at = next;
     }
@@ -1219,12 +1242,12 @@ mod tests {
     }
 
     #[test]
-    fn forage_across_finds_far_bank_and_sums_span_cost() {
+    fn forage_across_finds_far_bank_and_counts_cells() {
         let grid = river_row();
-        // Two non-ford water cells at water_cost 2.0 ⇒ span cost 4.0; far bank forage 0.5.
-        let (across, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
-        assert!((across - 0.5).abs() < 1e-6);
-        assert!((cost - 4.0).abs() < 1e-6);
+        // Two non-ford water cells ⇒ effective_cells 2.0; far bank is cell 3 (forage 0.5).
+        let (far_cell, cells) = forage_across(&grid, 0, 1, 0, 0.1, 12).unwrap();
+        assert_eq!(far_cell, 3);
+        assert!((cells - 2.0).abs() < 1e-6);
     }
 
     #[test]
@@ -1232,7 +1255,7 @@ mod tests {
         // Stepping the other way (−x off cell 0) and into dry land yields no crossing.
         let mut grid = Grid::new(6, 1);
         grid.set_grass(1, 0.5); // dry neighbour to the +x side
-        assert!(forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).is_none());
+        assert!(forage_across(&grid, 0, 1, 0, 0.1, 12).is_none());
     }
 
     #[test]
@@ -1241,17 +1264,56 @@ mod tests {
         for i in 1..6 {
             grid.set_water(i, 1.0); // water all the way to the edge — no far bank
         }
-        assert!(forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).is_none());
+        assert!(forage_across(&grid, 0, 1, 0, 0.1, 12).is_none());
     }
 
     #[test]
-    fn forage_across_charges_less_over_a_ford() {
+    fn forage_across_counts_fords_as_fractional_cells() {
         let mut grid = river_row();
         grid.set_ford(1, true);
         grid.set_ford(2, true);
-        // ford_discount 0.1 ⇒ each water cell costs 0.2 instead of 2.0.
-        let (_, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
-        assert!((cost - 0.4).abs() < 1e-6, "ford span should cost 2×0.2 = 0.4, got {cost}");
+        // ford_discount 0.1 ⇒ each ford cell counts as 0.1 of a full cell ⇒ 0.2 total.
+        let (_, cells) = forage_across(&grid, 0, 1, 0, 0.1, 12).unwrap();
+        assert!((cells - 0.2).abs() < 1e-6, "ford span should count 2×0.1 = 0.2, got {cells}");
+    }
+
+    // ── swim_cost ───────────────────────────────────────────────────────────────
+
+    // A zero-width span costs nothing; the deterrent only exists where there is water.
+    #[test]
+    fn swim_cost_is_zero_for_no_water() {
+        assert!(swim_cost(0.0, 0.6).abs() < 1e-6);
+    }
+
+    // The cost saturates: it never exceeds the reluctance ceiling, however wide.
+    #[test]
+    fn swim_cost_is_bounded_by_reluctance() {
+        for cells in [1.0_f32, 4.0, 12.0, 50.0, 1000.0] {
+            let c = swim_cost(cells, 0.6);
+            assert!(c < 0.6 + 1e-6, "cost {c} exceeds reluctance at {cells} cells");
+        }
+        // A very wide river is within a whisker of the ceiling.
+        assert!(swim_cost(1000.0, 0.6) > 0.6 - 1e-3);
+    }
+
+    // Monotone increasing in width: a wider span never costs less. Breaking input:
+    // if the sign flipped, a wide river would read as cheaper than a stream.
+    #[test]
+    fn swim_cost_rises_with_width() {
+        let widths = [0.0_f32, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let costs: Vec<f32> = widths.iter().map(|&w| swim_cost(w, 0.6)).collect();
+        for w in costs.windows(2) {
+            assert!(w[1] >= w[0], "cost must not fall as width rises: {} < {}", w[1], w[0]);
+        }
+    }
+
+    // A few-cell ford is far cheaper to decide on than a wide deep river — the
+    // property that makes a herd prefer the shallows. (Same reluctance both sides.)
+    #[test]
+    fn swim_cost_makes_a_narrow_ford_cheaper_than_a_wide_river() {
+        let ford = swim_cost(0.4, 0.6); // 4 ford cells at discount 0.1
+        let river = swim_cost(14.0, 0.6); // a wide deep channel
+        assert!(ford < river * 0.5, "a ford ({ford}) should be much cheaper than a river ({river})");
     }
 
     // ── step_heading ──────────────────────────────────────────────────────────

@@ -162,6 +162,18 @@ pub struct ElkParams {
     /// forward packmates weigh more, so the herd's cohesion centre drifts east and
     /// the blob elongates into a rolling column instead of clustering on its centre.
     pub cohesion_lead: f32,
+    /// How far across a water span an elk looks for the far bank when deciding to
+    /// cross — the crossing analogue of `grass_radius`. Set above the widest river so
+    /// a hungry herd can *see* green far-bank forage instead of facing an opaque wall;
+    /// below the river width the far bank is invisible and the river is uncrossable.
+    pub cross_peek: f32,
+    /// Saturating ceiling on the *decision* cost of a crossing, in forage-comparable
+    /// units. A river crossing is one committed effort, so the cost a hungry elk
+    /// weighs against far-bank forage saturates with width rather than growing
+    /// linearly — a wide river deters but never becomes an infinite wall, which is
+    /// what lets a herd ford on the natural forage drive instead of only the pull.
+    /// (The per-tick swim *energy* drain is separate; this shapes only the choice.)
+    pub swim_reluctance: f32,
 }
 
 /// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
@@ -307,6 +319,14 @@ impl Default for ElkParams {
             sightline_range: 0.0,
             sightline_weight: 0.0,
             cohesion_lead: 0.0,
+            // Look across rivers up to 28 cells — above the widest worldgen channel
+            // (~19) so the far bank is visible at every ford. The crossing decision
+            // is gated by forage/hunger, not by whether the elk can perceive across.
+            cross_peek: 28.0,
+            // A crossing costs at most ~0.6 forage-units to decide on (saturating in
+            // width); set near the high end of a fresh patch's worth so a hungry herd
+            // facing green far-bank grass will commit, but a fed one won't wander in.
+            swim_reluctance: 0.6,
         }
     }
 }

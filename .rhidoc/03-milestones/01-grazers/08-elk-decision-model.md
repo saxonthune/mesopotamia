@@ -55,6 +55,39 @@ This carries the **quantity → quality threshold**. Hunger accumulates tick by 
 
 Stand is selected when two conditions hold at once: the elk sits at a **local maximum of the spatial potential** (all four `∇V` neighbours are lower — a comfortable spot relative to the herd and terrain), *and* its hunger-grass term `∂V/∂store · intake` is below the cost of doing anything but conserve. Both simultaneously — a good position *and* no intake worth the conversion.
 
+## Crossing: the far bank as a bounded bet
+
+A river is a gap in the spatial potential — water carries no forage, so the grass
+gradient at the bank points *away* from it, back toward dry grass. Left there, a herd
+never crosses: the backward pull always beats stepping into a foodless cell. The
+crossing has to be a deliberate bet against that pull, and three things shape it.
+
+- **The far bank is perceived across the water.** Beyond the local grass radius, an
+  elk entering water looks across the contiguous span for the first dry cell and reads
+  its attractiveness — standing forage *plus the green-up front* (the same freshness
+  signal the local gradient and the dry-land sightline climb). So the bet is driven by
+  the **green wave**: a fresh far bank pulls a crossing the way fresh grass ahead pulls
+  a step. The look reaches past the widest channel, so the barrier is a *decision*, not
+  an opaque wall the herd simply cannot see beyond.
+
+- **The crossing's cost is bounded, not linear.** A crossing is one committed effort,
+  so the price an elk weighs against the far bank **saturates** with the river's width
+  rather than growing per-cell without limit. A one-cell stream is nearly free, a
+  shallow ford is cheap (fords count for a fraction of a full cell), and a wide deep
+  channel asymptotes to a fixed reluctance instead of becoming infinite. This is the
+  "elk swim rivers" model: width deters but never forbids. (The per-tick swim *energy*
+  drain is a separate, real cost; this bound shapes only the choice.)
+
+- **The bet is hunger-scaled.** The whole crossing term is weighted by appetite, so a
+  fed herd stays on familiar grass and only a hungry one — or one facing a far bank
+  clearly greener than a depleted near side — pays to cross. This is the same
+  quantity→quality threshold: hunger steepens until the far bank's pull, net of the
+  bounded cost, swamps the backward gradient, and the herd fords.
+
+Together these make the river crossable on the **natural drives** — the green wave and
+hunger — rather than only under the migration pull. The pull remains a crutch the score
+penalizes; the green-up far bank is the honest way across.
+
 ## Commitment: the value field has a heading
 
 A value field that depends only on position and store is **memoryless and spatially symmetric**, and that symmetry is wrong inside a river. Standing mid-channel, both banks beckon equally and reversing costs nothing, so a purely positional `V` produces a limit cycle — the elk dips a step in, the gradient pulls it back, and it dithers in place instead of crossing.
