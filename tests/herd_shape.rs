@@ -823,6 +823,323 @@ fn green_wave_seeded_probe() {
     let _ = run; // (kept above; leapfrog probe below uses its own builder)
 }
 
+// Lifecycle-shape probe: the user complaint is "3/4 of the herd dies early, then
+// the remnant beelines straight east without stopping." That is a *lifecycle*
+// signature — when deaths happen and whether survivors roll or beeline — which the
+// final-aggregate probes can't show. This samples pop / mean-energy / centroid each
+// tick on the real worldgen map (wave on) for the current default vs a forage-driven
+// "sticky" candidate (sightline + cohesion_lead + freshness on, momentum/temperature
+// for stick-and-move), keeping bite=0.12 so the grass economy isn't disturbed yet.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape lifecycle_compare_probe -- --ignored --nocapture"]
+fn lifecycle_compare_probe() {
+    const TICKS: u32 = 1200;
+    const SEED: u64 = 42;
+
+    let run = |tag: &str, tweak: fn(&mut ElkParams)| {
+        let mut p = ElkParams::default();
+        tweak(&mut p);
+        let mut app = make_app();
+        app.insert_resource(mesopotamia::worldgen::WorldSeed(SEED));
+        app.insert_resource(p);
+        app.insert_resource(RatioControls { cross_ratio: 0.0, ..Default::default() });
+        app.insert_resource(GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 });
+
+        let mut peak_pop = 0usize;
+        let mut peak_tick = 0u32;
+        println!("\n=== {tag} (seed {SEED}, wave on, zero pull) ===");
+        for t in 0..TICKS {
+            app.update();
+            let pop = elk_count(app.world_mut());
+            if pop > peak_pop { peak_pop = pop; peak_tick = t + 1; }
+            if t % 100 == 99 || t == 0 {
+                let total_e = total_elk_energy(app.world());
+                let mean_e = if pop > 0 { total_e / pop as f32 } else { 0.0 };
+                let cent = centroid_col(app.world_mut());
+                let maxc = max_col_reached(app.world_mut());
+                println!(
+                    "  tick {:>4}: pop={:>3} mean_e={:.3} centroid={:>5.1} max_col={:>3}",
+                    t + 1, pop, mean_e, cent, maxc
+                );
+            }
+        }
+        let final_pop = elk_count(app.world_mut());
+        println!("  peak_pop={peak_pop} @tick{peak_tick}, final_pop={final_pop}");
+    };
+
+    run("A: current default (leapfrog off)", |_p| {});
+    run("B: forage-sticky (leapfrog on, bite 0.12)", |p| {
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.momentum = 0.5;
+        p.temperature = 0.4;
+    });
+    println!("\n(probe only — no assertions; map 256 wide, EDGE_COL=254)");
+}
+
+// Survival sweep: starting from the forage-sticky candidate (leapfrog on, bite
+// 0.12), which levers lift baseline (easy-world, zero-pull) survival without
+// killing the eastward roll? A high baseline survival is the precondition for the
+// score meaning "few elk died" — difficulty then lowers it on purpose. Each row
+// changes one lever off the B baseline.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape survival_sweep_probe -- --ignored --nocapture"]
+fn survival_sweep_probe() {
+    const TICKS: u32 = 1200;
+    const SEEDS: [u64; 2] = [7, 42];
+
+    let base = |p: &mut ElkParams| {
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.momentum = 0.5;
+        p.temperature = 0.4;
+    };
+
+    let cfgs: [(&str, fn(&mut ElkParams)); 6] = [
+        ("B baseline",        |p| {}),
+        ("B + sep 1.6",       |p| { p.separation = 1.6; }),
+        ("B + drain 0.003",   |p| { p.energy_drain = 0.003; }),
+        ("B + grass 2.8",     |p| { p.grass = 2.8; }),
+        ("B + migration 0.3", |p| { p.migration = 0.3; }),
+        ("B + all (sep+drain)",|p| { p.separation = 1.6; p.energy_drain = 0.003; }),
+    ];
+
+    for seed in SEEDS {
+        println!("\n=== seed {seed} (wave on, zero pull, {TICKS} ticks) ===");
+        for (tag, tweak) in &cfgs {
+            let mut p = ElkParams::default();
+            base(&mut p);
+            tweak(&mut p);
+            let o = evaluate_bundle_seeded(
+                seed,
+                RatioControls { cross_ratio: 0.0, ..Default::default() },
+                GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+                p,
+                TICKS,
+            );
+            println!(
+                "{tag:<22} survival={:.2} centroid={:>5.1} max_col={:>3}",
+                o.survival, o.centroid_col, o.max_col
+            );
+        }
+    }
+    println!("\n(probe only — survival is the headline metric here)");
+}
+
+// Economy/difficulty axis sweep: on the best movement config (forage-sticky +
+// lower drain), how does survival move as the economy goes from generous to lean?
+// This is the difficulty axis. If a generous economy yields high survival (≥0.7)
+// and a lean one starves the herd, then "successful score = few elk dying" is
+// achievable and difficulty is real — the player trades survival for score.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape economy_axis_probe -- --ignored --nocapture"]
+fn economy_axis_probe() {
+    const TICKS: u32 = 1200;
+    const SEEDS: [u64; 2] = [7, 42];
+
+    let movement = |p: &mut ElkParams| {
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.momentum = 0.5;
+        p.temperature = 0.4;
+        p.energy_drain = 0.003;
+    };
+
+    // (tag, bite_ratio, regrow_ratio) — generous → lean. difficulty kicks in below
+    // regrow_ratio 0.2.
+    let econ = [
+        ("generous  br5.0 rr0.35", 5.0_f32, 0.35_f32),
+        ("easy      br4.0 rr0.25", 4.0, 0.25),
+        ("sustain   br3.0 rr0.20", 3.0, 0.20),
+        ("default   br2.5 rr0.175", 2.5, 0.175),
+        ("lean      br2.0 rr0.12", 2.0, 0.12),
+    ];
+
+    for seed in SEEDS {
+        println!("\n=== seed {seed} (wave on, zero pull, {TICKS} ticks) ===");
+        for (tag, br, rr) in &econ {
+            let mut p = ElkParams::default();
+            movement(&mut p);
+            let o = evaluate_bundle_seeded(
+                seed,
+                RatioControls { bite_ratio: *br, regrow_ratio: *rr, cross_ratio: 0.0 },
+                GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+                p,
+                TICKS,
+            );
+            println!(
+                "{tag:<24} survival={:.2} centroid={:>5.1} max_col={:>3} diff={:.2}",
+                o.survival, o.centroid_col, o.max_col, o.difficulty
+            );
+        }
+    }
+    println!("\n(probe only — survival should fall as the economy leans out)");
+}
+
+// Death-location probe: survival is flat across the economy axis, so deaths are
+// not scarcity. WHERE do elk die? Buckets Starved-event columns to tell spawn
+// crowding (low cols) from river drowning (mid) from trail-starvation (strung out
+// behind a moving front). Reads the EventLog directly after a run.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape death_location_probe -- --ignored --nocapture"]
+fn death_location_probe() {
+    use mesopotamia::grid::GRID_WIDTH;
+    const TICKS: u32 = 1200;
+    const SEED: u64 = 42;
+
+    let run = |tag: &str, econ: RatioControls, tweak: fn(&mut ElkParams)| {
+        let mut p = ElkParams::default();
+        tweak(&mut p);
+        let mut app = make_app();
+        app.insert_resource(mesopotamia::worldgen::WorldSeed(SEED));
+        app.insert_resource(p);
+        app.insert_resource(econ);
+        app.insert_resource(GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 });
+        for _ in 0..TICKS { app.update(); }
+
+        let log = app.world().get_resource::<EventLog>().unwrap();
+        let mut starved = [0u32; 13]; // columns bucketed by 20: 0-19,20-39,...,240+
+        let mut departed = 0u32;
+        let mut starve_energy_sum = 0.0f32;
+        for e in &log.recent {
+            match e.kind {
+                EventKind::Starved => {
+                    let col = e.cell % GRID_WIDTH;
+                    starved[(col / 20).min(12)] += 1;
+                    starve_energy_sum += e.energy;
+                }
+                EventKind::Departed => departed += 1,
+            }
+        }
+        let total_starved: u32 = starved.iter().sum();
+        println!("\n=== {tag} ===");
+        println!("  starved={total_starved} departed={departed} mean_death_energy={:.3}",
+            if total_starved > 0 { starve_energy_sum / total_starved as f32 } else { 0.0 });
+        print!("  death cols (per 20):");
+        for (i, n) in starved.iter().enumerate() {
+            if *n > 0 { print!(" [{:>3}]={}", i * 20, n); }
+        }
+        println!();
+    };
+
+    let movement = |p: &mut ElkParams| {
+        p.grass = 2.0; p.grass_radius = 8.0; p.freshness_weight = 4.0;
+        p.sightline_range = 24.0; p.sightline_weight = 3.0; p.cohesion_lead = 1.0;
+        p.momentum = 0.5; p.temperature = 0.4; p.energy_drain = 0.003;
+    };
+    run("forage-sticky, generous econ", RatioControls { bite_ratio: 5.0, regrow_ratio: 0.35, cross_ratio: 0.0 }, movement);
+    run("forage-sticky, lean econ", RatioControls { bite_ratio: 2.0, regrow_ratio: 0.12, cross_ratio: 0.0 }, movement);
+    run("default-off, default econ", RatioControls::default(), |_p| {});
+    println!("\n(probe only — death column histogram)");
+}
+
+// River-width probe: the herd dies in a wall at ~col 60. Is that the river, and is
+// it wider than MAX_PEEK (12), so the natural cross drive can never see the far
+// bank? Scans each row for its widest contiguous water span and where it sits.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape river_width_probe -- --ignored --nocapture"]
+fn river_width_probe() {
+    use mesopotamia::grid::Grid;
+    const SEED: u64 = 42;
+    let mut app = make_app();
+    app.insert_resource(mesopotamia::worldgen::WorldSeed(SEED));
+    app.update(); // generate world
+    let grid = app.world().get_resource::<Grid>().unwrap();
+    let w = grid.width();
+    let h = grid.height();
+
+    let mut widths = Vec::new();
+    let mut starts = Vec::new();
+    for row in 0..h {
+        let mut best = 0usize; let mut best_start = 0usize;
+        let mut run = 0usize; let mut run_start = 0usize;
+        for col in 0..w {
+            if grid.water(row * w + col) > 0.01 {
+                if run == 0 { run_start = col; }
+                run += 1;
+                if run > best { best = run; best_start = run_start; }
+            } else { run = 0; }
+        }
+        widths.push(best);
+        starts.push(best_start);
+    }
+    let max_w = *widths.iter().max().unwrap();
+    let mean_w = widths.iter().sum::<usize>() as f32 / h as f32;
+    let mean_start = starts.iter().sum::<usize>() as f32 / h as f32;
+    println!("river: max_width={max_w} mean_width={mean_w:.1} mean_start_col={mean_start:.1} (MAX_PEEK=12)");
+    // Sample a few rows
+    for row in (0..h).step_by(h / 8) {
+        println!("  row {row:>3}: widest_span={} at col {}", widths[row], starts[row]);
+    }
+}
+
+// Slow-chew (done right) probe: hold graze_yield and intrinsic FIXED by co-lowering
+// bite and bite_ratio together, so the only thing that changes is chew *rate*. The
+// question: does a slower chew make the glob stickier — front advances slower, food
+// regrows behind it, fewer stragglers strand and starve in the gap? Compares fast
+// vs slow chew at matched economy, reporting survival + where deaths fall.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape slow_chew_right_probe -- --ignored --nocapture"]
+fn slow_chew_right_probe() {
+    use mesopotamia::grid::GRID_WIDTH;
+    const TICKS: u32 = 1200;
+    const SEEDS: [u64; 2] = [7, 42];
+    const DRAIN: f32 = 0.003;
+    const TARGET_GY: f32 = 0.02; // graze_yield we hold fixed across chew speeds
+    const REGROW: f32 = 0.25;    // easy economy, difficulty 0
+
+    // bite_ratio that yields TARGET_GY for a given bite: br = gy*bite/drain.
+    let br_for = |bite: f32| TARGET_GY * bite / DRAIN;
+
+    let movement = |p: &mut ElkParams, bite: f32| {
+        p.grass = 2.0; p.grass_radius = 8.0; p.freshness_weight = 4.0;
+        p.sightline_range = 24.0; p.sightline_weight = 3.0; p.cohesion_lead = 1.0;
+        p.momentum = 0.5; p.temperature = 0.4; p.energy_drain = DRAIN;
+        p.bite = bite;
+    };
+
+    for seed in SEEDS {
+        println!("\n=== seed {seed} (matched gy={TARGET_GY}, regrow {REGROW}, zero pull) ===");
+        for (tag, bite) in [("fast chew  bite0.12", 0.12_f32), ("med chew   bite0.04", 0.04), ("slow chew  bite0.012", 0.012)] {
+            let mut p = ElkParams::default();
+            movement(&mut p, bite);
+            let mut app = make_app();
+            app.insert_resource(mesopotamia::worldgen::WorldSeed(seed));
+            app.insert_resource(p);
+            app.insert_resource(RatioControls { bite_ratio: br_for(bite), regrow_ratio: REGROW, cross_ratio: 0.0 });
+            app.insert_resource(GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 });
+            for _ in 0..TICKS { app.update(); }
+
+            let cent = centroid_col(app.world_mut());
+            let maxc = max_col_reached(app.world_mut());
+            let log = app.world().get_resource::<EventLog>().unwrap();
+            let (mut starved, mut departed) = (0u32, 0u32);
+            let mut peakcol = [0u32; 13];
+            for e in &log.recent {
+                match e.kind {
+                    EventKind::Starved => { starved += 1; peakcol[((e.cell % GRID_WIDTH)/20).min(12)] += 1; }
+                    EventKind::Departed => departed += 1,
+                }
+            }
+            let modecol = peakcol.iter().enumerate().max_by_key(|(_, n)| **n).map(|(i, _)| i*20).unwrap_or(0);
+            println!("{tag:<22} starved={starved:>3} departed={departed:>2} centroid={cent:>5.1} max_col={maxc:>3} death_mode_col~{modecol}");
+        }
+    }
+    println!("\n(probe only — fewer/farther deaths under slow chew = stickier glob)");
+}
+
 // Leapfrog mechanisms probe: forage sightline (long-range eastward sight),
 // cohesion_lead (column formation), and slow chewing (lower `bite`, graze_yield
 // auto-scales so energy holds but patches last). All at zero pull on fixed maps;
