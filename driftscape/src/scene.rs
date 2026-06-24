@@ -4,7 +4,7 @@
 //! paints it with `draw(canvas)`; adding a new screensaver means adding a type
 //! that implements this trait, nothing in the terminal shell changes.
 
-use crate::driftscape::canvas::Canvas;
+use crate::canvas::Canvas;
 
 pub trait Scene {
     /// Advance the field by `dt` seconds: move things, respawn what left the frame.

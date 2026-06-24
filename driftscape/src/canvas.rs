@@ -1,17 +1,41 @@
-//! The half-block canvas — a truecolor pixel buffer that prints as terminal text.
+//! The ASCII canvas — a truecolor pixel buffer that prints as terminal glyphs.
 //!
-//! A terminal cell is about twice as tall as it is wide, so a sphere drawn one
-//! pixel per cell comes out an egg. The canvas instead treats each cell as two
-//! stacked pixels and prints the upper-half block `▀`: the glyph's *foreground*
-//! color is the top pixel, its *background* color is the bottom. That doubles
-//! vertical resolution and squares the pixels, so circles read as round.
+//! A terminal cell is about twice as tall as it is wide, so drawing happens in
+//! an oversampled pixel space (`cols` wide by `2 * rows` tall) where pixels are
+//! square — a sphere there is round, not an egg. `render` then collapses each
+//! cell's two stacked pixels into a single character: the pixels' combined
+//! brightness chooses a glyph from a dark-to-light ramp (` .,:;=+*#%@`) and the
+//! brighter pixel lends its truecolor to the glyph. The result is colored ASCII
+//! art rather than solid color blocks — the field reads as characters.
 //!
-//! Drawing happens in pixel space (`cols` wide by `2 * rows` tall). `render`
-//! turns the buffer into one ANSI frame, emitting a color escape only when it
-//! changes from the previous cell to keep the byte count down.
+//! A color escape is emitted only when the foreground changes from the previous
+//! cell, to keep the byte count down.
 
-use crate::driftscape::color::Rgb;
+use crate::color::Rgb;
 use std::fmt::Write;
+
+/// Dark-to-light glyph ramp. Index 0 is the empty field; the last is the
+/// brightest core. Brightness maps linearly onto these levels.
+const RAMP: &[u8] = b" .,:;=+*#%@";
+
+/// Brightness of a color in `0.0..=1.0`, taken as its brightest channel (HSV
+/// value). Using value rather than perceptual luminance keeps a fully-lit but
+/// saturated color — a pure red planet — reading as a *dense* glyph instead of
+/// a sparse one, so colored bodies stay solid rather than holey.
+fn brightness(c: Rgb) -> f32 {
+    c.0.max(c.1).max(c.2) as f32 / 255.0
+}
+
+/// Collapse a cell's two stacked pixels into the glyph and color to print: the
+/// glyph comes from the mean brightness, the color from the brighter pixel so a
+/// lit edge keeps its hue. Returns `(glyph, foreground)`.
+fn cell(top: Rgb, bot: Rgb) -> (char, Rgb) {
+    let (lt, lb) = (brightness(top), brightness(bot));
+    let level = ((lt + lb) * 0.5 * (RAMP.len() - 1) as f32).round() as usize;
+    let glyph = RAMP[level.min(RAMP.len() - 1)] as char;
+    let color = if lt >= lb { top } else { bot };
+    (glyph, color)
+}
 
 pub struct Canvas {
     /// Terminal columns, which is also the pixel width.
@@ -82,21 +106,18 @@ impl Canvas {
         out.push_str("\x1b[H"); // cursor home
         for r in 0..self.rows {
             let mut last_fg: Option<Rgb> = None;
-            let mut last_bg: Option<Rgb> = None;
             for c in 0..self.cols {
                 let top = self.buf[(2 * r) * self.cols + c];
                 let bot = self.buf[(2 * r + 1) * self.cols + c];
-                if last_fg != Some(top) {
-                    let _ = write!(out, "\x1b[38;2;{};{};{}m", top.0, top.1, top.2);
-                    last_fg = Some(top);
+                let (glyph, fg) = cell(top, bot);
+                // A blank cell needs no color — skip the escape and let it ride.
+                if glyph != ' ' && last_fg != Some(fg) {
+                    let _ = write!(out, "\x1b[38;2;{};{};{}m", fg.0, fg.1, fg.2);
+                    last_fg = Some(fg);
                 }
-                if last_bg != Some(bot) {
-                    let _ = write!(out, "\x1b[48;2;{};{};{}m", bot.0, bot.1, bot.2);
-                    last_bg = Some(bot);
-                }
-                out.push('▀');
+                out.push(glyph);
             }
-            out.push_str("\x1b[0m"); // reset so the background doesn't bleed past the row
+            out.push_str("\x1b[0m"); // reset so color doesn't bleed past the row
             if r + 1 < self.rows {
                 out.push_str("\r\n");
             }
@@ -109,14 +130,42 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dimensions_and_clear() {
+    fn dimensions_and_dark_clear_is_blank() {
         let mut c = Canvas::new(4, 3);
         assert_eq!(c.ph(), 6);
-        c.clear((1, 2, 3));
-        // Every pixel reads back the clear color.
+        c.clear((1, 2, 3)); // near-black background
         let mut s = String::new();
         c.render(&mut s);
-        assert!(s.contains("\x1b[38;2;1;2;3m"));
+        // A dark field maps to the empty ramp glyph, emitting no color escapes.
+        assert!(!s.contains("\x1b[38;2;"));
+        assert_eq!(s.matches(' ').count(), 4 * 3);
+    }
+
+    #[test]
+    fn bright_clear_picks_the_densest_glyph_and_color() {
+        let mut c = Canvas::new(2, 2);
+        c.clear((255, 255, 255));
+        let mut s = String::new();
+        c.render(&mut s);
+        assert!(s.contains("\x1b[38;2;255;255;255m"));
+        assert_eq!(s.matches('@').count(), 2 * 2);
+    }
+
+    #[test]
+    fn cell_glyph_climbs_the_ramp_with_brightness() {
+        // Brighter pixels select later (denser) glyphs in the ramp.
+        let (dim, _) = cell((20, 20, 20), (20, 20, 20));
+        let (mid, _) = cell((128, 128, 128), (128, 128, 128));
+        let (hot, _) = cell((255, 255, 255), (255, 255, 255));
+        let pos = |g: char| RAMP.iter().position(|&b| b as char == g).unwrap();
+        assert!(pos(dim) < pos(mid) && pos(mid) < pos(hot));
+    }
+
+    #[test]
+    fn cell_color_follows_the_brighter_pixel() {
+        // The lit pixel lends its hue even when stacked over a dark one.
+        let (_, fg) = cell((200, 40, 40), (5, 5, 5));
+        assert_eq!(fg, (200, 40, 40));
     }
 
     #[test]
@@ -134,23 +183,23 @@ mod tests {
     fn line_paints_endpoints_and_clips_off_edge() {
         let mut c = Canvas::new(4, 2); // 4 wide, ph == 4 tall
         // A segment that starts in bounds and runs off the right/bottom edge.
-        c.line(1, 1, 10, 10, (7, 7, 7));
+        c.line(1, 1, 10, 10, (200, 200, 200));
         let mut s = String::new();
         c.render(&mut s);
-        // The in-bounds endpoint was painted (a non-default color appears)...
-        assert!(s.contains("\x1b[38;2;7;7;7m") || s.contains("\x1b[48;2;7;7;7m"));
+        // The in-bounds endpoint was painted (a lit glyph's color appears)...
+        assert!(s.contains("\x1b[38;2;200;200;200m"));
         // ...and running off the edge must not panic (reuses put's guard).
         c.line(-5, -5, 1, 1, (3, 3, 3));
         c.line(3, 3, 3, 3, (5, 5, 5)); // degenerate: single pixel, in bounds
     }
 
     #[test]
-    fn render_has_one_block_per_cell() {
+    fn render_has_one_glyph_per_cell() {
         let mut c = Canvas::new(3, 2);
-        c.clear((0, 0, 0));
+        c.clear((255, 255, 255));
         let mut s = String::new();
         c.render(&mut s);
-        // 3 cols * 2 rows = 6 half-block glyphs.
-        assert_eq!(s.matches('▀').count(), 6);
+        // 3 cols * 2 rows = 6 glyphs; a full-white field is all '@'.
+        assert_eq!(s.matches('@').count(), 6);
     }
 }

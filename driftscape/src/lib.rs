@@ -3,7 +3,7 @@
 //! Each screensaver is a drift field past a viewport: things have a position
 //! and a velocity, advance by `dt`, and respawn when they leave an edge — the
 //! same flow-past-a-frame motion the Bevy sim renders, here sampled onto a grid
-//! of colored half-block glyphs.
+//! of colored ASCII glyphs chosen by brightness.
 //!
 //! These modules are std-only and hold no terminal I/O. The crossterm shell —
 //! raw mode, alternate screen, sizing, input, the frame loop — lives in the

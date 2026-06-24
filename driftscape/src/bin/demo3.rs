@@ -1,12 +1,13 @@
 //! Driftscape — terminal screensaver suite (doc03.03).
 //!
 //! This binary is the impure shell around the pure `driftscape` modules: it
-//! puts the terminal into raw mode on the alternate screen, sizes a half-block
+//! puts the terminal into raw mode on the alternate screen, sizes an ASCII
 //! canvas to the window, and runs the frame loop — advancing the active scene
 //! by real elapsed time and painting it ~30 times a second. The scenes know
 //! nothing about the terminal; this file knows nothing about the drift math.
 //!
-//! Run with `cargo run --bin demo3`. Quit with `q`, `Esc`, or `Ctrl-C`.
+//! Run with `cargo run --manifest-path driftscape/Cargo.toml --bin demo3`
+//! (or `just demo3`). Quit with `q`, `Esc`, or `Ctrl-C`.
 
 use std::io::{stdout, Stdout, Write};
 use std::time::{Duration, Instant};
@@ -18,9 +19,9 @@ use crossterm::terminal::{
 };
 use crossterm::{execute, QueueableCommand};
 
-use mesopotamia::driftscape::canvas::Canvas;
-use mesopotamia::driftscape::scene::Scene;
-use mesopotamia::driftscape::starliner::Starliner;
+use driftscape::canvas::Canvas;
+use driftscape::scene::Scene;
+use driftscape::starliner::Starliner;
 
 const FRAME: Duration = Duration::from_millis(33);
 

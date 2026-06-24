@@ -1,0 +1,14 @@
+[package]
+name = "driftscape"
+version = "0.1.0"
+edition = "2024"
+description = "A suite of terminal screensavers — drift fields rendered as colored ASCII glyphs."
+
+# Standalone crate. Intentionally NOT part of the game's build: the screensavers
+# are pure drift math plus a thin crossterm shell, so they stay clear of Bevy and
+# the wasm dependency tree. Build and run with `--manifest-path driftscape/Cargo.toml`.
+[dependencies]
+rand = "0.9"
+# Terminal control for the demo binary: raw mode, the alternate screen, sizing,
+# and input. The library modules themselves are std-only.
+crossterm = "0.28"

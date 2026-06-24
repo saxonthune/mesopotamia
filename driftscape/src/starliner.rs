@@ -5,16 +5,18 @@
 //! that into perspective: a planet emerges small near the vanishing point,
 //! grows as it nears, and slews off the side as it passes the glass. Stars
 //! ride the same projection and streak outward — the warp-flyby field. Each
-//! planet is a sphere shaded from one light; when an object reaches the camera
-//! it respawns far away with fresh parameters, so the flyby never repeats.
+//! planet is a flat-lit disc — no dark side — drawn as a bright outline ring
+//! with a tight specular spot where it faces the light; when an object reaches
+//! the camera it respawns far away with fresh parameters, scattered across a
+//! depth-band so the field never pulses and never repeats.
 
-use crate::driftscape::canvas::Canvas;
-use crate::driftscape::color::{hsv_to_rgb, scale, Rgb};
-use crate::driftscape::scene::Scene;
+use crate::canvas::Canvas;
+use crate::color::{hsv_to_rgb, scale, Rgb};
+use crate::scene::Scene;
 use rand::rngs::SmallRng;
 use rand::{Rng, SeedableRng};
 
-const PLANET_COUNT: usize = 7;
+const PLANET_COUNT: usize = 14;
 /// Field-of-view: focal length is this fraction of the canvas width, so the
 /// FOV reads the same at any terminal size.
 const FOV_FRAC: f32 = 0.9;
@@ -22,6 +24,10 @@ const FOV_FRAC: f32 = 0.9;
 const Z_NEAR: f32 = 1.0;
 /// Farthest z an object spawns at — the vanishing-point distance.
 const Z_FAR: f32 = 60.0;
+/// World depth-band a respawn scatters across, just short of the far plane.
+/// Without it every object would wink in at exactly `Z_FAR` on the same tick,
+/// so the field pulses; scattering the respawn distance keeps it continuous.
+const RESPAWN_JITTER: f32 = 10.0;
 /// World units/sec the ship flies forward (objects' z shrinks by this).
 const SHIP_SPEED: f32 = 14.0;
 /// Gentle lateral world units/sec the ship drifts, so the flyby isn't symmetric.
@@ -37,8 +43,17 @@ const MAX_RADIUS: f32 = 3.2;
 const STAR_DENSITY: f32 = 0.012;
 const STAR_COLOR: Rgb = (180, 200, 255);
 const SPACE_BG: Rgb = (4, 3, 12);
-/// Ambient term so a planet's dark side stays a visible silhouette, not black.
-const AMBIENT: f32 = 0.10;
+/// Flat fill brightness of a planet's body — the same everywhere, so the disc
+/// has no dark side, only a uniformly lit face under its outline and highlight.
+const BODY_LEVEL: f32 = 0.72;
+/// Where the outline ring begins, as a squared-radius fraction of the disc.
+/// Pixels past this light up to `OUTLINE_GAIN`, drawing the planet's edge.
+const EDGE_START: f32 = 0.82;
+const OUTLINE_GAIN: f32 = 1.3;
+/// The specular bright spot: `ndotl ^ SPOT_POWER` keeps it a tight highlight
+/// rather than a whole lit hemisphere, lifted `SPOT_GAIN` above the body.
+const SPOT_POWER: f32 = 6.0;
+const SPOT_GAIN: f32 = 0.7;
 /// Light direction (unit), upper-left and toward the viewer.
 const LIGHT: (f32, f32, f32) = (-0.471, -0.589, 0.657);
 
@@ -82,6 +97,28 @@ fn screen_radius(world_r: f32, z: f32, focal: f32) -> f32 {
     focal * world_r / z
 }
 
+/// A gentle surface-brightness multiplier in `0.85..=1.0`, hashed from the
+/// quantized surface normal so the texture sticks to the sphere as it turns and
+/// nears — a funky stipple that mottles the body without darkening it. A classic
+/// sin-fract hash, quantized coarse so it reads as blotches, not noise.
+fn surface_stipple(nx: f32, ny: f32, nz: f32) -> f32 {
+    let q = |v: f32| (v * 7.0).floor();
+    let h = q(nx) * 73.0 + q(ny) * 179.0 + q(nz) * 283.0;
+    let s = (h.sin() * 43758.547).fract().abs();
+    0.85 + 0.15 * s
+}
+
+/// Brightness of a planet pixel from its squared radius `d2` (0 center, 1 rim)
+/// and `ndotl` (how squarely it faces the light). The body is a flat `BODY_LEVEL`
+/// with no dark side; the rim lights up as an outline and the light-facing pole
+/// keeps a tight specular spot. The result never dips below `BODY_LEVEL`.
+fn planet_shade(d2: f32, ndotl: f32) -> f32 {
+    let edge = ((d2 - EDGE_START) / (1.0 - EDGE_START)).clamp(0.0, 1.0);
+    let outline = edge * edge * OUTLINE_GAIN;
+    let spot = BODY_LEVEL + ndotl.powf(SPOT_POWER) * SPOT_GAIN;
+    outline.max(spot)
+}
+
 impl Starliner {
     pub fn new(cols: usize, rows: usize, seed: u64) -> Self {
         let mut rng = SmallRng::seed_from_u64(seed);
@@ -118,7 +155,7 @@ impl Starliner {
         let p = &mut self.planets[i];
         p.x = self.rng.random_range(-LATERAL_SPREAD..LATERAL_SPREAD);
         p.y = self.rng.random_range(-LATERAL_SPREAD..LATERAL_SPREAD);
-        p.z = Z_FAR;
+        p.z = Z_FAR - self.rng.random_range(0.0..RESPAWN_JITTER);
         p.world_r = self.rng.random_range(MIN_RADIUS..MAX_RADIUS);
         p.hue = self.rng.random_range(0.0..360.0);
         p.sat = self.rng.random_range(0.55..0.95);
@@ -128,7 +165,7 @@ impl Starliner {
         let s = &mut self.stars[i];
         s.x = self.rng.random_range(-STAR_SPREAD..STAR_SPREAD);
         s.y = self.rng.random_range(-STAR_SPREAD..STAR_SPREAD);
-        s.z = Z_FAR;
+        s.z = Z_FAR - self.rng.random_range(0.0..RESPAWN_JITTER);
     }
 
     fn draw_planet(&self, canvas: &mut Canvas, p: &Planet) {
@@ -155,7 +192,7 @@ impl Starliner {
                 // Surface normal of the sphere at this pixel.
                 let z = (1.0 - d2).sqrt();
                 let ndotl = (dx * LIGHT.0 + dy * LIGHT.1 + z * LIGHT.2).max(0.0);
-                let intensity = (AMBIENT + (1.0 - AMBIENT) * ndotl) * exposure;
+                let intensity = planet_shade(d2, ndotl) * exposure * surface_stipple(dx, dy, z);
                 canvas.put(px, py, scale(base, intensity));
             }
         }
@@ -228,6 +265,41 @@ mod tests {
     }
 
     #[test]
+    fn surface_stipple_stays_in_band() {
+        // The mottle only ever dims the surface a little — never to black, never
+        // brighter than lit — so the planet stays solid and the texture is subtle.
+        for &(x, y, z) in &[(0.0, 0.0, 1.0), (0.5, -0.3, 0.81), (-0.9, 0.1, 0.42)] {
+            let s = surface_stipple(x, y, z);
+            assert!((0.85..=1.0).contains(&s), "stipple {s} out of band");
+        }
+    }
+
+    #[test]
+    fn planet_shade_has_no_dark_side() {
+        // Across the whole disc and every lighting angle, nothing falls below the
+        // flat body level — the ball has no shadowed hemisphere.
+        for i in 0..=10 {
+            let d2 = i as f32 / 10.0;
+            for j in 0..=10 {
+                let ndotl = j as f32 / 10.0;
+                assert!(planet_shade(d2, ndotl) >= BODY_LEVEL);
+            }
+        }
+    }
+
+    #[test]
+    fn planet_shade_lights_the_rim_as_an_outline() {
+        // The very edge of the disc is brighter than its unlit interior.
+        assert!(planet_shade(0.99, 0.0) > planet_shade(0.2, 0.0));
+    }
+
+    #[test]
+    fn planet_shade_keeps_a_bright_spot() {
+        // Facing the light squarely lifts a pixel above the surrounding body.
+        assert!(planet_shade(0.1, 1.0) > planet_shade(0.1, 0.2));
+    }
+
+    #[test]
     fn screen_radius_grows_on_approach() {
         // Strictly larger as z decreases — planets grow as they come closer.
         assert!(screen_radius(2.0, 5.0, 72.0) > screen_radius(2.0, 50.0, 72.0));
@@ -240,7 +312,7 @@ mod tests {
         s.planets[0].z = Z_NEAR + 0.01;
         s.step(0.05);
         assert!(
-            s.planets[0].z >= Z_FAR - 1.0,
+            s.planets[0].z >= Z_FAR - RESPAWN_JITTER,
             "a planet past the camera must respawn near the far plane, not linger in front"
         );
     }

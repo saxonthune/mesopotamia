@@ -8,16 +8,19 @@ default:
 demo1:
     cargo run --features bevy/dynamic_linking --bin demo1
 
-# Run the Driftscape terminal screensaver (Starliner). Quit with q/Esc/Ctrl-C.
+# Run the Driftscape terminal screensaver (Starliner). It's a standalone crate
+# off the game's build, so it links no Bevy. Quit with q/Esc/Ctrl-C.
 demo3:
-    cargo run --bin demo3
+    cargo run --manifest-path driftscape/Cargo.toml --bin demo3
 
 # Pure-function/unit tests only, skipping the slow Bevy-linking integration
 # binaries. With a warm target dir it finishes in seconds.
 
-# Fast unit-test suite; the suite headless agents run to self-verify.
+# Fast unit-test suite; the suite headless agents run to self-verify. Covers the
+# game's pure-fn lib and the standalone driftscape crate (both link no Bevy).
 test-fast:
     cargo test --lib
+    cargo test --manifest-path driftscape/Cargo.toml
 
 # Adds macro_sim's crossing/ecology canaries and balance checks on top of the
 # unit tests. Slower.
@@ -25,6 +28,7 @@ test-fast:
 # Full test suite — units plus integration invariants; the pre-merge gate.
 test-all:
     cargo test
+    cargo test --manifest-path driftscape/Cargo.toml
 
 # Wraps build-web.sh. Prereqs: `cargo install wasm-bindgen-cli --version 0.2.125`
 # (must match the wasm-bindgen dep) and, optionally, `cargo install wasm-opt`.
