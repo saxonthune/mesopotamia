@@ -95,7 +95,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc03.03.00 | `03-driftscape/00-index.md` | A suite of terminal screensavers, each a drift field past a viewport — the simulation's flow-past-a-frame rendered as truecolor terminal art | milestone, tui, screensaver, drift, parallax | — | — | — |
-| doc03.03.01 | `03-driftscape/01-goal.md` | The first Driftscape screensaver — multicolored planets drift past a spaceship window in the terminal, sized and paced by depth so near planets sweep large and fast while far ones crawl small and dim | milestone, tui, parallax, procgen, rendering | — | — | — |
+| doc03.03.01 | `03-driftscape/01-goal.md` | The first Driftscape screensaver — the terminal is a spaceship flying forward through space, planets emerging small at the vanishing point, growing as they approach, and whipping off the sides as they pass while the starfield streaks outward | milestone, tui, perspective, procgen, rendering | — | — | — |
 
 ## 04-modeling — Mathematical Modeling
 
@@ -184,12 +184,13 @@ Quick lookup for file-path→doc mapping:
 | `nondimensionalization` | doc04.02 |
 | `observability` | doc02.01 |
 | `operators` | doc02.02 |
-| `parallax` | doc03.03.00, doc03.03.01 |
+| `parallax` | doc03.03.00 |
 | `parameters` | doc04.00, doc04.02 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
 | `pathfinding` | doc03.01.06 |
 | `patterns` | doc05.00, doc05.01 |
+| `perspective` | doc03.03.01 |
 | `philosophy` | doc00.02, doc01.03 |
 | `political-economy` | doc01.02.01.00 |
 | `polity` | doc01.02.01.02 |

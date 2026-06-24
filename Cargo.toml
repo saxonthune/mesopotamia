@@ -42,6 +42,10 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 # on the web the window is sized by the canvas, so the JSON parser is dropped.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 serde_json = "1"
+# Terminal control for the Driftscape screensavers (`demo3`): raw mode, the
+# alternate screen, sizing, and input. Native-only — there is no terminal on
+# the web build, so it stays out of the wasm dependency tree.
+crossterm = "0.28"
 
 [profile.dev.package."*"]
 opt-level = 3
