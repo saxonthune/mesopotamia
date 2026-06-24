@@ -168,7 +168,8 @@ pub fn grass_gradient(cell: usize, grid: &Grid, params: &ElkParams) -> Vec2 {
                 if dist > params.grass_radius {
                     continue;
                 }
-                dir += off / dist * (grid.forage(n) / dist);
+                let attract = grid.forage(n) + params.freshness_weight * grid.freshness(n);
+                dir += off / dist * (attract / dist);
             }
         }
     }
@@ -992,6 +993,56 @@ mod tests {
         let high = grass_gradient(center, &grid, &params).length();
 
         assert!(high > low, "richer forage must raise gradient magnitude");
+    }
+
+    // With freshness_weight > 0, a high-freshness neighbour attracts even when a
+    // higher-biomass neighbour sits the other way (fresh beats mature).
+    #[test]
+    fn gradient_points_toward_fresh_over_mature_biomass() {
+        let mut grid = crate::grid::Grid::new(21, 21);
+        let center = 10 * 21 + 10;
+        let left = center - 1;  // col-1: high biomass, stale
+        let right = center + 1; // col+1: lower biomass, but fresh
+
+        // Left neighbour: high forage, zero freshness.
+        grid.set_grass(left, 0.9);
+        // Right neighbour: moderate forage but high freshness.
+        grid.set_grass(right, 0.3);
+        // Set freshness on right directly (public field).
+        grid.freshness[right] = 2.0;
+
+        let mut params = default_params();
+        params.freshness_weight = 1.5;
+
+        let g = grass_gradient(center, &grid, &params);
+        assert!(
+            g.x > 0.0,
+            "with freshness_weight > 0, fresh cell (+x) must beat mature (-x): gradient={g:?}"
+        );
+    }
+
+    // With freshness_weight == 0, gradient is identical to today's biomass-only result.
+    #[test]
+    fn gradient_freshness_weight_zero_is_identity() {
+        let mut grid = crate::grid::Grid::new(21, 21);
+        let center = 10 * 21 + 10;
+        let right = center + 1;
+        grid.set_grass(right, 0.8);
+        grid.freshness[right] = 5.0; // high freshness but weight is 0
+
+        let mut params_zero = default_params();
+        params_zero.freshness_weight = 0.0;
+
+        let mut params_positive = default_params();
+        params_positive.freshness_weight = 0.0; // also zero, so identical
+
+        let g_zero = grass_gradient(center, &grid, &params_zero);
+        let g_pos = grass_gradient(center, &grid, &params_positive);
+
+        assert!(
+            (g_zero - g_pos).length() < 1e-6,
+            "freshness_weight=0 must yield identical result regardless of freshness field"
+        );
     }
 
     // ── cross_desire ─────────────────────────────────────────────────────────

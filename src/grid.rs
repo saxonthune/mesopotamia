@@ -68,6 +68,12 @@ pub struct Grid {
     /// steppe into a subtle grain. Authored by `seed_soil_texture`; render reads
     /// it to pick the dry-soil base colour.
     soil_tint: Vec<u8>,
+    /// Per-cell forage freshness, in [0, ∞). Rises where grass is actively
+    /// regrowing (the green-up front) and decays everywhere else. The herd's
+    /// grass drive blends this into the attractiveness signal so elk steer
+    /// toward the advancing fresh front rather than mature standing biomass.
+    /// Sized like `grass`; initialised to 0; stepped each tick by `growth`.
+    pub freshness: Vec<f32>,
 }
 
 /// How fast grass regrows under the reaction-diffusion model: a cell gains
@@ -138,6 +144,7 @@ impl Grid {
             river_dist: vec![0.0; width * height],
             flower: vec![false; width * height],
             soil_tint: vec![0u8; width * height],
+            freshness: vec![0.0; width * height],
         }
     }
 
@@ -336,6 +343,12 @@ impl Grid {
         self.shrubs[index] = (self.shrubs[index] - amount).max(0.0);
     }
 
+    /// Per-cell forage freshness — how much recent regrowth this cell has seen.
+    /// Peaks at the active green-up front (the wave crest) and decays away from it.
+    pub fn freshness(&self, index: usize) -> f32 {
+        self.freshness[index]
+    }
+
     /// Total forage an elk perceives at a cell — grass plus shrubs. The herd's
     /// grass-seeking drive steers up this combined field, so shrub clumps pull
     /// foragers the same way rich grass does.
@@ -393,6 +406,12 @@ fn tick_counter(mut tick: ResMut<SimTick>) {
 // 0.5*(crest_gain − trough_cut) = 0 when they are equal.
 const CREST_GAIN: f32 = 1.0;
 const TROUGH_CUT: f32 = 1.0;
+/// Fraction of freshness that decays each tick — slow so a fresh band persists
+/// for several ticks as the crest moves through (~20 ticks half-life at 0.05).
+const FRESH_DECAY: f32 = 0.05;
+/// Freshness gain per unit of grass growth — amplifies the small per-tick regrowth
+/// signal into a perceivable freshness band at the crest.
+const FRESH_GAIN: f32 = 8.0;
 // Maximum fractional senescence per tick, applied at the trough.  At strength=0.5
 // a trough cell loses ≤2.5% of its standing crop per tick — gentle enough that a
 // grazing herd keeps up, strong enough to clear stale ungrazed trough grass.
@@ -421,7 +440,13 @@ fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>, wave: Res<GreenWave>, t
         senesce[i] = wave.strength * SENESCE_MAX * (1.0 - w);
     }
 
-    grid.grass = field::wave_grow(&grid.grass, &caps, width, height, &floor, rate.spread, &senesce);
+    let prev_grass = grid.grass.clone();
+    let next_grass = field::wave_grow(&prev_grass, &caps, width, height, &floor, rate.spread, &senesce);
+    let grew: Vec<f32> = (0..n)
+        .map(|i| (next_grass[i] - prev_grass[i]).max(0.0))
+        .collect();
+    grid.freshness = field::step_freshness(&grid.freshness, &grew, FRESH_DECAY, FRESH_GAIN);
+    grid.grass = next_grass;
 }
 
 /// Shrubs grow slowly toward their dry-ground capacity with a pure logistic step

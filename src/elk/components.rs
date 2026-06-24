@@ -143,6 +143,11 @@ pub struct ElkParams {
     pub giving_up: f32,
     /// Migration amplification when the gate is fully closed: factor = 1 + leave_boost.
     pub leave_boost: f32,
+    /// Weight of the per-cell freshness signal in the grass-gradient attractiveness.
+    /// 0.0 (default) ⇒ the drive climbs raw forage — today's biomass gradient.
+    /// Positive ⇒ fresher cells (recent regrowth) are pulled stronger; the herd
+    /// steers toward the active green-up front rather than standing-crop peaks.
+    pub freshness_weight: f32,
 }
 
 /// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
@@ -284,6 +289,7 @@ impl Default for ElkParams {
             intake_smoothing: 0.05,
             giving_up: 0.6,
             leave_boost: 1.5,
+            freshness_weight: 0.0,
         }
     }
 }

@@ -47,6 +47,10 @@ const POINT_SCALE: f32 = 500.0;
 /// Start at 0.6 so a pull-bought crossing keeps 40% of the credit — punishing but
 /// not worthless, leaving the pull usable as a rescue tool at a score cost.
 const PULL_PENALTY: f32 = 0.6;
+/// The dialed `cross_ratio` level at which the pull penalty saturates (≈ slider max).
+/// Normalised: `p = (cross_ratio / CROSS_REF).clamp(0, 1)` — so at `cross_ratio == 0`
+/// the factor is 1 (unpenalised) and at `cross_ratio == CROSS_REF` it is at full bite.
+const CROSS_REF: f32 = 2.0;
 
 /// Difficulty in `[0, 1]` from the scarcity the player has dialed in: how far the
 /// regrowth rate (`regrow_ratio` — forage refill ÷ drain) sits below a comfortably
@@ -113,6 +117,11 @@ pub(super) fn update_score(
     let herd_pull = samples.migration_share();
     score.pull_share = ewma(score.pull_share, herd_pull, PULL_ALPHA);
 
+    // Normalised dialed pull in [0, 1] — the penalty argument for the score multiplier.
+    // Keyed off the *slider* value, not the realized herd share, so cranking the pull
+    // immediately costs score; `score.pull_share` still updates for the HUD readout.
+    let p = (controls.cross_ratio / CROSS_REF).clamp(0.0, 1.0);
+
     // Fold the events pushed since our cursor — newest `new` entries in the ring.
     // The monotonic `total` survives ring eviction, so each despawn scores once.
     let new = events.total.saturating_sub(score.cursor) as usize;
@@ -124,7 +133,7 @@ pub(super) fn update_score(
             let progress = (e.cell % GRID_WIDTH) as f32 / edge;
             let departed = matches!(e.kind, EventKind::Departed);
             let payout = despawn_points(progress, departed, score.difficulty)
-                * pull_factor(score.pull_share, PULL_PENALTY);
+                * pull_factor(p, PULL_PENALTY);
             score.current = ewma(score.current, payout, RATING_ALPHA);
             score.high = score.high.max(score.current);
         }
@@ -238,5 +247,36 @@ mod tests {
         let foraged = base * pull_factor(0.0, PULL_PENALTY);
         let pulled = base * pull_factor(0.8, PULL_PENALTY);
         assert!(foraged > pulled, "foraged crossing must outscore a pull-bought one");
+    }
+
+    // Payout via the dialed cross_ratio falls as cross_ratio rises.
+    // This is the property the re-keyed penalty exists to enforce:
+    // cranking the pull slider costs score immediately.
+    #[test]
+    fn payout_falls_as_cross_ratio_rises() {
+        let progress = 1.0_f32;
+        let diff = 0.8_f32;
+        let base = despawn_points(progress, true, diff);
+
+        let payout_at = |cross_ratio: f32| {
+            let p = (cross_ratio / CROSS_REF).clamp(0.0, 1.0);
+            base * pull_factor(p, PULL_PENALTY)
+        };
+
+        let zero = payout_at(0.0);
+        let low = payout_at(0.5);
+        let mid = payout_at(1.0);
+        let high = payout_at(2.0);
+
+        assert!(zero > low, "cross_ratio=0 must score more than cross_ratio=0.5");
+        assert!(low > mid, "cross_ratio=0.5 must score more than cross_ratio=1.0");
+        assert!(mid > high, "cross_ratio=1.0 must score more than cross_ratio=2.0");
+    }
+
+    // At cross_ratio == 0 the payout is unpenalised (factor == 1).
+    #[test]
+    fn zero_cross_ratio_is_unpenalised() {
+        let p = (0.0_f32 / CROSS_REF).clamp(0.0, 1.0);
+        assert!((pull_factor(p, PULL_PENALTY) - 1.0).abs() < 1e-6, "zero pull must not penalise");
     }
 }

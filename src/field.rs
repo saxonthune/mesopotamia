@@ -182,6 +182,17 @@ pub fn wave_grow(
     next
 }
 
+/// Next freshness field: each cell decays toward 0 at `decay`, then gains `gain ×`
+/// this tick's positive grass growth. `grew[i]` is `max(next_grass[i] − prev_grass[i], 0)`
+/// — only regrowth raises freshness, never grazing (which lowers grass). Clamped ≥ 0.
+pub fn step_freshness(freshness: &[f32], grew: &[f32], decay: f32, gain: f32) -> Vec<f32> {
+    freshness
+        .iter()
+        .zip(grew.iter())
+        .map(|(&f, &g)| (f * (1.0 - decay) + gain * g).max(0.0))
+        .collect()
+}
+
 /// One reaction-diffusion growth step. Each cell grows toward its `cap` at a rate
 /// seeded by how much its neighbours already hold, so bare ground is recolonised
 /// from its green edges inward while the interior of a large hole lags. `floor` is
@@ -393,6 +404,52 @@ mod tests {
             "high-senesce cell must hold less: next[0]={} next[1]={}",
             next[0], next[1]
         );
+    }
+
+    // Freshness rises where grew > 0 (regrowth happened).
+    #[test]
+    fn step_freshness_rises_where_grew() {
+        let f = vec![0.0, 0.0];
+        let grew = vec![0.5, 0.0];
+        let out = step_freshness(&f, &grew, 0.1, 2.0);
+        assert!(out[0] > 0.0, "cell with regrowth must become fresh");
+        assert_eq!(out[1], 0.0, "cell without regrowth must stay unfresh");
+    }
+
+    // Grazing alone (grew == 0) never freshens a cell — the anti-camping property.
+    #[test]
+    fn step_freshness_does_not_rise_where_grew_zero() {
+        let f = vec![0.5]; // already has some freshness
+        let grew = vec![0.0]; // but no regrowth this tick (e.g. grazed down)
+        let out = step_freshness(&f, &grew, 0.0, 10.0);
+        // With decay=0 freshness should stay the same (no decay, no gain).
+        assert!((out[0] - 0.5).abs() < 1e-6, "freshness unchanged when grew=0 and decay=0");
+
+        // With gain but still grew=0, freshness must never increase.
+        let grew_zero = vec![0.0];
+        let out2 = step_freshness(&f, &grew_zero, 0.1, 100.0);
+        assert!(out2[0] <= 0.5, "grazing alone must not increase freshness");
+    }
+
+    // Freshness decays toward 0 over ticks with no regrowth.
+    #[test]
+    fn step_freshness_decays_without_regrowth() {
+        let mut f = vec![1.0];
+        let grew = vec![0.0];
+        for _ in 0..20 {
+            f = step_freshness(&f, &grew, 0.1, 0.0);
+        }
+        assert!(f[0] < 0.2, "freshness must decay toward 0 with no regrowth: got {}", f[0]);
+    }
+
+    // Freshness is always non-negative.
+    #[test]
+    fn step_freshness_clamped_non_negative() {
+        let f = vec![-5.0, 0.5];
+        let grew = vec![0.0, 0.0];
+        let out = step_freshness(&f, &grew, 0.5, 0.0);
+        assert!(out[0] >= 0.0, "freshness must be clamped to >= 0");
+        assert!(out[1] >= 0.0);
     }
 
     // Zero-capacity (water) cells must stay empty even with a non-zero floor.
