@@ -94,8 +94,8 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
 |-----|------|---------|------|------|------|-------------|
 
-| doc03.03.00 | `03-driftscape/00-index.md` |  |  | — | — | — |
-| doc03.03.01 | `03-driftscape/01-goal.md` |  |  | — | — | — |
+| doc03.03.00 | `03-driftscape/00-index.md` | A suite of terminal screensavers, each a drift field past a viewport — the simulation's flow-past-a-frame rendered as truecolor terminal art | milestone, tui, screensaver, drift, parallax | — | — | — |
+| doc03.03.01 | `03-driftscape/01-goal.md` | The first Driftscape screensaver — multicolored planets drift past a spaceship window in the terminal, sized and paced by depth so near planets sweep large and fast while far ones crawl small and dim | milestone, tui, parallax, procgen, rendering | — | — | — |
 
 ## 04-modeling — Mathematical Modeling
 
@@ -144,6 +144,7 @@ Quick lookup for file-path→doc mapping:
 | `differentiation` | doc01.04 |
 | `dijkstra` | doc03.01.06 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
+| `drift` | doc03.03.00 |
 | `ecology` | doc01.02.01.00, doc01.02.01.05 |
 | `ecs` | doc03.01.00, doc03.01.01, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.07, doc03.01.08 |
 | `emergence` | doc01.03 |
@@ -175,7 +176,7 @@ Quick lookup for file-path→doc mapping:
 | `methodology` | doc01.04, doc04.02 |
 | `metrics` | doc02.01, doc04.00, doc04.01 |
 | `migration` | doc03.01.05, doc04.01 |
-| `milestone` | doc03.00, doc03.01.00, doc03.01.01, doc03.02.00, doc03.02.01 |
+| `milestone` | doc03.00, doc03.01.00, doc03.01.01, doc03.02.00, doc03.02.01, doc03.03.00, doc03.03.01 |
 | `modeling` | doc03.01.08, doc04.00, doc04.02 |
 | `modules` | doc05.01 |
 | `movement` | doc04.01 |
@@ -183,6 +184,7 @@ Quick lookup for file-path→doc mapping:
 | `nondimensionalization` | doc04.02 |
 | `observability` | doc02.01 |
 | `operators` | doc02.02 |
+| `parallax` | doc03.03.00, doc03.03.01 |
 | `parameters` | doc04.00, doc04.02 |
 | `partition` | doc03.01.04 |
 | `pastoralism` | doc01.02.01.04 |
@@ -193,9 +195,9 @@ Quick lookup for file-path→doc mapping:
 | `polity` | doc01.02.01.02 |
 | `population` | doc01.02.01.02 |
 | `primer` | doc03.01.07 |
-| `procgen` | doc02.02, doc03.01.06, doc03.02.00, doc03.02.01 |
+| `procgen` | doc02.02, doc03.01.06, doc03.02.00, doc03.02.01, doc03.03.01 |
 | `product` | doc01.01, doc01.03 |
-| `rendering` | doc03.02.00, doc03.02.01 |
+| `rendering` | doc03.02.00, doc03.02.01, doc03.03.01 |
 | `research` | doc01.02.00, doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
 | `resources` | doc02.01 |
 | `retrieval` | doc00.04 |
@@ -203,6 +205,7 @@ Quick lookup for file-path→doc mapping:
 | `robustness` | doc04.02 |
 | `salinization` | doc01.02.01.01, doc01.02.01.03 |
 | `scale` | doc03.01.05 |
+| `screensaver` | doc03.03.00 |
 | `sensitivity-analysis` | doc04.02 |
 | `sessions` | doc01.02.00 |
 | `silver` | doc01.02.01.01, doc01.02.01.05 |
@@ -218,6 +221,7 @@ Quick lookup for file-path→doc mapping:
 | `tooling` | doc02.01 |
 | `toolkit` | doc02.02 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
+| `tui` | doc03.03.00, doc03.03.01 |
 | `unfolding` | doc01.04 |
 | `verification` | doc04.01 |
 | `vision` | doc01.01 |

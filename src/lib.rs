@@ -17,3 +17,4 @@ pub mod river;
 pub mod worldgen;
 pub mod sim_harness;
 pub mod history;
+pub mod driftscape;
