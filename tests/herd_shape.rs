@@ -11,8 +11,8 @@ use mesopotamia::elk::{ElkParams, RatioControls, Score};
 use mesopotamia::events::{EventKind, EventLog};
 use mesopotamia::grid::GreenWave;
 use mesopotamia::sim_harness::{
-    centroid_col, diagnose, diagnose_worldgen, elk_count, make_app, make_probe_app, max_col_reached,
-    open_plain, spawner_elapsed, total_elk_energy,
+    centroid_col, diagnose, diagnose_worldgen, elk_count, evaluate_bundle, make_app, make_probe_app,
+    max_col_reached, open_plain, spawner_elapsed, total_elk_energy, PresetOutcome,
 };
 
 // The demo's central invariant, pinned: tuning toward forage + committing the
@@ -454,4 +454,238 @@ fn green_wave_crosses_on_plain() {
     let off = run("wave-off", 0.0);
     let on = run("wave-on", 0.5);
     println!("plain: wave-off final={off:.1}, wave-on final={on:.1}, advantage={:.1}", on - off);
+}
+
+// ── Preset search (ignored diagnostics) ──────────────────────────────────────
+//
+// These sweep candidate slider bundles over the real worldgen map and print the
+// preset-defining outcomes (survival, how far east, pull reliance, and the live
+// Survival Score). They are the search that finds the three stored presets —
+// `default`, `crossing-succeeds`, `high-score` — not pass/fail gates. Run with:
+//   cargo test --test herd_shape preset_ -- --ignored --nocapture
+
+/// One labelled candidate bundle for the preset sweeps.
+struct Candidate {
+    name: &'static str,
+    ratios: RatioControls,
+    wave: GreenWave,
+    /// Drive-weight overrides applied on top of ElkParams::default().
+    tweak: fn(&mut ElkParams),
+}
+
+fn run_candidate(c: &Candidate, ticks: u32) -> PresetOutcome {
+    let mut p = ElkParams::default();
+    (c.tweak)(&mut p);
+    evaluate_bundle(c.ratios.clone(), c.wave, p, ticks)
+}
+
+fn print_header() {
+    println!(
+        "{:<22} {:>5} {:>5} {:>7} {:>7} {:>8} {:>8} {:>6} {:>6}",
+        "candidate", "surv", "maxc", "cent", "migshr", "scoreHi", "scoreCur", "diff", "pull"
+    );
+}
+
+fn print_row(name: &str, o: &PresetOutcome) {
+    println!(
+        "{:<22} {:>5.2} {:>5} {:>7.1} {:>7.2} {:>8.1} {:>8.1} {:>6.2} {:>6.2}",
+        name,
+        o.survival,
+        o.max_col,
+        o.centroid_col,
+        o.mean_migration_share,
+        o.score_high,
+        o.score_current,
+        o.difficulty,
+        o.pull_share,
+    );
+}
+
+// Crossing search: which bundles roll the herd deepest east while keeping it
+// alive? Sweeps green-wave strength, grass weight, and the migration pull.
+#[test]
+#[ignore]
+fn preset_crossing_sweep() {
+    const TICKS: u32 = 1500;
+    let candidates = [
+        Candidate {
+            name: "defaults",
+            ratios: RatioControls::default(),
+            wave: GreenWave::default(),
+            tweak: |_p| {},
+        },
+        Candidate {
+            name: "wave-off-baseline",
+            ratios: RatioControls::default(),
+            wave: GreenWave { strength: 0.0, ..GreenWave::default() },
+            tweak: |_p| {},
+        },
+        Candidate {
+            name: "strongwave-grass",
+            ratios: RatioControls { regrow_ratio: 0.12, cross_ratio: 0.2, ..Default::default() },
+            wave: GreenWave { strength: 0.9, ..GreenWave::default() },
+            tweak: |p| { p.grass = 1.6; p.temperature = 0.4; p.cross = 2.0; },
+        },
+        Candidate {
+            name: "strongwave-nopull",
+            ratios: RatioControls { regrow_ratio: 0.12, cross_ratio: 0.0, ..Default::default() },
+            wave: GreenWave { strength: 0.9, ..GreenWave::default() },
+            tweak: |p| { p.grass = 1.6; p.temperature = 0.4; p.cross = 2.0; },
+        },
+        Candidate {
+            name: "maxwave-grass-pull",
+            ratios: RatioControls { regrow_ratio: 0.12, cross_ratio: 1.0, ..Default::default() },
+            wave: GreenWave { strength: 1.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 2.0; p.temperature = 0.35; p.cross = 3.0; },
+        },
+        Candidate {
+            name: "fastwave-grass",
+            ratios: RatioControls { regrow_ratio: 0.12, cross_ratio: 0.2, ..Default::default() },
+            wave: GreenWave { strength: 0.9, speed: 0.018, ..GreenWave::default() },
+            tweak: |p| { p.grass = 1.6; p.temperature = 0.4; p.cross = 2.0; },
+        },
+    ];
+
+    print_header();
+    for c in &candidates {
+        let o = run_candidate(c, TICKS);
+        print_row(c.name, &o);
+    }
+}
+
+// High-score search: maximise Score.high. Difficulty rises as regrow_ratio falls;
+// the pull penalty docks score for leaning on migration. So this sweeps low
+// regrow_ratio (hard) against low cross_ratio (cross on the wave, not the pull),
+// with a strong wave + grass weight to make the natural crossing actually happen.
+#[test]
+#[ignore]
+fn preset_highscore_sweep() {
+    const TICKS: u32 = 3000;
+    let candidates = [
+        Candidate {
+            name: "hard-nopull-strongwave",
+            ratios: RatioControls { regrow_ratio: 0.04, cross_ratio: 0.0, ..Default::default() },
+            wave: GreenWave { strength: 1.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 2.0; p.temperature = 0.35; p.cross = 2.5; },
+        },
+        Candidate {
+            name: "hard-lowpull-strongwave",
+            ratios: RatioControls { regrow_ratio: 0.04, cross_ratio: 0.2, ..Default::default() },
+            wave: GreenWave { strength: 1.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 2.0; p.temperature = 0.35; p.cross = 2.5; },
+        },
+        Candidate {
+            name: "mid-nopull-strongwave",
+            ratios: RatioControls { regrow_ratio: 0.08, cross_ratio: 0.0, ..Default::default() },
+            wave: GreenWave { strength: 1.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 2.0; p.temperature = 0.35; p.cross = 2.5; },
+        },
+        Candidate {
+            name: "hard-maxpull (foil)",
+            ratios: RatioControls { regrow_ratio: 0.04, cross_ratio: 2.0, ..Default::default() },
+            wave: GreenWave { strength: 0.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 1.0; p.temperature = 0.4; p.cross = 3.0; },
+        },
+        Candidate {
+            name: "veryhard-nopull-wave",
+            ratios: RatioControls { regrow_ratio: 0.02, cross_ratio: 0.0, ..Default::default() },
+            wave: GreenWave { strength: 1.0, ..GreenWave::default() },
+            tweak: |p| { p.grass = 2.2; p.temperature = 0.3; p.cross = 2.5; },
+        },
+    ];
+
+    print_header();
+    for c in &candidates {
+        let o = run_candidate(c, TICKS);
+        print_row(c.name, &o);
+    }
+}
+
+// Does a SLOWER wave let the herd surf it? The default crest (speed 0.010 ×
+// wavelength 85 = 0.85 cells/tick) outruns a grazing herd. This sweeps crest
+// speed at zero pull, so any eastward progress is the natural drive surfing the
+// wave — not the magic pull. Centroid (the mass) matters more than max_col (a
+// lone vanguard) for "the herd crosses".
+#[test]
+#[ignore]
+fn preset_wave_speed_sweep() {
+    const TICKS: u32 = 2000;
+    let forager: fn(&mut ElkParams) = |p| { p.grass = 1.8; p.temperature = 0.4; p.cross = 2.5; };
+    print_header();
+    // Baselines: no wave, and a real pull for reference.
+    {
+        let o = evaluate_bundle(
+            RatioControls { regrow_ratio: 0.12, cross_ratio: 0.0, ..Default::default() },
+            GreenWave { strength: 0.0, ..GreenWave::default() },
+            { let mut p = ElkParams::default(); forager(&mut p); p }, TICKS);
+        print_row("waveoff-nopull", &o);
+        let o = evaluate_bundle(
+            RatioControls { regrow_ratio: 0.12, cross_ratio: 1.0, ..Default::default() },
+            GreenWave { strength: 0.0, ..GreenWave::default() },
+            { let mut p = ElkParams::default(); forager(&mut p); p }, TICKS);
+        print_row("waveoff-pull(foil)", &o);
+    }
+    for &speed in &[0.001_f32, 0.002, 0.003, 0.005] {
+        for &strength in &[0.5_f32, 0.8] {
+            let o = evaluate_bundle(
+                RatioControls { regrow_ratio: 0.12, cross_ratio: 0.0, ..Default::default() },
+                GreenWave { strength, speed, wavelength: 85.0 },
+                { let mut p = ElkParams::default(); forager(&mut p); p }, TICKS);
+            print_row(&format!("spd{speed:.3}-str{strength:.1}"), &o);
+        }
+    }
+}
+
+// The gradient of a crest scales as amplitude / wavelength, and the herd only
+// feels it within its grass-perception radius (~5-10 cells). Wavelength 85 is far
+// too broad to register. This sweeps SHORT wavelengths (steeper local gradient)
+// with the crest speed held to ~0.12 cells/tick so the herd can surf it, at zero
+// pull. If the natural drive ever crosses, it crosses here.
+#[test]
+#[ignore]
+fn preset_wave_wavelength_sweep() {
+    const TICKS: u32 = 2000;
+    let forager: fn(&mut ElkParams) = |p| { p.grass = 2.2; p.grass_radius = 8.0; p.temperature = 0.4; p.cross = 2.5; };
+    print_header();
+    {
+        let o = evaluate_bundle(
+            RatioControls { regrow_ratio: 0.12, cross_ratio: 0.0, ..Default::default() },
+            GreenWave { strength: 0.0, ..GreenWave::default() },
+            { let mut p = ElkParams::default(); forager(&mut p); p }, TICKS);
+        print_row("waveoff-nopull", &o);
+    }
+    for &wavelength in &[15.0_f32, 25.0, 40.0] {
+        let speed = 0.12 / wavelength; // crest creeps east at ~0.12 cells/tick
+        for &strength in &[0.7_f32, 1.0] {
+            let o = evaluate_bundle(
+                RatioControls { regrow_ratio: 0.12, cross_ratio: 0.0, ..Default::default() },
+                GreenWave { strength, speed, wavelength },
+                { let mut p = ElkParams::default(); forager(&mut p); p }, TICKS);
+            print_row(&format!("wl{wavelength:.0}-str{strength:.1}"), &o);
+        }
+    }
+}
+
+// Verifies the stored presets still meet their goals on the real map. Ignored
+// (links Bevy, seed-noisy) — run explicitly when editing the preset table:
+//   cargo test --test herd_shape preset_outcomes -- --ignored --nocapture
+// Asserts are loose envelopes, not exact values (the worldgen RNG is unseeded).
+#[test]
+#[ignore]
+fn preset_outcomes() {
+    use mesopotamia::elk::presets::PRESETS;
+    const TICKS: u32 = 2500;
+    print_header();
+    let mut by_name = std::collections::HashMap::new();
+    for preset in &PRESETS {
+        let mut p = ElkParams::default();
+        (preset.apply_params)(&mut p);
+        let o = evaluate_bundle(preset.ratios, preset.green_wave, p, TICKS);
+        print_row(preset.name, &o);
+        by_name.insert(preset.name, o);
+    }
+    // Crossing must roll the herd well east; high-score must reach triple digits.
+    // Generous floors so seed noise doesn't flake the check.
+    assert!(by_name["Crossing"].max_col > 120, "Crossing preset should cross far");
+    assert!(by_name["High score"].score_high > 100.0, "High score preset should reach the hundreds");
 }

@@ -6,6 +6,7 @@ mod movement;
 mod metabolism;
 mod score;
 pub mod abundance;
+pub mod presets;
 pub mod ratios;
 
 pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};

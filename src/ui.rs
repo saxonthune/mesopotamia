@@ -8,7 +8,7 @@ use crate::elk::abundance::AbundanceParams;
 use crate::elk::{Act, Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
-use crate::grid::{Grid, GrowthRate};
+use crate::grid::{GreenWave, Grid, GrowthRate};
 use crate::history::History;
 use crate::render::{cell_world_pos, CameraSettings, WorldCamera};
 
@@ -573,6 +573,17 @@ fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
     });
 }
 
+/// World/forage tuning resources, bundled so `control_panel` stays under Bevy's
+/// 16-param system limit. Grouped because they are all "the world the player
+/// tunes" (the green wave, grass growth, fertility, abundance measurement).
+#[derive(bevy::ecs::system::SystemParam)]
+struct WorldTunables<'w> {
+    green_wave: ResMut<'w, GreenWave>,
+    growth: ResMut<'w, GrowthRate>,
+    fertility: Option<ResMut<'w, Fertility>>,
+    ab_params: ResMut<'w, AbundanceParams>,
+}
+
 /// The docked bottom panel: a tab bar with always-visible speed controls, and a
 /// scrolling content area paged by the selected tab.
 #[allow(clippy::too_many_arguments)]
@@ -581,9 +592,7 @@ fn control_panel(
     mut state: ResMut<UiState>,
     mut elk_params: ResMut<ElkParams>,
     mut ratio_controls: ResMut<RatioControls>,
-    mut growth: ResMut<GrowthRate>,
-    mut fertility: Option<ResMut<Fertility>>,
-    mut ab_params: ResMut<AbundanceParams>,
+    mut world: WorldTunables,
     mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
     mut world_seed: ResMut<crate::worldgen::WorldSeed>,
@@ -618,15 +627,31 @@ fn control_panel(
                 .auto_shrink([false, false])
                 .show(ui, |ui| match state.tab {
                 Tab::Sliders => {
+                    // Preset buttons reset the whole bundle in one click; they must
+                    // borrow the resources before the per-slider reborrows below.
+                    ui.horizontal(|ui| {
+                        ui.label("presets:");
+                        for preset in &crate::elk::presets::PRESETS {
+                            if ui.button(preset.name).on_hover_text(preset.description).clicked() {
+                                crate::elk::presets::apply(
+                                    preset,
+                                    ratio_controls.as_mut(),
+                                    world.green_wave.as_mut(),
+                                    elk_params.as_mut(),
+                                );
+                            }
+                        }
+                    });
+                    ui.separator();
                     let rc = ratio_controls.as_mut();
                     let regrow_ratio = &mut rc.regrow_ratio;
                     let bite_ratio = &mut rc.bite_ratio;
                     let cross_ratio = &mut rc.cross_ratio;
                     panel_flow(ui, vec![
-                        Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
+                        Panel::new("Grass", grass_items(world.growth.as_mut(), world.fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
                         // Behaviour carries the most rows, so give it a wider column.
                         Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio, &drive_samples, &score)))]).width(300.0),
-                        Panel::new("Abundance (measure)", abundance_items(ab_params.as_mut())),
+                        Panel::new("Abundance (measure)", abundance_items(world.ab_params.as_mut())),
                         Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                     ])
                 }

@@ -4,10 +4,10 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
-use crate::elk::{Decision, DriveSamples, Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herds, LastDecision, ProbeSeed, Spawner};
+use crate::elk::{Decision, DriveSamples, Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herds, LastDecision, ProbeSeed, RatioControls, Score, Spawner};
 use crate::elk::{combine_drives, grass_gradient, graze_value, stand_value, step_water_penalty, Act, Candidate};
 use crate::droppings::DroppingsPlugin;
-use crate::grid::{Grid, GridPlugin};
+use crate::grid::{GreenWave, Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
 use crate::worldgen::WorldgenPlugin;
 
@@ -123,6 +123,95 @@ pub fn run_metrics(params: ElkParams, ticks: u32) -> RunMetrics {
     };
 
     RunMetrics { survival, max_col, mean_migration_share }
+}
+
+/// Outcome of evaluating a full slider bundle over the real worldgen map — the
+/// signals that define each preset's goal. `survival`/`max_col`/`centroid_col`
+/// say whether the herd lived and how far east it rolled; `mean_migration_share`
+/// and `pull_share` say how much of that was bought with the magic pull; the
+/// `score_*` and `difficulty` fields read the live Survival Score the player sees.
+#[derive(Clone, Copy, Debug)]
+pub struct PresetOutcome {
+    pub survival: f32,
+    pub max_col: usize,
+    pub centroid_col: f32,
+    pub mean_migration_share: f32,
+    pub score_high: f32,
+    pub score_current: f32,
+    pub difficulty: f32,
+    pub pull_share: f32,
+}
+
+/// Run the real worldgen scenario with a full slider bundle and read out the
+/// preset-defining signals. The economy knobs (`graze_yield`/`intrinsic`/
+/// `migration`) are *derived* from `ratios` by `apply_ratios` every tick, so set
+/// those via `ratios` — not on `params`, where they would be overwritten. `params`
+/// carries the un-derived drive weights / radii / temperature; `wave` sets the
+/// green wave. This is the single evaluator both the preset sweeps and the preset
+/// verification tests run against.
+pub fn evaluate_bundle(
+    ratios: RatioControls,
+    wave: GreenWave,
+    params: ElkParams,
+    ticks: u32,
+) -> PresetOutcome {
+    let mut app = make_app();
+    app.insert_resource(params);
+    app.insert_resource(ratios);
+    app.insert_resource(wave);
+
+    let mut share_acc = 0.0_f32;
+    let mut share_ticks = 0u32;
+    let mut max_col = 0usize;
+
+    for _ in 0..ticks {
+        app.update();
+        let world = app.world_mut();
+        let tick_share: f32 = {
+            let samples = world.get_resource::<DriveSamples>().unwrap();
+            let active: Vec<f32> = samples
+                .per_slot
+                .iter()
+                .filter(|s| s.count > 0)
+                .map(|s| s.migration_share())
+                .collect();
+            if active.is_empty() { 0.0 } else { active.iter().sum::<f32>() / active.len() as f32 }
+        };
+        share_acc += tick_share;
+        share_ticks += 1;
+        max_col = max_col.max(max_col_reached(world));
+    }
+
+    let centroid = centroid_col(app.world_mut());
+    let mean_migration_share =
+        if share_ticks > 0 { share_acc / share_ticks as f32 } else { 0.0 };
+
+    let world = app.world_mut();
+    let score = world.get_resource::<Score>().unwrap();
+    let (score_high, score_current, difficulty, pull_share) =
+        (score.high, score.current, score.difficulty, score.pull_share);
+
+    let herds = world.get_resource::<Herds>().unwrap();
+    let (total_deaths, total_spawned) =
+        herds.cohorts.values().fold((0u32, 0u32), |(d, s), c| {
+            (d + c.deaths, s + c.alive + c.deaths + c.departures)
+        });
+    let survival = if total_spawned > 0 {
+        1.0 - total_deaths as f32 / total_spawned as f32
+    } else {
+        1.0
+    };
+
+    PresetOutcome {
+        survival,
+        max_col,
+        centroid_col: centroid,
+        mean_migration_share,
+        score_high,
+        score_current,
+        difficulty,
+        pull_share,
+    }
 }
 
 /// doc02.02 counterfactual: run with `migration = 0` and return the farthest

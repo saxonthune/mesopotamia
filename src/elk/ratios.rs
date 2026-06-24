@@ -8,7 +8,7 @@ use super::ElkParams;
 ///
 /// Defaults are the exact inverses of the documented default magnitudes so
 /// `apply_ratios` reproduces them at startup without any behavioural change.
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, Copy)]
 pub struct RatioControls {
     /// intake-per-bite ÷ drain: `bite * graze_yield / energy_drain`.
     /// Default 4.375 → graze_yield = 0.035.

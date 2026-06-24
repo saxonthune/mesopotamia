@@ -89,7 +89,7 @@ impl Default for GrowthRate {
 
 /// Tunables for the travelling green-up crest. `strength` 0 disables the wave
 /// entirely (floor == intrinsic everywhere, no senescence — today's behaviour).
-#[derive(Resource)]
+#[derive(Resource, Clone, Copy)]
 pub struct GreenWave {
     /// 0 = off; scales crest depth AND senescence together.
     pub strength: f32,
