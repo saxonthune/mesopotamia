@@ -56,8 +56,9 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc02.00 | `00-index.md` |  |  | — | — | — |
-| doc02.01 | `01-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc05.01, doc04.01 | doc01.03 | — |
+| doc02.01 | `01-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc05.01, doc04.01 | doc01.03, doc02.03 | — |
 | doc02.02 | `02-worldgen-toolkit.md` | The catalogue of CS/algorithm operators that actualize the unfolding method — each one a structure-preserving transformation over the grid state, grouped by the role it plays in the generative sequence, tagged by whether the code calls it or it merely waits in the kit | worldgen, generation, algorithms, operators, toolkit, procgen | doc01.04, doc03.01.06 | doc01.04 | — |
+| doc02.03 | `03-the-game.md` | The grazers demo as light play — a three-stage arc from a broken herd, to a working migration the player tunes by hand, to an open score loop where the player cranks scarcity and refines a surviving model for the highest score | design, game, play, score, difficulty, tuning, arc | doc02.01, doc03.01.08 | — | — |
 
 ## 03-milestones — Milestones
 
@@ -79,7 +80,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc03.01.05 | `01-grazers/05-herd-and-flocking-research.md` | Research session — boids' separation/alignment/cohesion adapted from velocity-steering to per-neighbor move-scoring on a lattice; social foraging (local enhancement) as a two-radius forage sense; a time-growing migration drive; pack affiliation as a partition over bodies; and the two-phase snapshot-then-move ECS pattern that scales to hundreds of bodies | research, exploration, herd, flocking, boids, foraging, migration, ecs, scale | doc03.01.01, doc03.01.04 | — | — |
 | doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a function from seed and a declarative spec to content; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; directed least-cost (Dijkstra) carving as a geodesic in an anisotropic metric, with heading, drift, and bendiness; several rivers from one shared cost field spaced by a period; rasterizing a centerline to width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | doc01.03, doc01.04, doc02.02 | — |
 | doc03.01.07 | `01-grazers/07-ecs-for-dummies.md` | A ground-up primer on the ECS the grazers slice runs on — entity/component/system/resource, the table/column/archetype storage, structure-of-arrays vs array-of-structs, how lookups and iteration work, and why the layout pays off | ecs, storage, architecture, primer, soa, archetype | doc03.01.02, doc03.01.04 | doc03.01.08 | — |
-| doc03.01.08 | `01-grazers/08-elk-decision-model.md` | The conceptual model under an elk's per-tick choice — a flat palette of candidate next-states each scored by one energy-grounded value function, picked by a Boltzmann softmax. Unifies spatial movement drives and the eat/rest decision as gradients of a single potential, and names the terminology the code uses. | ecs, modeling, decision, energy, boids, softmax, dialectics | doc03.01.01, doc03.01.07 | — | — |
+| doc03.01.08 | `01-grazers/08-elk-decision-model.md` | The conceptual model under an elk's per-tick choice — a flat palette of candidate next-states each scored by one energy-grounded value function, picked by a Boltzmann softmax. Unifies spatial movement drives and the eat/rest decision as gradients of a single potential, and names the terminology the code uses. | ecs, modeling, decision, energy, boids, softmax, dialectics | doc03.01.01, doc03.01.07 | doc02.03 | — |
 
 ### Hotspot
 
@@ -124,6 +125,7 @@ Quick lookup for file-path→doc mapping:
 | `ai` | doc00.04 |
 | `alexander` | doc01.04 |
 | `algorithms` | doc02.02 |
+| `arc` | doc02.03 |
 | `archetype` | doc03.01.07 |
 | `architecture` | doc03.01.03, doc03.01.07, doc05.01 |
 | `balance` | doc04.01 |
@@ -140,8 +142,10 @@ Quick lookup for file-path→doc mapping:
 | `debugging` | doc02.01 |
 | `decision` | doc03.01.08 |
 | `deep-research` | doc01.02.01.01, doc01.02.01.02 |
+| `design` | doc02.03 |
 | `dialectics` | doc01.03, doc03.01.08 |
 | `differentiation` | doc01.04 |
+| `difficulty` | doc02.03 |
 | `dijkstra` | doc03.01.06 |
 | `docs` | doc00.01, doc00.02, doc00.03, doc00.04 |
 | `drift` | doc03.03.00 |
@@ -154,6 +158,7 @@ Quick lookup for file-path→doc mapping:
 | `field` | doc03.01.06 |
 | `flocking` | doc03.01.05 |
 | `foraging` | doc03.01.05 |
+| `game` | doc02.03 |
 | `generation` | doc01.03, doc01.04, doc02.02 |
 | `graph` | doc03.01.04 |
 | `grid` | doc03.01.00, doc03.01.01 |
@@ -192,6 +197,7 @@ Quick lookup for file-path→doc mapping:
 | `patterns` | doc05.00, doc05.01 |
 | `perspective` | doc03.03.01 |
 | `philosophy` | doc00.02, doc01.03 |
+| `play` | doc02.03 |
 | `political-economy` | doc01.02.01.00 |
 | `polity` | doc01.02.01.02 |
 | `population` | doc01.02.01.02 |
@@ -206,6 +212,7 @@ Quick lookup for file-path→doc mapping:
 | `robustness` | doc04.02 |
 | `salinization` | doc01.02.01.01, doc01.02.01.03 |
 | `scale` | doc03.01.05 |
+| `score` | doc02.03 |
 | `screensaver` | doc03.03.00 |
 | `sensitivity-analysis` | doc04.02 |
 | `sessions` | doc01.02.00 |
@@ -223,6 +230,7 @@ Quick lookup for file-path→doc mapping:
 | `toolkit` | doc02.02 |
 | `trade` | doc01.02.01.03, doc01.02.01.04 |
 | `tui` | doc03.03.00, doc03.03.01 |
+| `tuning` | doc02.03 |
 | `unfolding` | doc01.04 |
 | `verification` | doc04.01 |
 | `vision` | doc01.01 |
