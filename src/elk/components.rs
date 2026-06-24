@@ -292,20 +292,27 @@ impl Default for ElkParams {
             grass_radius: 5.0,
             social_radius: 16.0,
             temperature: 0.6,
-            // Retuned down from 0.5 so a committed graze depletes a patch over
-            // several ticks rather than one — turning the pause into a visible
-            // multi-tick dwell. Sustainability bound still holds: intrinsic · cap · graze_yield < drain.
-            bite: 0.12,
+            // Slow chewing is the standard: a small bite means a patch depletes over
+            // many ticks, so the grazing front advances slowly and the grass behind it
+            // regrows into the gap — the herd rolls as a sticky glob and survives the
+            // long march to the river instead of outrunning its own food. `bite_ratio`
+            // (held at its default) and `graze_yield` adjust together so chew *rate*
+            // changes but the per-bite economy does not.
+            bite: 0.012,
             dwell: 1.5,
-            // Energy is proportional to grass actually eaten. A full fresh bite
-            // (bite · this ≈ 0.0042) pays roughly drain, building up only over a
-            // multi-tick graze — the herd must commit to a patch and dwell.
+            // Placeholder only: `apply_ratios` overwrites this each tick from
+            // `bite_ratio · energy_drain / bite` (≈ 0.42 at the defaults), so a full
+            // bite pays `bite_ratio`× drain. The herd must commit to a patch and dwell.
             graze_yield: 0.035,
             // Giving-up density: leave 30% of each cell's capacity uneaten. Grass
             // below graze_floor · capacity isn't worth biting, which seeds regrowth
             // and makes thin patches not worth the elk's time.
             graze_floor: 0.3,
-            energy_drain: 0.004,
+            // Lowered to lengthen the metabolic timescale: an elk lives long enough to
+            // ford the river and reach the far edge under the green wave, so survival is
+            // the norm and `regrow_ratio` (scarcity) is what threatens it. Paired with
+            // slow chewing above as the fixed standard physiology, not a player lever.
+            energy_drain: 0.002,
             mig_growth: 0.0015,
             water_cost: 2.0,
             ford_discount: 0.1,

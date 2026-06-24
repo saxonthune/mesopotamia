@@ -14,10 +14,12 @@ three-stage arc.
 
 ## Stage 1 — the broken herd
 
-The player opens onto a model that does not work. Under the stock weights the herd
-starves and veers in circles: it overcrowds the first stretch of map, eats it bare,
-mills without direction, and dies. Nothing crosses the river. This is the **Default**
-preset, and it is meant to look broken — the problem statement, posed in motion.
+The player opens onto a model that does not work. Under the stock weights the herd has
+no eastward drive: it overcrowds the first stretch of map and mills without direction,
+pressing in on itself until competition thins it. It survives, after a fashion, but it
+goes nowhere — nothing crosses the river. This is the **Default** preset, and it is meant
+to look broken — the problem statement, posed in motion. The aimless, stranded herd is
+the puzzle; turning it into a migration is the play.
 
 ## Stage 2 — make it migrate
 
@@ -66,5 +68,5 @@ stage 3 is a continuation of stage 2's craft, not an escape from it.
 Three stages, one skill: reading the simulation and tuning it. Stage 1 shows the system
 is real (it can fail). Stage 2 is the first win (make it migrate). Stage 3 is the open
 loop (how hard a world can your migration survive). The presets name the waypoints —
-Default is stage 1, Crossing is the stage-2 win, High score is a stage-3 target — and
+Default is stage 1, Can cross is the stage-2 win, Optimized is a stage-3 target — and
 the player's own slider adjustments are the play between them.

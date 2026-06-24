@@ -17,7 +17,9 @@ pub struct RatioControls {
     /// Default 0.175 → GrowthRate.intrinsic = 0.02.
     pub regrow_ratio: f32,
     /// migration ÷ crossing cost: `migration / water_cost`.
-    /// Default 0.35 → ElkParams.migration = 0.7.
+    /// Default 0.0 → the migration pull is off. The pull is the opt-in *crutch*
+    /// (training wheels): the player can crank it to force a crossing, at a score
+    /// penalty, but the stock/broken herd has no eastward drive at all and mills.
     pub cross_ratio: f32,
 }
 
@@ -26,7 +28,7 @@ impl Default for RatioControls {
         // Computed from documented defaults:
         //   bite=0.5, graze_yield=0.035, energy_drain=0.004 → 0.5*0.035/0.004 = 4.375
         //   intrinsic=0.02, MAX_GRASS=1.0, graze_yield=0.035, energy_drain=0.004 → 0.175
-        //   migration=0.7, water_cost=2.0 → 0.35
+        //   pull off → cross_ratio 0 (migration force 0); the player opts into it.
         Self {
             // Tightened from 4.375 (which left elk overfed — break-even at 23% of
             // ticks, so a full herd just coasts and sprints past grass). At 2.5 the
@@ -35,7 +37,9 @@ impl Default for RatioControls {
             // when it forages — the stakes that make the tuning puzzle real.
             bite_ratio: 2.5,
             regrow_ratio: 0.175,
-            cross_ratio: 0.35,
+            // Pull off by default: the stock herd has no eastward drive and mills
+            // (stage 1, broken). The pull is the opt-in crutch the player may crank.
+            cross_ratio: 0.0,
         }
     }
 }
@@ -97,8 +101,9 @@ mod tests {
         let intrinsic = intrinsic_from(rc.regrow_ratio, energy_drain, graze_yield, MAX_GRASS);
         assert!((intrinsic - 0.035).abs() < 1e-6, "intrinsic {intrinsic}");
 
+        // Pull is off by default (cross_ratio 0), so the derived migration force is 0.
         let migration = migration_from(rc.cross_ratio, water_cost);
-        assert!((migration - 0.7).abs() < 1e-6, "migration {migration}");
+        assert!((migration - 0.0).abs() < 1e-6, "migration {migration}");
     }
 
     #[test]

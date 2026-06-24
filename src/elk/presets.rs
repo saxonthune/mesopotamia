@@ -27,8 +27,10 @@ use super::ratios::RatioControls;
 /// The forage-sticky movement the working presets share: the herd follows the
 /// green-up front (`freshness_weight`), leapfrogs forward off depleted ground
 /// (`sightline_*`), forms a rolling column (`cohesion_lead`), and moves as a sticky
-/// glob (`momentum`/`temperature`) on a lower drain so it survives the march to the
-/// river. Economy (bite/regrow) and the green wave are set per preset.
+/// glob (`momentum`/`temperature`). Survival on the long march to the river comes
+/// from the slow-chew + low-drain standard physiology baked into `ElkParams::default`
+/// — these overrides are the *movement* the player tunes on top of it. Economy
+/// (bite_ratio/regrow) and the green wave are set per preset.
 fn forage_sticky(p: &mut ElkParams) {
     p.grass = 2.0;
     p.grass_radius = 8.0;
@@ -38,7 +40,6 @@ fn forage_sticky(p: &mut ElkParams) {
     p.cohesion_lead = 1.0;
     p.momentum = 0.5;
     p.temperature = 0.4;
-    p.energy_drain = 0.003;
 }
 
 /// One named regime: the full set of tunables that define it.
@@ -86,9 +87,9 @@ fn optimized_params(p: &mut ElkParams) {
 pub const PRESETS: [Preset; 3] = [
     Preset {
         name: "Default",
-        description: "Stock weights, weak pull, plenty of food — the herd mills and \
-                      overcrowds the first segment instead of crossing (stage 1, broken).",
-        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.175, cross_ratio: 0.35 },
+        description: "Stock weights, no pull, plenty of food — with no eastward drive the \
+                      herd mills and overcrowds the first segment, never crossing (stage 1, broken).",
+        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.175, cross_ratio: 0.0 },
         green_wave: GreenWave { strength: 0.5, speed: 0.010, wavelength: 85.0 },
         apply_params: default_params,
     },
@@ -97,7 +98,7 @@ pub const PRESETS: [Preset; 3] = [
         description: "Forage-sticky: follows the green-up front, rolls as a glob, and \
                       fords the river on the natural drives at zero pull — easy economy.",
         ratios: RatioControls { bite_ratio: 4.0, regrow_ratio: 0.25, cross_ratio: 0.0 },
-        green_wave: GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+        green_wave: GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
         apply_params: can_cross_params,
     },
     Preset {
@@ -105,7 +106,7 @@ pub const PRESETS: [Preset; 3] = [
         description: "The same natural-drive crossing under leaner scarcity — a stage-3 \
                       score target where the model must hold together as food thins.",
         ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.12, cross_ratio: 0.0 },
-        green_wave: GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+        green_wave: GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
         apply_params: optimized_params,
     },
 ];
