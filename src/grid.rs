@@ -87,6 +87,34 @@ impl Default for GrowthRate {
     }
 }
 
+/// Tunables for the travelling green-up crest. `strength` 0 disables the wave
+/// entirely (floor == intrinsic everywhere, no senescence — today's behaviour).
+#[derive(Resource)]
+pub struct GreenWave {
+    /// 0 = off; scales crest depth AND senescence together.
+    pub strength: f32,
+    /// Cycles/tick the crest marches east. At `speed * wavelength` cells/tick.
+    pub speed: f32,
+    /// Crest spacing in cells. ~⅓–½ of GRID_WIDTH so a couple of bands span the map.
+    pub wavelength: f32,
+}
+
+impl Default for GreenWave {
+    fn default() -> Self {
+        Self {
+            strength: 0.5,
+            // Crest advances 85 * 0.010 = 0.85 cells/tick; crosses 256 cells in ~300 ticks.
+            speed: 0.010,
+            wavelength: 85.0,
+        }
+    }
+}
+
+/// Simulation tick counter, incremented once per FixedUpdate tick while Running.
+/// The grass growth wave reads this as a phase clock.
+#[derive(Resource, Default)]
+pub struct SimTick(pub u32);
+
 impl Grid {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -345,22 +373,55 @@ impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
             .init_resource::<GrowthRate>()
-            .add_systems(FixedUpdate, (growth, grow_shrubs).run_if(in_state(Sim::Running)));
+            .init_resource::<GreenWave>()
+            .init_resource::<SimTick>()
+            .add_systems(
+                FixedUpdate,
+                (tick_counter, growth, grow_shrubs)
+                    .chain()
+                    .run_if(in_state(Sim::Running)),
+            );
     }
 }
 
-/// Reaction-diffusion regrowth (#3): grass spreads from green neighbours toward
-/// each cell's capacity. Domain wiring over `field::spread_grow`.
-fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>) {
-    let caps: Vec<f32> = (0..grid.len()).map(|i| grid.capacity(i)).collect();
-    grid.grass = field::spread_grow(
-        &grid.grass,
-        &caps,
-        grid.width(),
-        grid.height(),
-        rate.intrinsic,
-        rate.spread,
-    );
+fn tick_counter(mut tick: ResMut<SimTick>) {
+    tick.0 += 1;
+}
+
+// Crest/trough asymmetry factors. Both set to 1.0 so the wavelength-mean floor
+// equals `intrinsic` exactly: E[crest_gain·w − trough_cut·(1−w)] over w∈[0,1] is
+// 0.5*(crest_gain − trough_cut) = 0 when they are equal.
+const CREST_GAIN: f32 = 1.0;
+const TROUGH_CUT: f32 = 1.0;
+// Maximum fractional senescence per tick, applied at the trough.  At strength=0.5
+// a trough cell loses ≤2.5% of its standing crop per tick — gentle enough that a
+// grazing herd keeps up, strong enough to clear stale ungrazed trough grass.
+const SENESCE_MAX: f32 = 0.05;
+
+/// Reaction-diffusion regrowth: grass spreads from green neighbours toward each
+/// cell's capacity, modulated by the green-wave crest so fresh grass builds at the
+/// advancing crest and ungrazed stale grass senesces in the trough behind it.
+/// At `GreenWave.strength == 0` every cell uses `rate.intrinsic` and zero
+/// senescence — exactly today's behaviour.
+fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>, wave: Res<GreenWave>, tick: Res<SimTick>) {
+    let n = grid.len();
+    let width = grid.width();
+    let height = grid.height();
+    let caps: Vec<f32> = (0..n).map(|i| grid.capacity(i)).collect();
+    let t = tick.0 as f32;
+
+    let mut floor = vec![0.0f32; n];
+    let mut senesce = vec![0.0f32; n];
+    for i in 0..n {
+        let col = i % width;
+        let w = field::green_wave(col, wave.wavelength, t, wave.speed);
+        floor[i] = (rate.intrinsic
+            * (1.0 + wave.strength * (CREST_GAIN * w - TROUGH_CUT * (1.0 - w))))
+            .max(0.0);
+        senesce[i] = wave.strength * SENESCE_MAX * (1.0 - w);
+    }
+
+    grid.grass = field::wave_grow(&grid.grass, &caps, width, height, &floor, rate.spread, &senesce);
 }
 
 /// Shrubs grow slowly toward their dry-ground capacity with a pure logistic step

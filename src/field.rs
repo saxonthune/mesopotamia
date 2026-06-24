@@ -3,6 +3,8 @@
 //! flat `&[f32]` plus the lattice `width`/`height` and get a new `Vec<f32>` back.
 //! Plugins compose these into domain rules.
 
+use std::f32::consts::TAU;
+
 use rand::Rng;
 
 const NEIGHBORS: [(isize, isize); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
@@ -142,6 +144,44 @@ pub fn normalize(field: &[f32]) -> Vec<f32> {
     field.iter().map(|v| (v - min) / range).collect()
 }
 
+/// Travelling green-up crest at a column, in [0, 1]. Multiple bands march east as
+/// `tick` rises: phase = 2π·(col/wavelength − tick·speed). `speed` is cycles per
+/// tick (crest advances `wavelength·speed` cells/tick). At `amp == 0` callers use
+/// `base` directly and never call this — but the field itself is well-defined for all
+/// inputs. Returns (cos(phase)+1)/2 so the crest is 1 and the trough 0.
+pub fn green_wave(col: usize, wavelength: f32, tick: f32, speed: f32) -> f32 {
+    let phase = TAU * (col as f32 / wavelength - tick * speed);
+    (phase.cos() + 1.0) / 2.0
+}
+
+/// Like `spread_grow` but with a per-cell intrinsic `floor` and a per-cell `senesce`
+/// rate. Each cell grows toward `cap` at `floor[i] + spread·cover`, then relaxes toward
+/// 0 at `senesce[i]` (applied to the post-growth value). `floor.len() == senesce.len()
+/// == field.len()`. Double-buffered, order-independent, same as `spread_grow`.
+pub fn wave_grow(
+    field: &[f32],
+    cap: &[f32],
+    width: usize,
+    height: usize,
+    floor: &[f32],
+    spread: f32,
+    senesce: &[f32],
+) -> Vec<f32> {
+    let mut next = field.to_vec();
+    for i in 0..field.len() {
+        let c = cap[i];
+        if c <= 0.0 {
+            next[i] = 0.0;
+            continue;
+        }
+        let cover = neighbor_mean(field, i, width, height);
+        let rate = floor[i] + spread * cover;
+        let grown = (field[i] + rate * (c - field[i])).clamp(0.0, c);
+        next[i] = grown * (1.0 - senesce[i]);
+    }
+    next
+}
+
 /// One reaction-diffusion growth step. Each cell grows toward its `cap` at a rate
 /// seeded by how much its neighbours already hold, so bare ground is recolonised
 /// from its green edges inward while the interior of a large hole lags. `floor` is
@@ -157,18 +197,10 @@ pub fn spread_grow(
     floor: f32,
     spread: f32,
 ) -> Vec<f32> {
-    let mut next = field.to_vec();
-    for i in 0..field.len() {
-        let c = cap[i];
-        if c <= 0.0 {
-            next[i] = 0.0;
-            continue;
-        }
-        let cover = neighbor_mean(field, i, width, height);
-        let rate = floor + spread * cover;
-        next[i] = (field[i] + rate * (c - field[i])).clamp(0.0, c);
-    }
-    next
+    let n = field.len();
+    let floor_vec = vec![floor; n];
+    let senesce_vec = vec![0.0f32; n];
+    wave_grow(field, cap, width, height, &floor_vec, spread, &senesce_vec)
 }
 
 #[cfg(test)]
@@ -272,5 +304,105 @@ mod tests {
     fn bare_field_with_no_floor_stays_bare() {
         let next = spread_grow(&[0.0; 4], &[1.0; 4], 2, 2, 0.0, 0.9);
         assert!(next.iter().all(|&v| v == 0.0));
+    }
+
+    // The crest is at the column where col = wavelength * tick * speed (mod wavelength).
+    // With a single crest fitting in the window, the argmax must move east each step.
+    #[test]
+    fn green_wave_crest_advances_east() {
+        let wavelength = 64.0f32;
+        let speed = 0.01f32;
+        let width = 64usize;
+        let argmax = |tick: f32| {
+            (0..width)
+                .max_by(|&a, &b| {
+                    green_wave(a, wavelength, tick, speed)
+                        .partial_cmp(&green_wave(b, wavelength, tick, speed))
+                        .unwrap()
+                })
+                .unwrap()
+        };
+        // At tick 0 the crest is at col 0; at tick 20 it advances to col ~13.
+        let t0 = argmax(0.0);
+        let t20 = argmax(20.0);
+        assert!(
+            t20 > t0,
+            "crest must advance east: t0={t0} t20={t20}"
+        );
+    }
+
+    // green_wave(col, λ, t, s) ≈ green_wave(col + λ, λ, t, s) — one-period shift.
+    #[test]
+    fn green_wave_periodic_in_col() {
+        let wavelength = 50.0f32;
+        for col in 0..100usize {
+            let v0 = green_wave(col, wavelength, 3.7, 0.005);
+            let v1 = green_wave(col + wavelength as usize, wavelength, 3.7, 0.005);
+            assert!(
+                (v0 - v1).abs() < 1e-5,
+                "green_wave must be periodic: col={col} v0={v0} v1={v1}"
+            );
+        }
+    }
+
+    // The crest field must stay in [0, 1] for all inputs.
+    #[test]
+    fn green_wave_bounded() {
+        for col in 0..100usize {
+            for t in 0..100u32 {
+                let v = green_wave(col, 40.0, t as f32 * 0.7, 0.013);
+                assert!(
+                    (0.0..=1.0).contains(&v),
+                    "green_wave out of [0,1]: col={col} t={t} v={v}"
+                );
+            }
+        }
+    }
+
+    // With constant floor and zero senesce, wave_grow must match spread_grow exactly.
+    #[test]
+    fn wave_grow_identity_matches_spread_grow() {
+        let field = vec![0.3, 0.0, 0.8, 0.5];
+        let cap = vec![1.0, 1.0, 1.0, 1.0];
+        let floor_k = 0.05f32;
+        let spread = 0.2f32;
+
+        let expected = spread_grow(&field, &cap, 2, 2, floor_k, spread);
+        let floor_vec = vec![floor_k; 4];
+        let senesce_vec = vec![0.0f32; 4];
+        let actual = wave_grow(&field, &cap, 2, 2, &floor_vec, spread, &senesce_vec);
+
+        for (i, (e, a)) in expected.iter().zip(actual.iter()).enumerate() {
+            assert!(
+                (e - a).abs() < 1e-6,
+                "wave_grow identity failed at cell {i}: expected={e} actual={a}"
+            );
+        }
+    }
+
+    // At equal starting grass, a high-senesce cell must hold less after one step.
+    #[test]
+    fn wave_grow_senescence_decays_troughs_not_crests() {
+        let field = vec![0.5, 0.5];
+        let cap = vec![1.0, 1.0];
+        let floor = vec![0.0, 0.0];
+        let senesce = vec![0.1, 0.0]; // cell 0 high senesce, cell 1 none
+        let next = wave_grow(&field, &cap, 2, 1, &floor, 0.0, &senesce);
+        assert!(
+            next[0] < next[1],
+            "high-senesce cell must hold less: next[0]={} next[1]={}",
+            next[0], next[1]
+        );
+    }
+
+    // Zero-capacity (water) cells must stay empty even with a non-zero floor.
+    #[test]
+    fn wave_grow_water_cells_stay_empty() {
+        let field = vec![1.0, 0.5];
+        let cap = vec![0.0, 1.0]; // cell 0 is water
+        let floor = vec![0.5, 0.5];
+        let senesce = vec![0.0, 0.0];
+        let next = wave_grow(&field, &cap, 2, 1, &floor, 0.0, &senesce);
+        assert_eq!(next[0], 0.0, "water cell (cap=0) must stay empty");
     }
 }

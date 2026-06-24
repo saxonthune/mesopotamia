@@ -52,6 +52,18 @@ pub fn max_col_reached(world: &mut World) -> usize {
     q.iter(world).map(|elk| elk.cell % grid_width).max().unwrap_or(0)
 }
 
+/// Mean column (centroid) of all elk on the grid, or 0.0 if no elk are alive.
+pub fn centroid_col(world: &mut World) -> f32 {
+    let grid_width = world.get_resource::<Grid>().unwrap().width();
+    let mut q = world.query::<&Elk>();
+    let cells: Vec<usize> = q.iter(world).map(|e| e.cell).collect();
+    if cells.is_empty() {
+        return 0.0;
+    }
+    let (col, _) = crate::diagnostics::centroid(&cells, grid_width);
+    col
+}
+
 /// Per-run outcome of a headless simulation, defined by doc02.02.
 pub struct RunMetrics {
     pub survival: f32,

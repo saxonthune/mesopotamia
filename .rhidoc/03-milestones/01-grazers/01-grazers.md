@@ -56,3 +56,11 @@ The demo is a balancing game. Elk movement is driven by two kinds of force. The 
 The demo surfaces, for any moment, how much of a herd's movement comes from the natural drives and how much from the migration pull. The player tunes the sliders — drive weights, perception radii, metabolism — toward a settling where the herd travels on its natural drives while staying fed, so the migration pull can recede and the herd still moves and survives on its own.
 
 To make that tuning possible the demo exposes a readout and a control for each force in play, arranged so a change and its consequence are both legible: adjusting a weight visibly shifts both the force balance and the survival outcome.
+
+## The Green Wave
+
+Standing grass forms east-marching crests: a travelling biomass peak sweeps across the landscape, and ungrazed grass behind a passed crest senesces (slowly decays). A herd that tracks the freshest grass therefore moves with the crest — following peak grass *is* migrating. The existing grass-gradient drive steers toward high forage; the wave gives that gradient a sustained eastward slope rather than a static patch.
+
+The wave acts purely by reshaping the grass field in space and time. At the crest, grass regrows faster than the baseline rate; in the trough behind it, regrowth slows and standing ungrazed crop fades. The wavelength-mean floor stays equal to the baseline intrinsic rate, so the wave redistributes regrowth without changing the global forage budget — difficulty (keyed to `regrow_ratio`) is unaffected.
+
+`GreenWave.strength == 0` disables the wave entirely: every cell reverts to the baseline intrinsic floor and zero senescence, reproducing pre-wave behaviour exactly.
