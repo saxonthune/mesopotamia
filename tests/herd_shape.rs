@@ -11,8 +11,9 @@ use mesopotamia::elk::{ElkParams, RatioControls, Score};
 use mesopotamia::events::{EventKind, EventLog};
 use mesopotamia::grid::GreenWave;
 use mesopotamia::sim_harness::{
-    centroid_col, diagnose, diagnose_worldgen, elk_count, evaluate_bundle, make_app, make_probe_app,
-    max_col_reached, open_plain, spawner_elapsed, total_elk_energy, PresetOutcome,
+    centroid_col, diagnose, diagnose_worldgen, elk_count, evaluate_bundle, evaluate_bundle_seeded,
+    make_app, make_probe_app, max_col_reached, open_plain, spawner_elapsed, total_elk_energy,
+    PresetOutcome,
 };
 
 // The demo's central invariant, pinned: tuning toward forage + committing the
@@ -767,4 +768,324 @@ fn green_wave_quality_crosses() {
         wave_on.max_col,
         wave_off.max_col,
     );
+}
+
+// Temporary investigation probe (not a gate). Seeded so wave-off and wave-on are
+// compared on the IDENTICAL map and differ only by the wave + freshness knob —
+// the clean comparison the flaky `green_wave_quality_crosses` never had. Sweeps
+// freshness_weight, strength, and speed to find whether the natural drive can be
+// made to cross meaningfully (map is 256 wide; EDGE_COL=254).
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape green_wave_seeded_probe -- --ignored --nocapture"]
+fn green_wave_seeded_probe() {
+    const TICKS: u32 = 1000;
+    const SEEDS: [u64; 3] = [1, 7, 42];
+
+    // Identical base forager for every cell of the table — only wave/freshness move.
+    let base = || {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.temperature = 0.5;
+        p
+    };
+    let run = |seed: u64, strength: f32, speed: f32, fw: f32| {
+        let mut p = base();
+        p.freshness_weight = fw;
+        evaluate_bundle_seeded(
+            seed,
+            RatioControls { cross_ratio: 0.0, ..Default::default() },
+            GreenWave { strength, speed, wavelength: 70.0 },
+            p,
+            TICKS,
+        )
+    };
+    let row = |tag: &str, o: PresetOutcome| {
+        println!(
+            "{tag:<22} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+
+    println!("\n=== clean wave-off vs wave-on (same map per seed) ===");
+    for seed in SEEDS {
+        let off = run(seed, 0.0, 0.008, 0.0);
+        let on = run(seed, 0.4, 0.008, 4.0);
+        println!("-- seed {seed} --");
+        row("  off (s0 fw0)", off);
+        row("  on  (s0.4 fw4)", on);
+        println!(
+            "  delta: max_col {:+} centroid {:+.1}",
+            on.max_col as i64 - off.max_col as i64,
+            on.centroid_col - off.centroid_col,
+        );
+    }
+    let _ = run; // (kept above; leapfrog probe below uses its own builder)
+}
+
+// Leapfrog mechanisms probe: forage sightline (long-range eastward sight),
+// cohesion_lead (column formation), and slow chewing (lower `bite`, graze_yield
+// auto-scales so energy holds but patches last). All at zero pull on fixed maps;
+// the question is whether any combination breaks the ~col-50 wall the freshness
+// pass could not.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape leapfrog_probe -- --ignored --nocapture"]
+fn leapfrog_probe() {
+    const TICKS: u32 = 1000;
+    const SEEDS: [u64; 2] = [7, 42];
+
+    struct Cfg {
+        tag: &'static str,
+        sightline_range: f32,
+        sightline_weight: f32,
+        cohesion_lead: f32,
+        bite: f32,
+        momentum: f32,
+        temperature: f32,
+    }
+    // Default-ish baseline values for the levers we hold unless a row changes them.
+    let cfgs = [
+        Cfg { tag: "baseline (all off)",  sightline_range: 0.0,  sightline_weight: 0.0, cohesion_lead: 0.0, bite: 0.12,  momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "sight 16x2",          sightline_range: 16.0, sightline_weight: 2.0, cohesion_lead: 0.0, bite: 0.12,  momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "sight 24x3",          sightline_range: 24.0, sightline_weight: 3.0, cohesion_lead: 0.0, bite: 0.12,  momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "sight + lead1",       sightline_range: 24.0, sightline_weight: 3.0, cohesion_lead: 1.0, bite: 0.12,  momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "sight + lead2",       sightline_range: 24.0, sightline_weight: 3.0, cohesion_lead: 2.0, bite: 0.12,  momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "sight+lead+slowchew", sightline_range: 24.0, sightline_weight: 3.0, cohesion_lead: 1.0, bite: 0.012, momentum: 0.2, temperature: 0.6 },
+        Cfg { tag: "the works (sticky)",  sightline_range: 24.0, sightline_weight: 3.0, cohesion_lead: 1.0, bite: 0.012, momentum: 0.5, temperature: 0.4 },
+    ];
+
+    let row = |tag: &str, o: PresetOutcome| {
+        println!(
+            "{tag:<22} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+
+    for seed in SEEDS {
+        println!("\n=== seed {seed} (wave s0.4 fw4 speed0.008, zero pull, {TICKS} ticks) ===");
+        for c in &cfgs {
+            let mut p = ElkParams::default();
+            p.grass = 2.0;
+            p.grass_radius = 8.0;
+            p.freshness_weight = 4.0;
+            p.sightline_range = c.sightline_range;
+            p.sightline_weight = c.sightline_weight;
+            p.cohesion_lead = c.cohesion_lead;
+            p.bite = c.bite;
+            p.momentum = c.momentum;
+            p.temperature = c.temperature;
+            let o = evaluate_bundle_seeded(
+                seed,
+                RatioControls { cross_ratio: 0.0, ..Default::default() },
+                GreenWave { strength: 0.4, speed: 0.008, wavelength: 70.0 },
+                p,
+                TICKS,
+            );
+            row(c.tag, o);
+        }
+    }
+    println!("\n(probe only — no assertions; map is 256 wide, EDGE_COL=254)");
+}
+
+// Wave-speed / duration probe: with the leapfrog mechanisms on, does a slower
+// (followable) wave + a longer run let the herd's mass actually ride the crest
+// across, or does the centroid plateau regardless? Crest speed ≈ speed·wavelength
+// cells/tick. seed 42, sightline+lead+slowchew config.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape wave_speed_duration_probe -- --ignored --nocapture"]
+fn wave_speed_duration_probe() {
+    let run = |speed: f32, ticks: u32| {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.bite = 0.012;
+        evaluate_bundle_seeded(
+            42,
+            RatioControls { cross_ratio: 0.0, ..Default::default() },
+            GreenWave { strength: 0.4, speed, wavelength: 70.0 },
+            p,
+            ticks,
+        )
+    };
+    let row = |tag: String, o: PresetOutcome| {
+        println!(
+            "{tag:<28} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+    println!("\n=== wave speed × duration (seed 42, zero pull) ===");
+    for speed in [0.008_f32, 0.002, 0.0008] {
+        let crest = speed * 70.0;
+        for ticks in [1000_u32, 3000] {
+            row(format!("speed={speed} (crest {crest:.2}/t) t={ticks}"), run(speed, ticks));
+        }
+    }
+    println!("\n(probe only — crest cells/tick vs herd advance is the question)");
+}
+
+// Decisive probe: is the col-30 plateau a DIRECTION failure or a SURVIVAL failure?
+// Run the leapfrog herd under an easy energy economy (abundant regrowth + overfed
+// bite). If the MASS (centroid) then rolls across, direction is solved and the
+// corridor economy is the real blocker. If it still stalls, direction isn't there.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape leapfrog_easy_economy_probe -- --ignored --nocapture"]
+fn leapfrog_easy_economy_probe() {
+    const TICKS: u32 = 2000;
+    let leapfrog = || {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p
+    };
+    let run = |tag: &str, ratios: RatioControls, drain: f32| {
+        let mut p = leapfrog();
+        p.energy_drain = drain;
+        let o = evaluate_bundle_seeded(
+            42,
+            ratios,
+            GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
+            p,
+            TICKS,
+        );
+        println!(
+            "{tag:<32} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+    let def = RatioControls { cross_ratio: 0.0, ..Default::default() }; // bite 2.5, regrow 0.175
+    let abundant = RatioControls { bite_ratio: 6.0, regrow_ratio: 0.6, cross_ratio: 0.0 };
+    println!("\n=== leapfrog under easy economy (seed 42, zero pull, {TICKS} ticks) ===");
+    run("control (default econ)", def, 0.004);
+    run("abundant forage", abundant, 0.004);
+    run("abundant + half drain", abundant, 0.002);
+    run("abundant + quarter drain", abundant, 0.001);
+    println!("\n(if the MASS crosses here, direction is solved — economy is the blocker)");
+}
+
+// Confirmation: with direction solved, can a well-fed leapfrog herd reach the far
+// edge (EDGE_COL=254) given endurance + time, at zero pull, across seeds?
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape leapfrog_full_crossing_probe -- --ignored --nocapture"]
+fn leapfrog_full_crossing_probe() {
+    let run = |seed: u64, drain: f32, ticks: u32| {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.energy_drain = drain;
+        let o = evaluate_bundle_seeded(
+            seed,
+            RatioControls { bite_ratio: 6.0, regrow_ratio: 0.6, cross_ratio: 0.0 },
+            GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
+            p,
+            ticks,
+        );
+        println!(
+            "seed {seed} drain={drain} t={ticks:<5} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+    println!("\n=== full-crossing confirmation (abundant forage, zero pull) ===");
+    for seed in [7_u64, 42] {
+        run(seed, 0.001, 4000);
+        run(seed, 0.0008, 4000);
+    }
+    println!("\n(EDGE_COL=254 — centroid near it ⇒ the mass crossed on the natural drive)");
+}
+
+// Gating probe for the new standard: slow chewing baked in + leapfrog on, with
+// bite_ratio FIXED (not a player lever). The only survival levers are the fixed
+// default `drain` (which we are choosing here) and `regrow_ratio` (the difficulty
+// dial). Find the drain at which a tuned herd just crosses on easy regrow and
+// erodes as regrow tightens.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape standard_drain_regrow_probe -- --ignored --nocapture"]
+fn standard_drain_regrow_probe() {
+    const TICKS: u32 = 3000;
+    let run = |seed: u64, drain: f32, regrow: f32| {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.bite = 0.012; // slow chewing — the new standard
+        p.energy_drain = drain;
+        let o = evaluate_bundle_seeded(
+            seed,
+            // bite_ratio fixed at default 2.5; regrow is the difficulty dial; zero pull.
+            RatioControls { bite_ratio: 2.5, regrow_ratio: regrow, cross_ratio: 0.0 },
+            GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
+            p,
+            TICKS,
+        );
+        println!(
+            "seed {seed} drain={drain:<6} regrow={regrow:<5} max_col={:>3} centroid={:>5.1} survival={:.2}",
+            o.max_col, o.centroid_col, o.survival
+        );
+    };
+    println!("\n=== slow-chew standard: drain × regrow (seed 42, zero pull, {TICKS} ticks) ===");
+    for drain in [0.004_f32, 0.003, 0.002] {
+        for regrow in [0.5_f32, 0.25, 0.1] {
+            run(42, drain, regrow);
+        }
+    }
+    println!("\n-- cross-seed check at the promising drain --");
+    for regrow in [0.5_f32, 0.25, 0.1] {
+        run(7, 0.002, regrow);
+    }
+    println!("\n(want: easy regrow crosses, tight regrow stalls — regrow is the difficulty axis)");
+}
+
+// Is regrow a real difficulty axis? Sweep regrow in the SCORING band (< 0.2, where
+// difficulty = (0.2 - regrow)/0.2 > 0), at the candidate standard drain. Print
+// difficulty + score so we see the score curve, not just distance.
+#[test]
+#[ignore = "investigation probe: cargo test --test herd_shape regrow_scoring_band_probe -- --ignored --nocapture"]
+fn regrow_scoring_band_probe() {
+    const TICKS: u32 = 3000;
+    const DRAIN: f32 = 0.002;
+    let run = |seed: u64, regrow: f32| {
+        let mut p = ElkParams::default();
+        p.grass = 2.0;
+        p.grass_radius = 8.0;
+        p.freshness_weight = 4.0;
+        p.sightline_range = 24.0;
+        p.sightline_weight = 3.0;
+        p.cohesion_lead = 1.0;
+        p.bite = 0.012; // slow chewing standard
+        p.energy_drain = DRAIN;
+        let o = evaluate_bundle_seeded(
+            seed,
+            RatioControls { bite_ratio: 2.5, regrow_ratio: regrow, cross_ratio: 0.0 },
+            GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
+            p,
+            TICKS,
+        );
+        println!(
+            "seed {seed} regrow={regrow:<5} diff={:.2} max_col={:>3} centroid={:>5.1} surv={:.2} score_high={:.0}",
+            o.difficulty, o.max_col, o.centroid_col, o.survival, o.score_high
+        );
+    };
+    println!("\n=== regrow in scoring band (drain {DRAIN}, slow-chew, leapfrog, zero pull, {TICKS}t) ===");
+    for regrow in [0.18_f32, 0.14, 0.10, 0.06, 0.03] {
+        run(42, regrow);
+    }
+    println!("-- cross-seed --");
+    for regrow in [0.14_f32, 0.06] {
+        run(7, regrow);
+    }
+    println!("\n(want a real curve: tighter regrow ⇒ higher difficulty but herd still scores)");
 }

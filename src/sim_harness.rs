@@ -9,7 +9,7 @@ use crate::elk::{combine_drives, grass_gradient, graze_value, stand_value, step_
 use crate::droppings::DroppingsPlugin;
 use crate::grid::{GreenWave, Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
-use crate::worldgen::WorldgenPlugin;
+use crate::worldgen::{WorldSeed, WorldgenPlugin};
 
 const HZ: f64 = 10.0;
 const PERIOD: Duration = Duration::from_millis(100);
@@ -155,7 +155,24 @@ pub fn evaluate_bundle(
     params: ElkParams,
     ticks: u32,
 ) -> PresetOutcome {
+    evaluate_bundle_seeded(rand::random(), ratios, wave, params, ticks)
+}
+
+/// `evaluate_bundle` over a *pinned* worldgen seed, so two configs can be
+/// compared on the identical map (reproducibility, not bit-determinism — the
+/// verification skill's envelope rule). Pin the seed and a wave-off/wave-on
+/// pair differ only by the knob under test, not by which random world they drew.
+pub fn evaluate_bundle_seeded(
+    seed: u64,
+    ratios: RatioControls,
+    wave: GreenWave,
+    params: ElkParams,
+    ticks: u32,
+) -> PresetOutcome {
     let mut app = make_app();
+    // Override the WorldgenPlugin's random default before the first update
+    // (when `generate_world` reads it), pinning the map for this run.
+    app.insert_resource(WorldSeed(seed));
     app.insert_resource(params);
     app.insert_resource(ratios);
     app.insert_resource(wave);

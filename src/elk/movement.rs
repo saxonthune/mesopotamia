@@ -176,6 +176,51 @@ pub fn grass_gradient(cell: usize, grid: &Grid, params: &ElkParams) -> Vec2 {
     dir
 }
 
+/// Long-range forward forage pull on dry land — the leapfrog primitive. Beyond
+/// the local `grass_radius`, an elk on a depleted patch still steers toward a
+/// clearly richer cell it can see ahead along the migration axis (+x): the
+/// dry-land analogue of `forage_across` peeking over a river. Walks east up to
+/// `sightline_range` cells, climbing the same attractiveness the local gradient
+/// does (`forage + freshness_weight · freshness`, so the green-up front is the
+/// long-range beacon), and returns a +x pull proportional to how much the best
+/// cell ahead beats underfoot. Zero when nothing ahead is richer (no pull to
+/// nowhere) or `sightline_weight == 0` (identity — the grass drive stays local).
+///
+/// Folded into `grass_dir` before it is normalized, so the tilt is *relative*:
+/// on rich ground the strong local gradient dominates and the elk grazes; on
+/// drawn-down ground the local gradient is weak and the sightline takes over,
+/// pointing the herd east toward the next forage. That switch is the emergent
+/// "stick to good grass, roll forward off bad" behaviour.
+pub fn forage_sightline(cell: usize, grid: &Grid, params: &ElkParams) -> Vec2 {
+    if params.sightline_weight <= 0.0 || params.sightline_range < 1.0 {
+        return Vec2::ZERO;
+    }
+    let attract = |c: usize| grid.forage(c) + params.freshness_weight * grid.freshness(c);
+    let here = attract(cell);
+    let mut best = here;
+    let r = params.sightline_range.ceil() as isize;
+    for dx in 1..=r {
+        match grid.step(cell, dx, 0) {
+            Some(n) => best = best.max(attract(n)),
+            None => break, // ran off the grid — nothing further east to see
+        }
+    }
+    let surplus = (best - here).max(0.0);
+    Vec2::X * params.sightline_weight * surplus
+}
+
+/// Per-packmate weight for the cohesion centroid, biased toward those *ahead*.
+/// `lead == 0` returns 1.0 (every packmate counts equally ⇒ the plain centroid,
+/// today's behaviour). With `lead > 0`, a packmate further east than the elk
+/// weighs up to `1 + lead`, ramped linearly over `coh_radius`, so the cohesion
+/// target drifts toward the herd's leading edge and the blob elongates into a
+/// rolling column. Packmates behind or level always weigh 1.0 — the bias only
+/// ever pulls forward, never back.
+pub fn cohesion_lead_weight(self_col: f32, other_col: f32, coh_radius: f32, lead: f32) -> f32 {
+    let ahead = ((other_col - self_col) / coh_radius.max(1e-6)).clamp(0.0, 1.0);
+    1.0 + lead * ahead
+}
+
 /// Water-penalty field at `cell`: the step cost an elk would pay to enter this
 /// cell, sampled for overlay rendering. Thin wrapper so grid sampling does not
 /// have to repeat the ford/cost arithmetic.
@@ -367,8 +412,11 @@ pub(super) fn herd_move(
                 sep += off / d2 * factor; // push away, harder the closer
             }
             if oslot == slot && dist <= params.coh_radius {
-                coh_sum += Vec2::new(ox, oy);
-                coh_n += 1.0;
+                // Weight packmates ahead more heavily so the cohesion centre leads
+                // the centroid — turns a milling blob into a rolling column.
+                let w = cohesion_lead_weight(cx, ox, params.coh_radius, params.cohesion_lead);
+                coh_sum += Vec2::new(ox, oy) * w;
+                coh_n += w;
             }
             // Local enhancement: grazing elk (any pack) draw foragers from afar,
             // nearer ones more — `-off` points from self toward the grazer.
@@ -378,9 +426,12 @@ pub(super) fn herd_move(
         }
         let coh = if coh_n > 0.0 { coh_sum / coh_n - pos } else { Vec2::ZERO };
 
-        // Field drive: steer up the grass gradient. Extracted to `grass_gradient`
-        // so the same field can be sampled on arbitrary cells for the overlay.
-        let grass_dir = grass_gradient(elk.cell, &grid, &params);
+        // Field drive: steer up the grass gradient (local), tilted by the
+        // long-range eastward sightline toward fresh forage beyond perception.
+        // The sum is normalized in `combine_drives`, so the sightline only bends
+        // the direction — dominant on depleted ground, negligible on rich.
+        let grass_dir =
+            grass_gradient(elk.cell, &grid, &params) + forage_sightline(elk.cell, &grid, &params);
 
         // Combine normalized drives. Hunger sharpens the pull toward food —
         // both grass directly and other elk already feeding — so a fed herd
@@ -1043,6 +1094,82 @@ mod tests {
             (g_zero - g_pos).length() < 1e-6,
             "freshness_weight=0 must yield identical result regardless of freshness field"
         );
+    }
+
+    // ── forage_sightline ──────────────────────────────────────────────────────
+
+    // Off by default: weight 0 ⇒ zero pull no matter what lies ahead (identity —
+    // the grass drive stays the local gradient).
+    #[test]
+    fn sightline_off_by_default_is_zero() {
+        let mut grid = crate::grid::Grid::new(40, 5);
+        let center = 2 * 40 + 5;
+        grid.set_grass(center + 15, 1.0); // rich patch far east
+        let params = default_params(); // sightline_weight 0, range 0
+        assert_eq!(forage_sightline(center, &grid, &params), Vec2::ZERO);
+    }
+
+    // The breaking input: rich forage *beyond* grass_radius to the east, none
+    // underfoot. The local gradient can't see it; the sightline must pull +x.
+    #[test]
+    fn sightline_pulls_east_toward_far_forage() {
+        let mut grid = crate::grid::Grid::new(40, 5);
+        let center = 2 * 40 + 5;
+        grid.set_grass(center + 12, 1.0); // 12 cells east — past grass_radius 5
+        let mut params = default_params();
+        params.sightline_range = 16.0;
+        params.sightline_weight = 1.0;
+        let s = forage_sightline(center, &grid, &params);
+        assert!(s.x > 0.0 && s.y == 0.0, "must pull purely east toward far forage: {s:?}");
+    }
+
+    // No pull to nowhere: when nothing ahead beats underfoot the sightline is zero,
+    // so a fed elk on good grass is never yanked east off it.
+    #[test]
+    fn sightline_zero_when_nothing_better_ahead() {
+        let mut grid = crate::grid::Grid::new(40, 5);
+        let center = 2 * 40 + 5;
+        grid.set_grass(center, 1.0); // rich underfoot, barren ahead
+        let mut params = default_params();
+        params.sightline_range = 16.0;
+        params.sightline_weight = 1.0;
+        assert_eq!(forage_sightline(center, &grid, &params), Vec2::ZERO);
+    }
+
+    // Freshness is the long-range beacon: a fresh-but-not-yet-biomassy front ahead
+    // pulls east once freshness_weight makes it the richer attractiveness.
+    #[test]
+    fn sightline_follows_the_freshness_front() {
+        let mut grid = crate::grid::Grid::new(40, 5);
+        let center = 2 * 40 + 5;
+        let front = center + 10;
+        grid.freshness[front] = 3.0; // green-up front, low standing crop
+        let mut params = default_params();
+        params.sightline_range = 16.0;
+        params.sightline_weight = 1.0;
+        params.freshness_weight = 1.5;
+        assert!(forage_sightline(center, &grid, &params).x > 0.0);
+    }
+
+    // ── cohesion_lead_weight ──────────────────────────────────────────────────
+
+    // lead 0 ⇒ every packmate weighs 1.0 (the plain centroid — today's behaviour),
+    // regardless of whether they are ahead or behind.
+    #[test]
+    fn cohesion_lead_zero_is_uniform() {
+        assert!((cohesion_lead_weight(10.0, 20.0, 9.0, 0.0) - 1.0).abs() < 1e-6);
+        assert!((cohesion_lead_weight(10.0, 2.0, 9.0, 0.0) - 1.0).abs() < 1e-6);
+    }
+
+    // The breaking input: with lead > 0 a packmate ahead (+col) outweighs one behind,
+    // so the cohesion centre drifts forward.
+    #[test]
+    fn cohesion_lead_favours_those_ahead() {
+        let ahead = cohesion_lead_weight(10.0, 19.0, 9.0, 1.0); // a full coh_radius ahead
+        let behind = cohesion_lead_weight(10.0, 1.0, 9.0, 1.0);
+        assert!(ahead > behind, "ahead {ahead} must outweigh behind {behind}");
+        assert!((behind - 1.0).abs() < 1e-6, "a packmate behind still weighs 1.0");
+        assert!((ahead - 2.0).abs() < 1e-6, "a full-radius lead reaches 1 + lead = 2.0");
     }
 
     // ── cross_desire ─────────────────────────────────────────────────────────

@@ -148,6 +148,20 @@ pub struct ElkParams {
     /// Positive ⇒ fresher cells (recent regrowth) are pulled stronger; the herd
     /// steers toward the active green-up front rather than standing-crop peaks.
     pub freshness_weight: f32,
+    /// How far east (cells along the migration axis) an elk looks for a clearly
+    /// richer patch beyond its local `grass_radius` — the dry-land analogue of the
+    /// across-river `forage_across` peek. 0.0 (default) ⇒ no long-range sight.
+    pub sightline_range: f32,
+    /// Weight on the forward pull produced by `forage_sightline`. 0.0 (default) ⇒
+    /// off (identity: the grass drive is the local gradient only). Positive ⇒ an
+    /// elk on depleted ground steers toward fresh forage it can see far ahead,
+    /// the leapfrog primitive that carries the herd onto the next land segment.
+    pub sightline_weight: f32,
+    /// Bias of the cohesion target toward packmates *ahead* (greater column). 0.0
+    /// (default) ⇒ cohesion pulls to the plain slot centroid (today). Positive ⇒
+    /// forward packmates weigh more, so the herd's cohesion centre drifts east and
+    /// the blob elongates into a rolling column instead of clustering on its centre.
+    pub cohesion_lead: f32,
 }
 
 /// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
@@ -290,6 +304,9 @@ impl Default for ElkParams {
             giving_up: 0.6,
             leave_boost: 1.5,
             freshness_weight: 0.0,
+            sightline_range: 0.0,
+            sightline_weight: 0.0,
+            cohesion_lead: 0.0,
         }
     }
 }
