@@ -15,9 +15,10 @@ use crate::grid::Grid;
 use crate::render::{cell_world_pos, TILE_SIZE};
 
 /// Ticks a marker takes to fade from full red to gone.
-const LIFETIME: u32 = 40;
-/// Long axis of each bar, as a share of the tile — the X spans most of the cell.
-const BAR_LEN: f32 = TILE_SIZE * 0.62;
+const LIFETIME: u32 = 120;
+/// Long axis of each bar — the cell's diagonal (`√2` tiles), so the rotated bars
+/// reach corner to corner and the X fills the whole grid cell.
+const BAR_LEN: f32 = TILE_SIZE * std::f32::consts::SQRT_2;
 /// Short axis (thickness) of each bar.
 const BAR_THICK: f32 = TILE_SIZE * 0.16;
 /// Z above the terrain layers (grass 0.3 … flower 0.7) but below the live elk (1.0).
