@@ -89,6 +89,14 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc03.02.00 | `02-hotspot/00-index.md` | Second milestone — a rendered ocean-and-sky scene centered on a volcanic hot spot, where islands build up over the source and melt away as they drift off it, carrying their vegetation forward to the next island | milestone, rendering, procgen, lifecycle, co-evolution | doc01.03 | — | — |
 | doc03.02.01 | `02-hotspot/01-goal.md` | The hotspot milestone's destination — a rendered ocean-and-sky scene where islands build up over a fixed volcanic source and melt away as they drift off it, with vegetation that co-evolves with the land and jumps from a dying island to a young one | milestone, rendering, procgen, lifecycle, co-evolution | doc01.03 | — | — |
 
+### Driftscape
+
+| Ref | File | Summary | Tags | Deps | Refs | Attachments |
+|-----|------|---------|------|------|------|-------------|
+
+| doc03.03.00 | `03-driftscape/00-index.md` |  |  | — | — | — |
+| doc03.03.01 | `03-driftscape/01-goal.md` |  |  | — | — | — |
+
 ## 04-modeling — Mathematical Modeling
 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |

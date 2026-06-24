@@ -75,6 +75,74 @@ pub fn stand_value() -> f32 {
     0.0
 }
 
+/// Unit cardinal vector of the elk's last move (`prev → cell`), or zero if it
+/// held position. This is the only memory the crossing model needs: re-scoring
+/// each candidate against it rewards continuing and penalizes reversing, so an
+/// elk that has committed to a direction keeps it instead of dithering. Moves
+/// are single cardinal steps, so the delta is already ±1 on one axis; the
+/// `normalize_or_zero` guards a respawn/teleport that leaps more than one cell.
+pub fn step_heading(prev: usize, cell: usize, grid: &Grid) -> Vec2 {
+    let (px, py) = grid.col_row(prev);
+    let (cx, cy) = grid.col_row(cell);
+    Vec2::new(cx as f32 - px as f32, cy as f32 - py as f32).normalize_or_zero()
+}
+
+/// Best grass fraction (`grass / capacity`) over cells within `radius` of `cell`,
+/// the cell itself included. The *reachability reference* the travel mode steers
+/// by: an elk travels only while somewhere meaningfully richer than underfoot is
+/// in reach. This is what makes the mode safe across real terrain — on thin or
+/// barren ground with nothing better nearby, `best == here`, so the elk never
+/// dashes off to nowhere and starve. Barren cells (capacity ~0) contribute 0.
+pub fn best_reachable_frac(cell: usize, grid: &Grid, radius: f32) -> f32 {
+    let frac = |c: usize| {
+        let cap = grid.capacity(c);
+        if cap > 1e-6 { grid.grass(c) / cap } else { 0.0 }
+    };
+    let r = radius.ceil() as isize;
+    let mut best = frac(cell);
+    for dy in -r..=r {
+        for dx in -r..=r {
+            if dx == 0 && dy == 0 {
+                continue;
+            }
+            if (Vec2::new(dx as f32, dy as f32)).length() > radius {
+                continue;
+            }
+            if let Some(n) = grid.step(cell, dx, dy) {
+                best = best.max(frac(n));
+            }
+        }
+    }
+    best
+}
+
+/// Next foraging mode — graze in place or *travel* (a directed dash, softmax
+/// sharpened in `herd_move`). An elk travels only while a meaningfully richer
+/// patch is reachable: it leaves a patch once it is drawn below `leave_frac` of
+/// capacity *and* somewhere better than underfoot is within reach, and it settles
+/// the moment nothing better remains reachable (it has arrived at the local best).
+///
+/// `here_frac` is `grass / capacity` underfoot; `best_frac` is `best_reachable_frac`;
+/// `margin` is how much richer a reachable patch must be to be worth the dash.
+/// Requiring reachable improvement on *both* edges is what removes the old
+/// absolute-threshold trap — an elk surrounded by nothing better grazes what it
+/// has rather than travelling to its death. Grazing is never suppressed, so even
+/// a perpetual traveller still feeds; the mode only shapes how it moves.
+pub fn next_forage_mode(
+    traveling: bool,
+    here_frac: f32,
+    best_frac: f32,
+    leave_frac: f32,
+    margin: f32,
+) -> bool {
+    let better_reachable = best_frac > here_frac + margin;
+    if traveling {
+        better_reachable // settle once nothing better than underfoot is in reach
+    } else {
+        here_frac < leave_frac && better_reachable // leave a drawn-down patch only for a better one
+    }
+}
+
 /// Step cost for entering a water cell. On a ford the cost is reduced by
 /// `ford_discount`; off a ford it is the raw water-level × cost (today's behaviour).
 pub fn step_water_penalty(water: f32, is_ford: bool, water_cost: f32, ford_discount: f32) -> f32 {
@@ -253,9 +321,27 @@ pub(super) fn herd_move(
     let steps: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
 
     for (i, (mut elk, mut last_decision)) in elk_q.iter_mut().enumerate() {
+        // Heading of last tick's move, captured before `prev_cell` is reset
+        // below. Drives the directional-persistence term that keeps a crossing
+        // elk committed (see `step_heading`).
+        let heading = step_heading(elk.prev_cell, elk.cell, &grid);
         // Where the elk starts this tick becomes the render interpolation's
         // origin; if it doesn't move below, prev == cell and the sprite holds still.
         elk.prev_cell = elk.cell;
+        // Update the graze/travel mode: travel toward a meaningfully richer patch
+        // when this one is drawn down, settle once nothing better is in reach.
+        // Travel sharpens the pick (committed dash); grazing stays available, so
+        // the mode shapes movement but can never starve an elk.
+        let cap = grid.capacity(elk.cell);
+        let here_frac = if cap > 1e-6 { grid.grass(elk.cell) / cap } else { 0.0 };
+        let best_frac = best_reachable_frac(elk.cell, &grid, params.grass_radius);
+        elk.traveling =
+            next_forage_mode(elk.traveling, here_frac, best_frac, params.leave_frac, params.travel_margin);
+        let temperature = if elk.traveling {
+            params.temperature * params.travel_focus
+        } else {
+            params.temperature
+        };
         let (cx, cy, slot, _) = snapshot[i];
         let pos = Vec2::new(cx, cy);
 
@@ -341,7 +427,19 @@ pub(super) fn herd_move(
                     params.water_cost,
                     params.ford_discount,
                 );
-                let mut score = desire.dot(Vec2::new(dx as f32, dy as f32)) - penalty;
+                let step_dir = Vec2::new(dx as f32, dy as f32);
+                let mut score = desire.dot(step_dir) - penalty;
+                // Directional persistence: reward continuing last tick's heading,
+                // penalize reversing it. Strong in water so a crossing elk commits
+                // to the far bank instead of toe-dipping; gentle on land so it just
+                // resists immediate backtracking. With the swim-drain energy cost,
+                // this is what stops the back-and-forth inside a river.
+                let persist = if grid.water(elk.cell) >= WATER_EPS {
+                    params.momentum_water
+                } else {
+                    params.momentum
+                };
+                score += persist * heading.dot(step_dir);
                 // Crossing incentive: when the step enters water, peek across for
                 // the far bank and add `cross_desire` — the forage gain over the
                 // best dry option, net of the whole span's cost. Scaled by hunger
@@ -361,7 +459,11 @@ pub(super) fn herd_move(
                 cells[k] = Some(next);
             }
         }
-        // Stand and Graze candidates: no destination cell, no penalty.
+        // Stand and Graze candidates: no destination cell, no penalty. Grazing is
+        // always available — a travelling elk that finds worthwhile grass underfoot
+        // eats it rather than dashing past, which is what guarantees the travel
+        // mode can never starve the herd. Travel shapes movement via temperature,
+        // not by forbidding the feed.
         scores[4] = stand_value();
         scores[5] = graze_value(here_forage, elk.energy, params.dwell);
 
@@ -373,14 +475,14 @@ pub(super) fn herd_move(
                 options: Vec::new(),
                 chosen: None,
                 chosen_act: Act::Stand,
-                temperature: params.temperature,
+                temperature,
             };
             continue;
         }
         let mut weights = [0.0_f32; 6];
         for k in 0..6 {
             if scores[k].is_finite() {
-                weights[k] = ((scores[k] - max) / params.temperature).exp();
+                weights[k] = ((scores[k] - max) / temperature).exp();
             }
         }
 
@@ -409,40 +511,32 @@ pub(super) fn herd_move(
             rand::rng().random_range(0.0..total)
         };
         let mut option_counter = 0usize;
-        let mut chosen_k: Option<usize> = None;
-        let mut chosen_act = Act::Stand;
-        'pick: {
+        let (chosen_k, chosen_act): (Option<usize>, Act) = 'pick: {
             for k in 0..4 {
                 if !scores[k].is_finite() { continue; }
                 if pick < weights[k] {
                     elk.cell = cells[k].unwrap();
-                    chosen_k = Some(option_counter);
                     let (dx, dy) = steps[k];
-                    chosen_act = Act::Step(dx, dy);
-                    break 'pick;
+                    break 'pick (Some(option_counter), Act::Step(dx, dy));
                 }
                 pick -= weights[k];
                 option_counter += 1;
             }
             // Stand candidate
             if pick < weights[4] {
-                chosen_k = Some(option_counter);
-                chosen_act = Act::Stand;
-                break 'pick;
+                break 'pick (Some(option_counter), Act::Stand);
             }
-            pick -= weights[4];
             option_counter += 1;
             // Graze candidate — catches any floating-point remainder
-            chosen_k = Some(option_counter);
-            chosen_act = Act::Graze;
-        }
+            (Some(option_counter), Act::Graze)
+        };
 
         last_decision.0 = Decision {
             drives: decision_drives,
             options,
             chosen: chosen_k,
             chosen_act,
-            temperature: params.temperature,
+            temperature,
         };
 
         // Swim energy cost: crossing deep non-ford water is a lasting risk beyond
@@ -980,6 +1074,155 @@ mod tests {
         // ford_discount 0.1 ⇒ each water cell costs 0.2 instead of 2.0.
         let (_, cost) = forage_across(&grid, 0, 1, 0, 2.0, 0.1, 12).unwrap();
         assert!((cost - 0.4).abs() < 1e-6, "ford span should cost 2×0.2 = 0.4, got {cost}");
+    }
+
+    // ── step_heading ──────────────────────────────────────────────────────────
+
+    // A +x move yields a +x unit heading; the persistence term then rewards the
+    // step that continues it and penalizes the reverse, by the same magnitude.
+    #[test]
+    fn step_heading_is_unit_cardinal_of_last_move() {
+        let grid = Grid::new(6, 1);
+        let h = step_heading(0, 1, &grid); // moved from cell 0 to cell 1 (+x)
+        assert!((h - Vec2::new(1.0, 0.0)).length() < 1e-6);
+    }
+
+    // Holding position (prev == cell) leaves no heading, so a paused or grazing
+    // elk carries no momentum into the next tick's choice.
+    #[test]
+    fn step_heading_is_zero_when_held() {
+        let grid = Grid::new(6, 1);
+        assert_eq!(step_heading(2, 2, &grid), Vec2::ZERO);
+    }
+
+    // The persistence term is symmetric: continuing scores +momentum, reversing
+    // −momentum. The gap (2·momentum) is what breaks a mid-river limit cycle.
+    #[test]
+    fn heading_rewards_continuing_over_reversing() {
+        let grid = Grid::new(6, 1);
+        let h = step_heading(0, 1, &grid); // heading +x
+        let forward = h.dot(Vec2::new(1.0, 0.0));
+        let backward = h.dot(Vec2::new(-1.0, 0.0));
+        assert!(forward > backward);
+        assert!((forward - (-backward)).abs() < 1e-6);
+    }
+
+    // A multi-cell jump (respawn/teleport) is still clamped to a unit vector, so
+    // momentum can never dominate the score after a discontinuity.
+    #[test]
+    fn step_heading_normalizes_a_teleport() {
+        let grid = Grid::new(6, 1);
+        let h = step_heading(0, 5, &grid); // five cells in +x
+        assert!((h.length() - 1.0).abs() < 1e-6);
+    }
+
+    // ── best_reachable_frac ────────────────────────────────────────────────────
+
+    // Finds a richer cell within the perception radius — the reference an elk
+    // decides whether travelling is worth it against.
+    #[test]
+    fn best_reachable_finds_a_richer_neighbour() {
+        let mut grid = Grid::new(7, 1);
+        let cap = grid.capacity(0);
+        grid.set_grass(0, 0.2 * cap); // underfoot: thin
+        grid.set_grass(2, 0.9 * cap); // two cells away: rich
+        assert!((best_reachable_frac(0, &grid, 5.0) - 0.9).abs() < 1e-3);
+    }
+
+    // With nothing better around, the best reachable IS the cell underfoot — the
+    // signal that tells a traveller to settle and a grazer to stay.
+    #[test]
+    fn best_reachable_is_here_when_nothing_better() {
+        let mut grid = Grid::new(7, 1);
+        let cap = grid.capacity(0);
+        grid.set_grass(0, 0.5 * cap); // neighbours stay at default 0
+        assert!((best_reachable_frac(0, &grid, 5.0) - 0.5).abs() < 1e-3);
+    }
+
+    // Perception is bounded: a rich patch beyond the radius is invisible, so it
+    // can't lure an elk into a dash it can't actually complete.
+    #[test]
+    fn best_reachable_ignores_cells_beyond_radius() {
+        let mut grid = Grid::new(12, 1);
+        let cap = grid.capacity(0);
+        grid.set_grass(0, 0.1 * cap);
+        grid.set_grass(10, 0.9 * cap); // far out of a radius-3 reach
+        assert!((best_reachable_frac(0, &grid, 3.0) - 0.1).abs() < 1e-3);
+    }
+
+    // ── next_forage_mode ──────────────────────────────────────────────────────
+
+    // A grazer leaves a drawn-down patch only when somewhere meaningfully richer
+    // is reachable; an un-depleted patch is never abandoned.
+    #[test]
+    fn grazer_leaves_a_depleted_patch_only_for_a_better_one() {
+        assert!(next_forage_mode(false, 0.3, 0.8, 0.4, 0.2), "depleted + better reachable → travel");
+        assert!(!next_forage_mode(false, 0.5, 0.9, 0.4, 0.2), "not depleted → stay grazing");
+    }
+
+    // The anti-starvation guard, pinned. A depleted patch with nothing better in
+    // reach keeps the elk grazing what it has — the exact case that, under the old
+    // absolute-threshold mode, trapped the herd in permanent travel and starved it.
+    #[test]
+    fn grazer_stays_put_when_nothing_better_is_reachable() {
+        assert!(!next_forage_mode(false, 0.3, 0.35, 0.4, 0.2), "best barely above here → no travel");
+    }
+
+    // A traveller keeps dashing while a richer patch is reachable and settles the
+    // moment nothing better than underfoot remains — it arrives at the local best.
+    #[test]
+    fn traveller_settles_at_the_local_best() {
+        assert!(next_forage_mode(true, 0.3, 0.8, 0.4, 0.2), "better reachable → keep travelling");
+        assert!(!next_forage_mode(true, 0.5, 0.55, 0.4, 0.2), "nothing better in reach → settle");
+    }
+
+    // The fix for the starvation trap: a traveller on barren, uniformly poor
+    // ground (best == here) settles instead of dashing forever toward forage that
+    // is not there. Grazing is never suppressed, so a settled elk can still feed.
+    #[test]
+    fn traveller_settles_on_barren_flat_ground() {
+        assert!(!next_forage_mode(true, 0.0, 0.0, 0.4, 0.2));
+    }
+
+    // Hysteresis without an absolute band: the same inputs yield opposite modes
+    // depending on the prior mode (leaving needs depletion *and* a better patch;
+    // continuing needs only a better patch). That asymmetry is what commits each
+    // phase for a run instead of flickering tick to tick.
+    #[test]
+    fn mode_is_history_dependent() {
+        let (here, best) = (0.5, 0.85);
+        assert!(!next_forage_mode(false, here, best, 0.4, 0.2), "a grazer on a decent patch stays");
+        assert!(next_forage_mode(true, here, best, 0.4, 0.2), "a traveller with better ahead continues");
+    }
+
+    // The anti-cloud property, pinned. While grazing a patch above leave_frac, a
+    // richness signal that jitters across a midpoint would make a memoryless
+    // cutoff flip nearly every tick — particle-cloud churn. The leave_frac gate
+    // absorbs that jitter: the elk stays grazing, no flicker into travel.
+    #[test]
+    fn no_flicker_while_grazing_a_patch_above_leave_frac() {
+        let signal: Vec<f32> = (0..40)
+            .map(|t| 0.5 + 0.08 * if t % 2 == 0 { 1.0 } else { -1.0 })
+            .collect();
+        let best = 0.6; // a richer patch exists nearby, fixed
+
+        let naive_flips = signal
+            .windows(2)
+            .filter(|w| (w[0] < 0.5) != (w[1] < 0.5))
+            .count();
+
+        let mut traveling = false;
+        let mut flips = 0;
+        for &f in &signal {
+            let next = next_forage_mode(traveling, f, best, 0.4, 0.2);
+            if next != traveling {
+                flips += 1;
+            }
+            traveling = next;
+        }
+
+        assert!(naive_flips > 30, "naive cutoff churns every tick (got {naive_flips})");
+        assert_eq!(flips, 0, "grazer above leave_frac never churns into travel (got {flips})");
     }
 
     // ── forage_gate ───────────────────────────────────────────────────────────

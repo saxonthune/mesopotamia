@@ -31,6 +31,11 @@ pub struct Elk {
     /// Exponentially-weighted moving average of per-tick forage intake. Updated
     /// in `graze`; read by `herd_move` to compute the patch-leaving gate.
     pub intake_rate: f32,
+    /// Foraging mode. `false` = grazing in place; `true` = travelling — a committed
+    /// directed dash to a fresh patch. Flipped by a Schmitt trigger on local patch
+    /// richness (`next_forage_mode`); the hysteresis is what makes the herd roll
+    /// forward as a leapfrogging wave instead of milling like a particle cloud.
+    pub traveling: bool,
 }
 
 /// The decision record written by `herd_move` each tick. Present on every elk;
@@ -48,6 +53,10 @@ pub struct Spawner {
     pub(crate) next_pack: u8,
     /// Total ticks elapsed; drives the growth of the spawn rules.
     pub(crate) elapsed: u32,
+    /// Where the last wave spawned, in grid-cell coords `(col, row)`. The next
+    /// wave random-walks from here so herds trail one another. `None` until the
+    /// first wave seeds it.
+    pub(crate) anchor: Option<Vec2>,
 }
 
 /// A spawned cohort's lifetime record, keyed by its hex `code`. Retained after
@@ -106,6 +115,11 @@ pub struct ElkParams {
     pub migration: f32, // weight of the far-edge fallback pull
     pub quiet: f32,     // migration-residual crossover: natural_strength at half migration weight
     pub cross: f32,     // hunger-scaled weight on the ford-toward-greener-far-bank incentive
+    pub momentum: f32,       // on land: reward for continuing last move's heading, resists backtracking
+    pub momentum_water: f32, // in water: stronger persistence so a crossing elk commits to the far bank
+    pub leave_frac: f32,     // graze→travel: leave a patch once local grass falls below this fraction of capacity
+    pub travel_margin: f32,  // how much richer a reachable patch must be (in capacity-fraction) to be worth travelling to
+    pub travel_focus: f32,   // softmax temperature multiplier while travelling (< 1 ⇒ sharper, more committed)
     pub sep_radius: f32,
     pub coh_radius: f32,
     pub grass_radius: f32,
@@ -140,6 +154,26 @@ pub struct DriveSamples {
     pub per_slot: Vec<DriveSample>,
 }
 
+impl DriveSamples {
+    /// Population-weighted migration ("magnetic pull") share across all herds, in
+    /// [0, 1]: 1 means the herd moves only because the migration hand pushes it, 0
+    /// means it travels entirely on its natural drives. Each slot's share is
+    /// weighted by its headcount; 0 when nothing pulls anywhere. No longer shown in
+    /// the UI (the survival score replaced the pull gauge), but kept and tested as
+    /// the canonical migration-reliance metric for balance analysis.
+    #[allow(dead_code)]
+    pub fn migration_share(&self) -> f32 {
+        let mut migration = 0.0;
+        let mut total = 0.0;
+        for s in &self.per_slot {
+            let w = s.count as f32;
+            migration += s.migration * w;
+            total += (s.sep + s.coh + s.grass + s.social + s.migration) * w;
+        }
+        if total > 1e-6 { migration / total } else { 0.0 }
+    }
+}
+
 /// Per-slot mean drive magnitudes for one tick.
 #[derive(Default, Clone, Copy)]
 pub struct DriveSample {
@@ -168,6 +202,9 @@ impl DriveSample {
 pub struct ProbeSeed(rand::rngs::SmallRng);
 
 impl ProbeSeed {
+    // Constructed only by `sim_harness` (probe runs); the `demo1` binary
+    // re-includes this module without the harness, so its copy sees no caller.
+    #[allow(dead_code)]
     pub fn new(seed: u64) -> Self {
         use rand::SeedableRng;
         Self(rand::rngs::SmallRng::seed_from_u64(seed))
@@ -199,6 +236,26 @@ impl Default for ElkParams {
             migration: 0.7,
             quiet: 2.0,
             cross: 1.0,
+            // Directional persistence. On land a gentle anti-backtrack nudge;
+            // in water a strong commitment so an elk mid-river marches to the
+            // far bank rather than oscillating. momentum_water is set above the
+            // ford step penalty (water_cost · ford_discount = 0.2) so continuing
+            // a started crossing reliably beats reversing out of it.
+            momentum: 0.2,
+            momentum_water: 1.0,
+            // Foraging mode. An elk leaves a patch once its grass is drawn below
+            // 40% of capacity *and* a patch at least 20 capacity-points richer is
+            // within perception; it settles once nothing better is reachable. The
+            // reachable-improvement test (not an absolute target) is what lets the
+            // herd roll forward where richer ground exists yet stay and graze where
+            // it doesn't — so it can never dash off thin terrain and starve.
+            // leave_frac sits above graze_floor (0.3) so an elk leaves a thinning
+            // patch before it bottoms out at the giving-up floor.
+            leave_frac: 0.4,
+            travel_margin: 0.2,
+            // Travelling sharpens the pick to ~0.4× the grazing temperature, so a
+            // dashing elk commits to its best direction instead of jittering.
+            travel_focus: 0.4,
             sep_radius: 3.0,
             coh_radius: 9.0,
             grass_radius: 5.0,
@@ -223,10 +280,48 @@ impl Default for ElkParams {
             ford_discount: 0.1,
             swim_drain: 0.01,
             shrub_bite: 0.34,
-            shrub_energy: 0.05,
+            shrub_energy: 0.015,
             intake_smoothing: 0.05,
             giving_up: 0.6,
             leave_boost: 1.5,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample(migration: f32, natural: f32, count: u32) -> DriveSample {
+        // Spread the natural magnitude across the four natural drives evenly.
+        let each = natural / 4.0;
+        DriveSample { sep: each, coh: each, grass: each, social: each, migration, count }
+    }
+
+    #[test]
+    fn aggregate_share_zero_when_no_herds() {
+        let s = DriveSamples { per_slot: vec![DriveSample::default(); 3] };
+        assert_eq!(s.migration_share(), 0.0);
+    }
+
+    #[test]
+    fn aggregate_share_all_migration_is_one() {
+        let s = DriveSamples { per_slot: vec![sample(1.0, 0.0, 5)] };
+        assert!((s.migration_share() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn aggregate_share_weights_by_headcount() {
+        // Slot A (10 elk) is all natural drive; slot B (1 elk) is all migration.
+        // The big herd dominates, so the global share stays near zero.
+        let s = DriveSamples { per_slot: vec![sample(0.0, 1.0, 10), sample(1.0, 0.0, 1)] };
+        let share = s.migration_share();
+        assert!(share < 0.1, "big natural herd should keep share low, got {share}");
+    }
+
+    #[test]
+    fn aggregate_share_half_and_half() {
+        let s = DriveSamples { per_slot: vec![sample(1.0, 1.0, 4)] };
+        assert!((s.migration_share() - 0.5).abs() < 1e-6);
     }
 }

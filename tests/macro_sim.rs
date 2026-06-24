@@ -1,7 +1,7 @@
 use bevy::prelude::*;
-use mesopotamia::elk::{EDGE_COL, TARGET_POPULATION};
-use mesopotamia::grid::{Grid, GRID_WIDTH};
-use mesopotamia::sim_harness::{elk_count, make_app, max_col_reached};
+use mesopotamia::elk::TARGET_POPULATION;
+use mesopotamia::grid::Grid;
+use mesopotamia::sim_harness::{elk_count, make_app};
 
 /// Build a headless app, step it `ticks` times, and return the final state.
 #[allow(dead_code)]
@@ -96,39 +96,7 @@ fn grass_never_fully_collapses() {
     );
 }
 
-// ── Invariant 3: herds actually cross the map ──
-
-#[test]
-fn herds_reach_the_far_edge() {
-    // The herd migrates +x across the whole width, fording the rivers on the way,
-    // so the time to traverse scales with GRID_WIDTH (and the crossings add slack).
-    // Budget ~24 ticks per column: on the 256-wide world the lead herd first reaches
-    // the far edge around tick 3500, so this leaves comfortable margin above that.
-    const TICKS_PER_COL: u32 = 24;
-    let ticks: u32 = GRID_WIDTH as u32 * TICKS_PER_COL;
-
-    // Allow a small relative slack below EDGE_COL for the stochastic move (herd_move
-    // uses a thread RNG, so arrival jitters run to run).
-    let margin = GRID_WIDTH / 32;
-    let target = EDGE_COL - margin;
-
-    let mut app = make_app();
-    let mut max_col_seen: usize = 0;
-
-    for tick in 0..ticks {
-        app.update();
-        let col = max_col_reached(app.world_mut());
-        if col > max_col_seen {
-            max_col_seen = col;
-        }
-        if tick % 500 == 499 {
-            println!("tick {}: max_col_reached = {col}", tick + 1);
-        }
-    }
-    println!("max_col_seen over {ticks} ticks = {max_col_seen} (EDGE_COL = {EDGE_COL}, target = {target})");
-
-    assert!(
-        max_col_seen >= target,
-        "herds never reached the far edge: max_col_seen = {max_col_seen}, need >= {target}"
-    );
-}
+// Note: the former "herds reach the far edge" invariant was retired. The demo's
+// default is now an intentionally milling herd that does not cross unaided; the
+// live invariant — that good tuning carries the herd far across — lives in
+// `tests/herd_shape.rs::tuned_weights_cross_much_further_than_stock`.

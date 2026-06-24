@@ -13,7 +13,7 @@ mod prox;
 mod raster;
 mod spec;
 
-pub use spec::RiverSpec;
+pub use spec::{random_confluences, RiverSpec};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -38,7 +38,7 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
     let passes = lerp(8.0, 2.0, spec.bendiness).round() as usize;
 
     // One shared cost field for all channels — they belong to the same landscape.
-    let cost = cost_field(grid, &mut rng, passes);
+    let cost = cost_field(grid, &mut rng, passes, spec.warp_amp, spec.warp_passes);
 
     let width = grid.width();
     let height = grid.height();
@@ -110,7 +110,7 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
 
     tag_shallows_as_fords(grid, spec.riffle_ford_threshold);
 
-    prox::compute_water_prox(grid, spec.water_reach);
+    prox::compute_water_prox(grid, spec.water_reach, spec.lake_reach);
 
     (mains, tribs)
 }

@@ -26,6 +26,10 @@ bevy = { version = "0.18.1", default-features = false, features = [
 ] }
 bevy_egui = "0.39.1"
 egui_plot = "0.34"
+# Phosphor icon font for egui — gives us real glyphs (e.g. pause/play) the
+# default font lacks, without resorting to emoji. 0.11 tracks egui 0.33, which
+# is what bevy_egui 0.39 resolves to.
+egui-phosphor = "0.11"
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 

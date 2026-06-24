@@ -13,6 +13,12 @@ use bevy_egui::EguiPlugin;
 mod field;
 #[path = "../grid.rs"]
 mod grid;
+#[path = "../grass_tile.rs"]
+mod grass_tile;
+#[path = "../flower_tile.rs"]
+mod flower_tile;
+#[path = "../shrub_tile.rs"]
+mod shrub_tile;
 // The droppings cycle compiles into this crate but is never constructed here
 // (it's omitted from the plugin tuple below), so the module is dead code.
 #[path = "../droppings.rs"]

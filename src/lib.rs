@@ -1,7 +1,11 @@
 pub mod field;
 pub mod grid;
+pub mod grass_tile;
+pub mod flower_tile;
+pub mod shrub_tile;
 pub mod droppings;
 pub mod elk;
+pub mod diagnostics;
 pub mod events;
 pub mod metrics;
 pub mod render;

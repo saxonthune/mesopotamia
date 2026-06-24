@@ -4,11 +4,13 @@ mod ledger;
 mod spawn;
 mod movement;
 mod metabolism;
+mod score;
 pub mod abundance;
 pub mod ratios;
 
 pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
 pub use ratios::RatioControls;
+pub use score::Score;
 // Used by sim_harness probe infrastructure; not imported by the main binary.
 #[allow(unused_imports)]
 pub use components::ProbeSeed;
@@ -45,6 +47,7 @@ impl Plugin for ElkSimPlugin {
             .init_resource::<HabitatIntake>()
             .init_resource::<abundance::AbundanceParams>()
             .init_resource::<RatioControls>()
+            .init_resource::<Score>()
             .add_systems(Update, (spawn::tally_herds, ratios::apply_ratios))
             .add_systems(OnExit(Sim::Running), spawn::teardown)
             .add_systems(
@@ -56,6 +59,9 @@ impl Plugin for ElkSimPlugin {
                     metabolism::migrate_pressure,
                     spawn::spawn_waves,
                     spawn::cull,
+                    // Order-independent: the monotonic event cursor folds each
+                    // despawn exactly once, at worst a tick after it happens.
+                    score::update_score,
                 ).run_if(in_state(Sim::Running)),
             );
     }

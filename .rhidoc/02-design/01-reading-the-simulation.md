@@ -79,6 +79,20 @@ violated reconciliation is a bug with no "is this intended?" ambiguity:
 These are pure functions of state, so they are pinned as metamorphic assertions in the headless
 harness, the same way balance metrics are (doc05.01, doc04.01, the verification skill).
 
+## Herd-shape metrics — clump, cloud, or wave
+
+A soak run reduced to the right aggregate scalar tells *spatial*-emergent failure apart at a
+glance, where a population or energy graph cannot. For a moving herd the diagnostic trio is
+**radius of gyration** (RMS spread of agents about their centroid), **centroid drift**, and **mode
+occupancy** (the fraction of agents in each behavioral mode). Their joint shape names the outcome:
+gyration collapsing toward zero is a *clump*; bounded gyration with a flat centroid is a *particle
+cloud*; bounded gyration with an advancing centroid is a *rolling wave*. Sampled per tick over a
+headless run — on a controlled dummy map (a uniform plain, a single barrier) that isolates the
+decision model from terrain, or on the real map to catch a regime the dummy cannot — they make a
+whole class of bug self-announcing: a herd starving in place reads instantly as mode pinned to
+"travel", net energy stuck negative, and gyration shrinking, with no need to watch it render. The
+pure shape metrics live in `diagnostics.rs`; the trace runner is `sim_harness::diagnose`.
+
 ## Probe scenarios — the reproducible micro-experiment
 
 The simulation's equivalent of a unit test: a minimal hand-built world that isolates one
@@ -92,7 +106,7 @@ no single-variable view surfaces.
 ## The principle
 
 Instrument every layer between input and outcome, and make each inspectable at the right grain.
-Of the six rungs only the last touches a slider; the rest make existing behavior legible so the
+Of the seven rungs only the last touches a slider; the rest make existing behavior legible so the
 guessing stops. A surprising behavior is first a question for the instruments, not the tuning
 knobs.
 

@@ -28,7 +28,12 @@ impl Default for RatioControls {
         //   intrinsic=0.02, MAX_GRASS=1.0, graze_yield=0.035, energy_drain=0.004 → 0.175
         //   migration=0.7, water_cost=2.0 → 0.35
         Self {
-            bite_ratio: 4.375,
+            // Tightened from 4.375 (which left elk overfed — break-even at 23% of
+            // ticks, so a full herd just coasts and sprints past grass). At 2.5 the
+            // break-even is ~40%: the herd settles mid-fed (energy ~0.55), hungry
+            // enough to keep grazing rather than coast, yet able to sustain itself
+            // when it forages — the stakes that make the tuning puzzle real.
+            bite_ratio: 2.5,
             regrow_ratio: 0.175,
             cross_ratio: 0.35,
         }
@@ -77,17 +82,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_reproduce_magnitudes() {
+    fn defaults_derive_expected_magnitudes() {
         let rc = RatioControls::default();
         let bite = 0.5_f32;
         let energy_drain = 0.004_f32;
         let water_cost = 2.0_f32;
 
+        // bite_ratio 2.5, bite 0.5, drain 0.004 → 2.5*0.004/0.5 = 0.02.
         let graze_yield = graze_yield_from(rc.bite_ratio, bite, energy_drain);
-        assert!((graze_yield - 0.035).abs() < 1e-6, "graze_yield {graze_yield}");
+        assert!((graze_yield - 0.02).abs() < 1e-6, "graze_yield {graze_yield}");
 
+        // regrow_ratio 0.175 holds regrowth at 0.175× drain regardless of yield:
+        // 0.175*0.004/(1.0*0.02) = 0.035.
         let intrinsic = intrinsic_from(rc.regrow_ratio, energy_drain, graze_yield, MAX_GRASS);
-        assert!((intrinsic - 0.02).abs() < 1e-6, "intrinsic {intrinsic}");
+        assert!((intrinsic - 0.035).abs() < 1e-6, "intrinsic {intrinsic}");
 
         let migration = migration_from(rc.cross_ratio, water_cost);
         assert!((migration - 0.7).abs() < 1e-6, "migration {migration}");

@@ -1,6 +1,6 @@
 //! Lakes as a real algorithm, in two passes: a few BIG lakes pooled at the
-//! interior peaks of the open spaces the rivers leave (cells with the highest
-//! distance-to-water), then a couple of MINOR lakes scattered anywhere and
+//! interior peaks of the open spaces the rivers leave (cells farthest from any
+//! border — a river OR the grid edge), then a couple of MINOR lakes scattered and
 //! repelled by the big ones. Both passes seat blue-noise positions via Mitchell's
 //! best-candidate so lakes spread rather than clump, and stamp metaball footprints
 //! (summed radial kernels cut at an iso-level) so each basin is filled-in but
@@ -74,6 +74,14 @@ fn dist_to_water(grid: &Grid) -> Vec<u32> {
         }
     }
     dist
+}
+
+/// Cells from `(col, row)` to the nearest grid edge — the min of the four edge
+/// gaps. The grid boundary treated as a shore: lakes are spaced from it just as
+/// they are from rivers, so a basin never seats close enough to be clipped into a
+/// swept half-shape.
+fn edge_dist(col: usize, row: usize, width: usize, height: usize) -> u32 {
+    (col.min(row).min(width - 1 - col).min(height - 1 - row)) as u32
 }
 
 /// Mitchell's best-candidate: pick `count` cells from `candidates` so they spread
@@ -239,6 +247,9 @@ fn stamp_lakes(
                     if depth > 0.0 {
                         let existing = grid.water(cell);
                         grid.set_water(cell, existing.max(depth));
+                        // Tag the cell as lake water so the proximity field gives it
+                        // a tighter bank than a river channel.
+                        grid.set_lake(cell, true);
                     }
                 }
             }
@@ -260,26 +271,41 @@ pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
         return;
     }
     let width = grid.width();
+    let height = grid.height();
+    let len = grid.len();
     let mut rng = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT);
 
-    let sites: Vec<usize> = (0..grid.len()).filter(|&i| is_lake_site(grid, i)).collect();
+    let sites: Vec<usize> = (0..len).filter(|&i| is_lake_site(grid, i)).collect();
 
-    // Distance-to-water: high = deep in the open space the rivers leave.
+    // Distance to the nearest border, materialized so the filters below carry no
+    // borrow of the grid (`stamp_lakes` needs it mutably). `border[i]` is the min
+    // of distance-to-river and distance-to-grid-edge: the grid boundary is treated
+    // as just another shore, so big lakes pool in genuinely enclosed pockets rather
+    // than in the corners (far from rivers but on the edge, where the basin clips
+    // into the swept half-shape). `edges[i]` is kept separately to enforce a hard
+    // edge clearance per pass so no footprint is ever cut by the bounds.
     let dist = dist_to_water(grid);
-    // Max over reachable sites (ignore u32::MAX islands with no water at all).
-    let max_dist = sites
-        .iter()
-        .map(|&i| dist[i])
-        .filter(|&d| d != u32::MAX)
-        .max()
-        .unwrap_or(0);
+    let edges: Vec<u32> = (0..len)
+        .map(|i| {
+            let (col, row) = grid.col_row(i);
+            edge_dist(col, row, width, height)
+        })
+        .collect();
+    let border: Vec<u32> = (0..len).map(|i| dist[i].min(edges[i])).collect();
+
+    let max_dist = sites.iter().map(|&i| border[i]).max().unwrap_or(0);
     let threshold = (spec.big_lake_dist_frac * max_dist as f32).ceil() as u32;
 
-    // Pass 1 — big lakes at the interior peaks.
+    // Basin reach per pass: a center must clear the grid edge by at least this many
+    // cells so its metaball footprint fits whole, never clipped into a swept shape.
+    let big_reach = (spec.lake_offset + spec.big_lake_radius as f32 * 1.2).ceil() as u32;
+    let minor_reach = (spec.lake_offset + spec.minor_lake_radius as f32 * 1.2).ceil() as u32;
+
+    // Pass 1 — big lakes at the interior peaks, clear of both rivers and the edge.
     let interior: Vec<usize> = sites
         .iter()
         .copied()
-        .filter(|&i| dist[i] != u32::MAX && dist[i] >= threshold)
+        .filter(|&i| border[i] >= threshold && edges[i] >= big_reach)
         .collect();
     let big_centers = lake_positions(
         &interior,
@@ -298,9 +324,11 @@ pub(super) fn generate_lakes(grid: &mut Grid, _cost: &[u32], spec: &RiverSpec) {
         BIG_SALT,
     );
 
-    // Pass 2 — minor scattered lakes, repelled by the big lakes and each other.
+    // Pass 2 — minor scattered lakes, also held off the grid edge, repelled by bigs.
+    let minor_sites: Vec<usize> =
+        sites.iter().copied().filter(|&i| edges[i] >= minor_reach).collect();
     let minor_centers = lake_positions(
-        &sites,
+        &minor_sites,
         spec.minor_lake_count,
         spec.lake_samples,
         width,
@@ -423,53 +451,61 @@ mod tests {
     }
 
     #[test]
-    fn big_lakes_are_interior() {
-        // Derive the two-pass placement on a real pre-lake water field (lakes
+    fn edge_dist_measures_nearest_grid_edge() {
+        // 10×8 grid: corners are 0, one cell in is 1, an interior cell is the min
+        // of its four edge gaps.
+        assert_eq!(edge_dist(0, 0, 10, 8), 0);
+        assert_eq!(edge_dist(1, 1, 10, 8), 1);
+        assert_eq!(edge_dist(9, 7, 10, 8), 0, "the far corner is also on the edge");
+        assert_eq!(edge_dist(5, 4, 10, 8), 3, "min(5, 4, 4, 3) = 3");
+    }
+
+    #[test]
+    fn big_lakes_are_interior_and_clear_of_borders() {
+        // Derive the pass-1 placement on a real pre-lake water field (lakes
         // disabled), exactly as `generate_lakes` does, then assert the big lakes
-        // clear the interior threshold and sit deeper than the minors.
+        // clear the border (river-or-edge) threshold AND keep their basin reach off
+        // the grid edge so nothing is clipped into a swept shape.
         use crate::river::{generate_water, RiverSpec};
         let spec = RiverSpec::default();
         let no_lake = RiverSpec { big_lake_count: 0, minor_lake_count: 0, ..RiverSpec::default() };
         let mut g0 = Grid::new(128, 96);
         generate_water(&mut g0, &no_lake);
 
-        let width = g0.width();
-        let sites0: Vec<usize> = (0..g0.len()).filter(|&i| is_lake_site(&g0, i)).collect();
+        let (width, height) = (g0.width(), g0.height());
+        let len = g0.len();
+        let sites0: Vec<usize> = (0..len).filter(|&i| is_lake_site(&g0, i)).collect();
         let dist = dist_to_water(&g0);
-        let max_dist = sites0
-            .iter()
-            .map(|&i| dist[i])
-            .filter(|&d| d != u32::MAX)
-            .max()
-            .unwrap_or(0);
+        let edges: Vec<u32> = (0..len)
+            .map(|i| {
+                let (c, r) = g0.col_row(i);
+                edge_dist(c, r, width, height)
+            })
+            .collect();
+        let border: Vec<u32> = (0..len).map(|i| dist[i].min(edges[i])).collect();
+        let max_dist = sites0.iter().map(|&i| border[i]).max().unwrap_or(0);
         let threshold = (spec.big_lake_dist_frac * max_dist as f32).ceil() as u32;
+        let big_reach = (spec.lake_offset + spec.big_lake_radius as f32 * 1.2).ceil() as u32;
 
         let mut rng = StdRng::seed_from_u64(spec.seed ^ LAKE_SALT);
         let interior: Vec<usize> = sites0
             .iter()
             .copied()
-            .filter(|&i| dist[i] != u32::MAX && dist[i] >= threshold)
+            .filter(|&i| border[i] >= threshold && edges[i] >= big_reach)
             .collect();
         let big = lake_positions(&interior, spec.big_lake_count, spec.lake_samples, width, &[], &mut rng);
-        let minor = lake_positions(&sites0, spec.minor_lake_count, spec.lake_samples, width, &big, &mut rng);
 
         assert!(!big.is_empty(), "expected big-lake centers");
-        // Every big-lake center clears the interior threshold.
         for &c in &big {
             assert!(
-                dist[c] >= threshold,
-                "big lake at {c} (d={}) below interior threshold {threshold}",
-                dist[c]
+                border[c] >= threshold,
+                "big lake at {c} (border={}) below interior threshold {threshold}",
+                border[c]
             );
-        }
-        // Bigs sit deeper than the minors' mean distance-to-water.
-        if !minor.is_empty() {
-            let big_mean: f32 = big.iter().map(|&c| dist[c] as f32).sum::<f32>() / big.len() as f32;
-            let minor_mean: f32 =
-                minor.iter().map(|&c| dist[c] as f32).sum::<f32>() / minor.len() as f32;
             assert!(
-                big_mean > minor_mean,
-                "big lakes ({big_mean}) should sit deeper than minors ({minor_mean})"
+                edges[c] >= big_reach,
+                "big lake at {c} (edge={}) too close to the grid border (need {big_reach})",
+                edges[c]
             );
         }
     }

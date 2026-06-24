@@ -15,3 +15,4 @@ Read a milestone doc to know what "done" looks like for that slice. The mileston
 
 - **doc03.01 Grazers** — grass grows and elk graze on a 2D grid; the first working ECS loop.
 - **doc03.02 Hotspot** — a rendered ocean-and-sky scene where islands build up over a volcanic hot spot and melt away as they drift off it, their vegetation jumping to the next island; the first continuous-space rendering slice.
+- **doc03.03 Driftscape** — a suite of terminal screensavers, each a drift field past a viewport; the first renders multicolored planets passing a spaceship window. The sim's flow-past-a-frame motion staged as truecolor terminal art.

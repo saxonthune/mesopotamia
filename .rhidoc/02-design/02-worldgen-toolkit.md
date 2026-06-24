@@ -26,11 +26,20 @@ Status is a present fact about the code, not a plan: **`[in use]`** means the pi
 The operators that cut the unity into nested regions.
 
 - **A\* / Dijkstra over a cost field** `[in use]` — carves the river as a least-action geodesic; the
-  anchor cut (doc03.01.06). Reads: the cost field.
+  anchor cut (doc03.01.06). Runs 8-connected with diagonal steps weighted by √2, so the path follows
+  a warped valley at its true angle instead of quantizing into axis-aligned staircases. Reads: the
+  cost field.
 - **Anisotropic / directional cost metric** `[in use]` — biases the geodesic downstream while noise
   pulls meanders. Reads: heading and the cost field.
-- **Space-colonization algorithm** `[in kit]` — grows dendritic branching (deltas, tributaries,
-  veins) toward scattered attractors. Reads: the trunk already carved and the attractor set.
+- **Space-colonization algorithm** `[in use]` (shrub raster) / `[in kit]` (river-scale) — grows curved
+  dendritic networks (deltas, tributaries, veins, shrub vines) by scattering open-space attractors and
+  stepping each growth node toward the average pull of the attractors nearest it, consuming each
+  attractor as a node reaches it. The meander is emergent: eating the near attractors swings the
+  remaining pull, so branches curve on their own. Open venation (one nearest node per attractor) reads
+  as branches; closed venation (an attractor feeds several nodes, dies only when surrounded) reads as
+  looped leaf veins. The shrub-tile raster realizes a tile-local variant of this growth (the
+  open-space branch growth operator under Derive); river deltas and tributaries remain in the kit.
+  Reads: the seed nodes already placed and the attractor set.
 - **Recursive subdivision (BSP / k-d) and Voronoi/Delaunay** `[in kit]` — partition space into named
   regions; the natural way to turn the voids the rivers leave into addressable centers.
 
@@ -41,7 +50,7 @@ machinery the method calls for (doc01.04).
 
 - **Poisson-disk sampling (blue noise)** `[in kit]` — even-but-irregular point sets with a minimum
   spacing. Reads: the points already placed.
-- **Mitchell's best-candidate** `[in kit]` — cheap blue noise where each pick is the candidate
+- **Mitchell's best-candidate** `[in use]` — cheap blue noise where each pick is the candidate
   farthest from existing features; blue-noise *and* current-state-aware in one operator, the closest
   fit to the void-aware placement the method describes. Reads: the features already placed.
 - **Lloyd relaxation (centroidal Voronoi)** `[in kit]` — relaxes a clumped point set toward even
@@ -55,8 +64,11 @@ independent noise; always derived.
 
 - **Value / Perlin / Simplex noise, fBm** `[in use]` — the texture source feeding the cost field and
   capacity fields. Reads: a seed.
-- **Domain warping** `[in kit]` — warps noise coordinates by other noise so flat blobs read as
-  foliated, flow-like geology; high yield for low cost. Reads: the base field.
+- **Domain warping** `[in use]` — warps noise coordinates by other noise so flat blobs read as
+  foliated, flow-like geology; high yield for low cost. The river cost field is warped by two
+  broad-wavelength displacement fields before the carve, so the straight least-cost valleys bend
+  into sinuous ones and the meander emerges from the field rather than from per-step jitter. Reads:
+  the base field.
 - **Distance transform / multi-source BFS** `[in use]` — turns distance-to-water into the proximity
   field that soil and vegetation key off (doc03.01.06). **Jump-flooding (JFA)** `[in kit]` is the
   fast variant. Reads: all standing water.
@@ -65,12 +77,33 @@ independent noise; always derived.
   control for emergence. Reads: an elevation field.
 - **Reaction-diffusion (Turing patterns)** `[in kit]` — organic blotch and patch textures; a flora
   patchiness source if vegetation clumping needs to read more biological. Reads: an initial field.
-- **Metaballs (summed radial kernels, thresholded)** `[in kit]` — paints an organic filled footprint
+- **Metaballs (summed radial kernels, thresholded)** `[in use]` — paints an organic filled footprint
   at a placed center: one to three smooth falloff kernels summed into a field and cut at an iso-level.
   One kernel reads round; two offset kernels read as a peanut or an oblong bulge; the same summed
   field doubles as basin depth, deepest at the kernels and shallow at the rim. The shape operator
   paired with best-candidate's positions to give lakes spaced placement and varied, non-circular
   basins. Reads: a placed center and its child seed.
+- **Stroke / glyph stamp (parametric curve rasterized)** `[in use]` — paints a discrete curved mark
+  at a placed center by walking a parametric curve and stamping a thickness around each sample: a
+  sine segment whose half-period reads as a crescent and full period as a tilde, oriented roughly
+  horizontal with per-mark jitter on length, amplitude, and angle. The discrete-feature shape
+  operator for rough terrain — units placed and spaced (best-candidate) rather than a threshold over
+  noise, which only yields patches. Reads: a placed center and its seed.
+- **Open-space branch growth (space colonization + distance-transform void fill)** `[in use]` — grows
+  a curvy, space-filling vine network at a placed center, the shrub-tile raster. A rough trunk is laid
+  corner-to-corner: a spline through jittered, alternating-side waypoints (midpoint-displacement
+  roughness, at least two extrema so it bends both ways). Branches are grown, not subdivided — the
+  trunk's signed curvature is read, one branch is forced at the strongest bend of each turn-sign so
+  both sides always get one, and each branch probes a fan of launch directions and commits to the one
+  with the most open space ahead, keeping the parent's momentum and then rounding toward the room (so a
+  branch loops backward when that fills its share of the space better). Children branch off children
+  for a bounded number of generations. A void-fill pass then closes the gaps the growth left: a
+  multi-source BFS distance transform off all the ink finds the emptiest interior pocket and routes a
+  curve from the nearest existing curve toward it, repeating until no pocket exceeds a threshold. Every
+  stroke is truncated against an occupancy mask, so curves never cross (raster-level constraint
+  gating). The bottom-up, space-driven counterpart to top-down subdivision; composes the
+  space-colonization, distance-transform, and rejection-gating operators. Reads: a placed center, its
+  seed, the parent curve, and the running occupancy and distance state.
 
 ## Orient — vector fields
 

@@ -56,31 +56,24 @@ pub fn smooth(field: &[f32], width: usize, height: usize, passes: usize) -> Vec<
     cur
 }
 
-/// Direction-weighted box-blur: like [`smooth`], but each neighbour is averaged
-/// in with a weight set by its axis, so the field can spread further along one
-/// axis than the other. `wx`/`wy` are the horizontal/vertical neighbour weights
-/// (the centre cell always carries weight 1). With `wx > wy` the correlation
-/// length grows longer horizontally than vertically, stretching round blobs into
-/// roughly horizontal strands. `wx == wy == 1` reproduces [`smooth`].
-pub fn smooth_anisotropic(
-    field: &[f32],
-    width: usize,
-    height: usize,
-    passes: usize,
-    wx: f32,
-    wy: f32,
-) -> Vec<f32> {
+/// Single-axis box-blur: like `smooth`, but averages each cell only with its two
+/// neighbours along one axis — horizontal when `horizontal`, else vertical.
+/// Applied after isotropic smoothing, a few horizontal passes stretch round noise
+/// blobs east-west into a lateral grain *without changing the value distribution's
+/// quantiles* — so a downstream quantile cut (e.g. shrub coverage) keeps the same
+/// fraction of cells; only the features' shape elongates. `passes == 0` is identity.
+pub fn smooth_axis(field: &[f32], width: usize, height: usize, passes: usize, horizontal: bool) -> Vec<f32> {
+    let (dx, dy) = if horizontal { (1isize, 0isize) } else { (0, 1) };
     let mut cur = field.to_vec();
     for _ in 0..passes {
         let mut next = cur.clone();
         for i in 0..cur.len() {
             let mut sum = cur[i];
             let mut count = 1.0;
-            for (dx, dy) in NEIGHBORS {
-                if let Some(n) = step(i, dx, dy, width, height) {
-                    let w = if dx != 0 { wx } else { wy };
-                    sum += w * cur[n];
-                    count += w;
+            for s in [-1isize, 1] {
+                if let Some(n) = step(i, dx * s, dy * s, width, height) {
+                    sum += cur[n];
+                    count += 1.0;
                 }
             }
             next[i] = sum / count;
@@ -95,6 +88,47 @@ pub fn smooth_anisotropic(
 pub fn value_noise(width: usize, height: usize, passes: usize, rng: &mut impl Rng) -> Vec<f32> {
     let white: Vec<f32> = (0..width * height).map(|_| rng.random::<f32>()).collect();
     smooth(&white, width, height, passes)
+}
+
+/// Sample `field` at fractional coordinates `(x, y)` by bilinear interpolation,
+/// clamping to the lattice edges so out-of-range reads pin to the border cell.
+fn bilinear(field: &[f32], width: usize, height: usize, x: f32, y: f32) -> f32 {
+    let x = x.clamp(0.0, (width - 1) as f32);
+    let y = y.clamp(0.0, (height - 1) as f32);
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+    let fx = x - x0 as f32;
+    let fy = y - y0 as f32;
+    let top = field[y0 * width + x0] * (1.0 - fx) + field[y0 * width + x1] * fx;
+    let bot = field[y1 * width + x0] * (1.0 - fx) + field[y1 * width + x1] * fx;
+    top * (1.0 - fy) + bot * fy
+}
+
+/// Domain-warp a field: resample `field` at each cell's coordinates displaced by
+/// the two warp fields `wx`/`wy` (each expected in roughly [-1, 1]) scaled by
+/// `amp` cells, bilinearly. A straight feature in the source bends into a sinuous
+/// one whose wavelength is the warp fields' wavelength — the "flow-like geology"
+/// transform (doc02.02, Derive). `amp <= 0` returns the field unchanged.
+pub fn domain_warp(
+    field: &[f32],
+    width: usize,
+    height: usize,
+    wx: &[f32],
+    wy: &[f32],
+    amp: f32,
+) -> Vec<f32> {
+    if amp <= 0.0 {
+        return field.to_vec();
+    }
+    (0..field.len())
+        .map(|i| {
+            let col = (i % width) as f32 + amp * wx[i];
+            let row = (i / width) as f32 + amp * wy[i];
+            bilinear(field, width, height, col, row)
+        })
+        .collect()
 }
 
 /// Rescale so the field's min→0 and max→1. A flat field maps to all-zeros.
@@ -148,6 +182,66 @@ mod tests {
         assert!(out.iter().all(|v| (v - 0.5).abs() < 1e-6));
     }
 
+    // Horizontal smoothing spreads a value along its row but never across rows —
+    // this is what elongates clumps east-west while leaving north-south alone.
+    #[test]
+    fn smooth_axis_horizontal_spreads_only_along_the_row() {
+        // 3x3, a single spike at the centre. One horizontal pass bleeds it left and
+        // right; the cells directly above and below stay untouched.
+        let mut f = vec![0.0; 9];
+        f[4] = 1.0; // centre (col 1, row 1)
+        let out = smooth_axis(&f, 3, 3, 1, true);
+        assert!(out[3] > 0.0 && out[5] > 0.0, "row neighbours pick up the spike");
+        assert_eq!(out[1], 0.0, "the cell above is unchanged by a horizontal pass");
+        assert_eq!(out[7], 0.0, "the cell below is unchanged by a horizontal pass");
+    }
+
+    // The coverage-preserving guarantee the shrub layer relies on: smoothing
+    // averages, so it can't change how many cells sit above the median — a
+    // 50%-quantile cut keeps the same count whether or not the field is stretched.
+    #[test]
+    fn smooth_axis_preserves_the_median_split() {
+        // A vertical step: left half 0, right half 1 on an 8x4 grid → exactly half
+        // the cells are >= 0.5. Horizontal smoothing blurs the seam but, by symmetry,
+        // the same number of cells stay on each side of 0.5.
+        let (w, h) = (8usize, 4usize);
+        let f: Vec<f32> = (0..w * h).map(|i| if i % w < w / 2 { 0.0 } else { 1.0 }).collect();
+        let before = f.iter().filter(|&&v| v >= 0.5).count();
+        let out = smooth_axis(&f, w, h, 3, true);
+        let after = out.iter().filter(|&&v| v >= 0.5).count();
+        assert_eq!(before, after, "the median split is preserved, so coverage holds");
+    }
+
+    // Zero amplitude is a no-op — the warp leaves every cell where it was.
+    #[test]
+    fn domain_warp_zero_amp_is_identity() {
+        let src = vec![0.1, 0.2, 0.3, 0.4];
+        let z = vec![0.0; 4];
+        assert_eq!(domain_warp(&src, 2, 2, &z, &z, 0.0), src);
+    }
+
+    // A constant +1-column displacement shifts a horizontal gradient left by one
+    // cell (each cell samples its right neighbour); the right edge clamps.
+    #[test]
+    fn domain_warp_shifts_by_displacement() {
+        // 3x1 gradient: [0, 1, 2]. wx = +1 everywhere, amp = 1 → sample x+1.
+        let src = vec![0.0, 1.0, 2.0];
+        let wx = vec![1.0, 1.0, 1.0];
+        let wy = vec![0.0, 0.0, 0.0];
+        let out = domain_warp(&src, 3, 1, &wx, &wy, 1.0);
+        assert_eq!(out, vec![1.0, 2.0, 2.0]); // last clamps to the edge cell
+    }
+
+    // Bilinear sampling at exact integer coordinates returns the cell verbatim.
+    #[test]
+    fn bilinear_hits_grid_cells_exactly() {
+        let f = vec![0.0, 1.0, 2.0, 3.0];
+        assert_eq!(bilinear(&f, 2, 2, 1.0, 1.0), 3.0);
+        assert_eq!(bilinear(&f, 2, 2, 0.0, 1.0), 2.0);
+        // Midpoint between all four averages them.
+        assert_eq!(bilinear(&f, 2, 2, 0.5, 0.5), 1.5);
+    }
+
     #[test]
     fn normalize_stretches_to_unit_range() {
         assert_eq!(normalize(&[2.0, 3.0, 4.0]), vec![0.0, 0.5, 1.0]);
@@ -178,34 +272,5 @@ mod tests {
     fn bare_field_with_no_floor_stays_bare() {
         let next = spread_grow(&[0.0; 4], &[1.0; 4], 2, 2, 0.0, 0.9);
         assert!(next.iter().all(|&v| v == 0.0));
-    }
-
-    // Equal weights collapse the anisotropic blur back onto the isotropic one.
-    #[test]
-    fn anisotropic_with_equal_weights_matches_smooth() {
-        let white: Vec<f32> = (0..36).map(|i| (i % 5) as f32 * 0.2).collect();
-        let iso = smooth(&white, 6, 6, 3);
-        let aniso = smooth_anisotropic(&white, 6, 6, 3, 1.0, 1.0);
-        assert!(iso.iter().zip(&aniso).all(|(a, b)| (a - b).abs() < 1e-6));
-    }
-
-    // Horizontal-leaning weights spread a point source further along x than y:
-    // after blurring a single spike, the horizontal neighbour carries more than
-    // the vertical one. This is the longer-horizontal-correlation the rough wisps
-    // need, asserted structurally on a known source.
-    #[test]
-    fn anisotropic_spreads_further_horizontally() {
-        const W: usize = 7;
-        const H: usize = 7;
-        let mut spike = vec![0.0; W * H];
-        let centre = (H / 2) * W + (W / 2);
-        spike[centre] = 1.0;
-        let out = smooth_anisotropic(&spike, W, H, 2, 4.0, 1.0);
-        let right = out[centre + 1];
-        let down = out[centre + W];
-        assert!(
-            right > down,
-            "horizontal neighbour ({right}) should carry more than vertical ({down})"
-        );
     }
 }

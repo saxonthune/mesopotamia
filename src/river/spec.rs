@@ -2,6 +2,8 @@
 //! A `RiverSpec` (its `seed` field included) fully determines the water field;
 //! same spec → same world.
 
+use rand::Rng;
+
 /// Default watershed seed used by `RiverSpec::default()`. The full water field is
 /// a pure function of the spec, so overriding `RiverSpec::seed` yields a fresh
 /// river network from the same knobs.
@@ -39,14 +41,28 @@ pub struct RiverSpec {
     /// Drives both the smoothing-pass count (wavelength) and the directional-
     /// penalty weight — one intuitive control instead of two separate dials.
     pub bendiness: f32,
+    /// Domain-warp displacement for the cost field, in cells. Bends the otherwise
+    /// straight cost valleys into sinuous ones, so meanders emerge from the field
+    /// rather than from per-step jitter. 0 disables warping. Larger = wider swings.
+    pub warp_amp: f32,
+    /// Smoothing passes for the two domain-warp displacement fields — their
+    /// wavelength. More passes give broader, lower-frequency meanders; fewer give
+    /// tighter wiggle. Kept above `bendiness`'s base passes so the warp swings the
+    /// valley coherently over a long span instead of adding high-frequency noise.
+    pub warp_passes: usize,
     /// Cells between successive feeders along a main centerline.
     pub trib_spacing: usize,
     /// Lateral source offset / nominal feeder length in cells.
     pub trib_length: isize,
     /// Full-depth core radius (cells within the centerline that get max water).
     pub core: isize,
-    /// BFS reach for the water-proximity carrying-capacity field.
+    /// BFS reach for the water-proximity carrying-capacity field around river and
+    /// tributary channels — the number of cells the grass bank fades over.
     pub water_reach: u32,
+    /// BFS reach for the bank around lake cells, kept shorter than `water_reach` so
+    /// lakes carry shallower banks — fewer rings of grass than a river of the same
+    /// depth.
+    pub lake_reach: u32,
     pub trib_radius: isize,
     pub trib_depth: f32,
     pub oxbow_count: usize,
@@ -103,6 +119,21 @@ pub struct RiverSpec {
     pub confluence_pairs: Vec<(usize, usize)>,
 }
 
+/// Build a random confluence set for `count` mains: one randomly chosen child
+/// (index ≥ 1) merges into a randomly chosen earlier main, so *which* two rivers
+/// collide varies per world instead of always being mains 0 and 1. The
+/// `parent < child` invariant holds by construction (parent is drawn from
+/// `0..child`), so the parent is already carved when the child seeks it. Returns
+/// empty for `count < 2` — nothing to merge into.
+pub fn random_confluences(count: usize, rng: &mut impl Rng) -> Vec<(usize, usize)> {
+    if count < 2 {
+        return Vec::new();
+    }
+    let child = rng.random_range(1..count);
+    let parent = rng.random_range(0..child);
+    vec![(child, parent)]
+}
+
 impl Default for RiverSpec {
     fn default() -> Self {
         Self {
@@ -111,10 +142,13 @@ impl Default for RiverSpec {
             heading: Heading::Down,
             drift: 0.25,
             bendiness: 0.5,
+            warp_amp: 6.0,
+            warp_passes: 12,
             trib_spacing: 24,
             trib_length: 12,
             core: 1,
-            water_reach: 8,
+            water_reach: 3,
+            lake_reach: 2,
             trib_radius: 1,
             trib_depth: 0.35,
             oxbow_count: 2,

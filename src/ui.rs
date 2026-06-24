@@ -5,7 +5,7 @@ use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
-use crate::elk::{Act, Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls};
+use crate::elk::{Act, Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
 use crate::grid::{Grid, GrowthRate};
@@ -19,7 +19,10 @@ impl Plugin for UiPlugin {
         app.init_resource::<UiState>()
             .init_resource::<History>()
             // pick_herd (world click → select) runs before the panel draws it.
-            .add_systems(Update, (pick_herd, crate::history::sample_history))
+            .add_systems(Update, (pick_herd, keyboard_speed, crate::history::sample_history))
+            // Install the Phosphor icon font once the egui context exists, so the
+            // pause/play glyphs render instead of tofu boxes.
+            .add_systems(EguiPrimaryContextPass, install_icon_font)
             .add_systems(
                 EguiPrimaryContextPass,
                 // graphs_bar (top) and control_panel (bottom) both claim screen
@@ -52,7 +55,7 @@ impl Overlay {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct UiState {
     tab: Tab,
     selected: Option<u32>, // hex code of the herd shown in the details pane;
@@ -61,6 +64,21 @@ pub struct UiState {
     visible: std::collections::HashSet<Graph>, // overview graphs toggled on in the top bar
     pub overlays: std::collections::HashSet<Overlay>, // field overlays active in the world view
     histogram_metric: usize, // index into ELK_METRICS for the distribution histogram
+}
+
+impl Default for UiState {
+    fn default() -> Self {
+        Self {
+            tab: Tab::default(),
+            selected: None,
+            selected_elk: None,
+            // The survival score is the demo's headline metric, so it opens on its
+            // own; every other graph starts hidden behind its toggle.
+            visible: std::collections::HashSet::from([Graph::SurvivalScore]),
+            overlays: std::collections::HashSet::new(),
+            histogram_metric: 0,
+        }
+    }
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
@@ -76,17 +94,19 @@ enum Tab {
 /// always records, regardless of what's shown.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Graph {
+    SurvivalScore,
     Biomass,
     Histogram,
     Abundance,
 }
 
 impl Graph {
-    const ALL: [Graph; 3] = [Graph::Biomass, Graph::Histogram, Graph::Abundance];
+    const ALL: [Graph; 4] = [Graph::SurvivalScore, Graph::Biomass, Graph::Histogram, Graph::Abundance];
 
     /// The toggle-button label.
     fn label(self) -> &'static str {
         match self {
+            Graph::SurvivalScore => "survival score",
             Graph::Biomass => "biomass",
             Graph::Histogram => "histogram",
             Graph::Abundance => "abundance",
@@ -171,6 +191,90 @@ fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
                 plot_ui.line(Line::new(name, points));
             }
         });
+}
+
+/// Current score at which the gauge's number burns full green — a visual ceiling
+/// for the colour ramp, not a cap on the score itself.
+const SCORE_BRIGHT: f32 = 120.0;
+
+/// The survival-score gauge: the live `current` rating big and bold (brighter
+/// green the higher it runs), the session `high` beside it, and a difficulty bar —
+/// the gate that scales every point. A high score takes both: crank difficulty
+/// (a scarcer world) *and* bring the herd far across before it dies.
+fn render_score_gauge(ui: &mut egui::Ui, score: &Score) {
+    use egui::{Color32, RichText};
+
+    let lit = (score.current / SCORE_BRIGHT).clamp(0.0, 1.0);
+    let number_color = Color32::from_rgb(
+        (120.0 - 60.0 * lit) as u8,
+        (120.0 + 110.0 * lit) as u8,
+        90,
+    );
+    ui.horizontal(|ui| {
+        ui.label(
+            RichText::new(format!("{:.0}", score.current.max(0.0)))
+                .color(number_color)
+                .size(34.0)
+                .strong(),
+        );
+        ui.vertical(|ui| {
+            ui.label(RichText::new("survival score").size(12.0).weak());
+            ui.label(RichText::new(format!("high  {:.0}", score.high)).size(15.0));
+        });
+    });
+
+    ui.separator();
+    render_difficulty(ui, score.difficulty);
+}
+
+/// Colour for a difficulty level: green when low, orange in the middle, red when
+/// high — the harder you make the world, the hotter the readout.
+fn difficulty_color(difficulty: f32) -> egui::Color32 {
+    if difficulty < 0.34 {
+        egui::Color32::from_rgb(70, 180, 90)
+    } else if difficulty < 0.67 {
+        egui::Color32::from_rgb(230, 150, 40)
+    } else {
+        egui::Color32::from_rgb(210, 65, 65)
+    }
+}
+
+/// The difficulty section: a mobile-signal-bars icon (more bars = harder, coloured
+/// green→orange→red), a big percentage, and a label. Difficulty gates the score —
+/// it scales every point — so it gets its own prominent readout.
+fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
+    use egui::{Color32, RichText};
+    const BARS: i32 = 5;
+
+    let frac = difficulty.clamp(0.0, 1.0);
+    let color = difficulty_color(frac);
+    let filled = (frac * BARS as f32).round() as i32;
+
+    ui.label(RichText::new("DIFFICULTY").size(13.0).weak());
+    ui.horizontal(|ui| {
+        // Signal-bars icon: ascending heights, filled bars take the level colour.
+        let (resp, painter) = ui.allocate_painter(egui::vec2(58.0, 34.0), egui::Sense::hover());
+        let r = resp.rect;
+        let slot = r.width() / BARS as f32;
+        let bw = slot * 0.62;
+        for i in 0..BARS {
+            let h = r.height() * (0.32 + 0.68 * i as f32 / (BARS - 1) as f32);
+            let x = r.left() + i as f32 * slot;
+            let bar = egui::Rect::from_min_max(
+                egui::pos2(x, r.bottom() - h),
+                egui::pos2(x + bw, r.bottom()),
+            );
+            let c = if i < filled { color } else { Color32::from_gray(60) };
+            painter.rect_filled(bar, 1.0, c);
+        }
+        resp.on_hover_text(
+            "Difficulty — how scarce you've made the world (the regrowth slider). It scales \
+             every point scored, so an easy world barely moves the score. Crank it up, then \
+             keep the herd alive and pushing east, to drive your high score into the hundreds.",
+        );
+        ui.add_space(8.0);
+        ui.label(RichText::new(format!("{:.0}%", frac * 100.0)).size(30.0).strong().color(color));
+    });
 }
 
 fn render_pie(ui: &mut egui::Ui, slices: &[(&str, &str, f32, egui::Color32)]) {
@@ -264,6 +368,7 @@ fn graphs_bar(
     history: Res<History>,
     elk: Query<&Elk>,
     event_log: Res<EventLog>,
+    score: Res<crate::elk::Score>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
@@ -286,6 +391,15 @@ fn graphs_bar(
             }
         });
     });
+
+    // Survival score: the live rating, its session high, and the difficulty gate.
+    // Its own window so it floats over the world.
+    if state.visible.contains(&Graph::SurvivalScore) {
+        egui::Window::new(Graph::SurvivalScore.label())
+            .default_size([340.0, 110.0])
+            .collapsible(false)
+            .show(ctx, |ui| render_score_gauge(ui, &score));
+    }
 
     // Time-series graphs: live in their own floating windows.
     for g in Graph::ALL {
@@ -356,6 +470,7 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
             ],
         },
         Graph::Histogram => unreachable!("Histogram is rendered by render_histogram, not graph_plot"),
+        Graph::SurvivalScore => unreachable!("SurvivalScore is rendered by render_score_gauge, not graph_plot"),
     }
 }
 
@@ -411,6 +526,7 @@ fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
         for event in event_log.recent.iter().rev().take(50) {
             let kind = match event.kind {
                 crate::events::EventKind::Starved => "starved",
+                crate::events::EventKind::Departed => "departed",
             };
             let step = event.chosen_step
                 .map(|(dx, dy)| format!(" step({dx:+},{dy:+})"))
@@ -837,20 +953,91 @@ fn set_sim_speed(time: &mut Time<Virtual>, speed: f32) {
     time.set_max_delta(sim_max_delta(FRAME_SIM_BUDGET, speed));
 }
 
-fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
-    const PRESETS: [(&str, f32); 5] =
-        [("1x", 1.0), ("2x", 2.0), ("3x", 3.0), ("4x", 4.0), (">>", 64.0)];
-    let current = time.relative_speed();
-    if ui.selectable_label(time.is_paused(), "‖").clicked() {
+/// Merge the Phosphor icon glyphs into egui's font set, once, when the context
+/// first exists. `Local` flips after the first run so this is effectively a
+/// one-shot — set_fonts replaces the whole atlas, so re-running it every frame
+/// would be wasteful.
+fn install_icon_font(mut contexts: EguiContexts, mut installed: Local<bool>) -> Result {
+    if *installed {
+        return Ok(());
+    }
+    let ctx = contexts.ctx_mut()?;
+    let mut fonts = egui::FontDefinitions::default();
+    egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+    ctx.set_fonts(fonts);
+    *installed = true;
+    Ok(())
+}
+
+/// Keyboard speed/pause shortcuts: digits 1–4 select the matching speed preset,
+/// 5 jumps to the uncapped fast-forward, and space toggles pause. Suppressed
+/// while egui holds keyboard focus (e.g. editing the custom-speed DragValue) so
+/// the keys don't fight text entry.
+fn keyboard_speed(
+    mut contexts: EguiContexts,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut time: ResMut<Time<Virtual>>,
+) -> Result {
+    if contexts.ctx_mut()?.wants_keyboard_input() {
+        return Ok(());
+    }
+
+    if keys.just_pressed(KeyCode::Space) {
         if time.is_paused() {
             time.unpause();
         } else {
             time.pause();
         }
     }
-    for (label, mult) in PRESETS {
-        if ui.selectable_label(current == mult, label).clicked() {
-            set_sim_speed(time, mult);
+
+    const DIGITS: [KeyCode; 5] = [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+    ];
+    for (i, key) in DIGITS.iter().enumerate() {
+        if keys.just_pressed(*key) {
+            // A speed key implies "run at this speed", so lift any pause first.
+            if time.is_paused() {
+                time.unpause();
+            }
+            set_sim_speed(time.as_mut(), SPEED_PRESETS[i].1);
+        }
+    }
+
+    Ok(())
+}
+
+/// Speed buttons, in order: 1×–4× plus an uncapped fast-forward. The index into
+/// this table is also the digit-key shortcut (1–4 → presets, 5 → uncapped), so
+/// `keyboard_speed` and `speed_inline` share one source of truth.
+const SPEED_PRESETS: [(&str, f32); 5] =
+    [("1x", 1.0), ("2x", 2.0), ("3x", 3.0), ("4x", 4.0), (">>", 64.0)];
+
+fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
+    let current = time.relative_speed();
+    // Phosphor play/pause glyph: show the action the click performs.
+    let icon = if time.is_paused() {
+        egui_phosphor::regular::PLAY
+    } else {
+        egui_phosphor::regular::PAUSE
+    };
+    if ui.button(icon).on_hover_text("toggle pause (space)").clicked() {
+        if time.is_paused() {
+            time.unpause();
+        } else {
+            time.pause();
+        }
+    }
+    for (i, (label, mult)) in SPEED_PRESETS.iter().enumerate() {
+        if ui
+            .selectable_label(current == *mult, *label)
+            .on_hover_text(format!("speed (key {})", i + 1))
+            .clicked()
+        {
+            set_sim_speed(time, *mult);
         }
     }
     let mut custom = current;
@@ -937,6 +1124,13 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
     slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");
+    slider(ui, &mut p.momentum, 0.0..=2.0, "heading persistence (land)");
+    slider(ui, &mut p.momentum_water, 0.0..=3.0, "heading persistence (water)");
+    ui.separator();
+    ui.label("foraging mode (leapfrog)");
+    slider(ui, &mut p.leave_frac, 0.0..=1.0, "leave patch below (× capacity)");
+    slider(ui, &mut p.travel_margin, 0.0..=1.0, "travel if richer by (× capacity)");
+    slider(ui, &mut p.travel_focus, 0.05..=1.0, "travel focus (temp ×)");
     slider(ui, &mut p.mig_growth, 0.0..=0.01, "migration growth / tick");
     ui.separator();
     ui.label("patch leaving");

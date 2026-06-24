@@ -121,6 +121,164 @@ pub fn journey_natural(params: ElkParams, ticks: u32) -> usize {
     run_metrics(p, ticks).max_col
 }
 
+// ── Diagnostic tracing (herd-shape time series) ───────────────────────────────
+
+/// One tick's worth of herd-shape observables, read out of a headless run.
+/// Together these distinguish a clump (gyration → 0, energy falling), a particle
+/// cloud (bounded gyration, flat centroid), and a rolling wave (bounded gyration,
+/// advancing centroid).
+#[derive(Clone, Copy, Debug)]
+pub struct TickSample {
+    pub population: usize,
+    /// Mean elk energy in [0, 1]; a monotone decline forecasts starvation.
+    pub mean_energy: f32,
+    /// Centroid column — the migration signal. Rising ⇒ the mass rolls forward.
+    pub centroid_col: f32,
+    /// Radius of gyration (cells) — herd spread. Collapsing toward 0 ⇒ clumping.
+    pub radius_of_gyration: f32,
+    /// Fraction of elk in travel mode this tick — pins the graze/travel balance.
+    pub frac_traveling: f32,
+    /// Net energy flow this tick: intake − drain − swim. Negative ⇒ the herd is
+    /// burning its store faster than it feeds, i.e. on a path to death.
+    pub net_energy: f32,
+}
+
+/// A per-tick time series of herd-shape observables from one headless run.
+pub struct RunTrace {
+    pub samples: Vec<TickSample>,
+}
+
+/// Collect `(cell, energy, traveling)` for every elk in the world.
+fn elk_snapshot(world: &mut World) -> Vec<(usize, f32, bool)> {
+    let mut q = world.query::<&Elk>();
+    q.iter(world).map(|e| (e.cell, e.energy, e.traveling)).collect()
+}
+
+/// Run a controlled headless scenario — a hand-authored `grid`, a fixed set of
+/// `elk_starts`, and a `params` set — for `ticks` steps, sampling herd-shape
+/// observables each tick. Built on `make_probe_app`, so the spawner is frozen
+/// (the only elk are the ones placed here) and the RNG is seeded for replay.
+/// This is the readout that says whether a slider set rolls the herd forward or
+/// clumps it to death, without launching the GUI.
+pub fn diagnose(
+    grid: Grid,
+    elk_starts: &[(usize, u8)],
+    params: ElkParams,
+    start_energy: f32,
+    ticks: u32,
+) -> RunTrace {
+    let width = grid.width();
+    let mut app = make_probe_app(grid, elk_starts);
+    app.insert_resource(params);
+    // Override the probe's fixed 0.3 spawn energy so the run reflects the model,
+    // not a starting handicap — real spawns enter well-fed.
+    {
+        let world = app.world_mut();
+        let mut q = world.query::<&mut Elk>();
+        for mut elk in q.iter_mut(world) {
+            elk.energy = start_energy;
+        }
+    }
+
+    let mut samples = Vec::with_capacity(ticks as usize);
+    for _ in 0..ticks {
+        app.update();
+        let world = app.world_mut();
+        let flows = elk_flows(world);
+        let net_energy = flows.intake - flows.drain - flows.swim;
+
+        let elk = elk_snapshot(world);
+        let population = elk.len();
+        let cells: Vec<usize> = elk.iter().map(|(c, _, _)| *c).collect();
+        let (centroid_col, _) = crate::diagnostics::centroid(&cells, width);
+        let radius_of_gyration = crate::diagnostics::radius_of_gyration(&cells, width);
+        let mean_energy = if population > 0 {
+            elk.iter().map(|(_, e, _)| *e).sum::<f32>() / population as f32
+        } else {
+            0.0
+        };
+        let frac_traveling = if population > 0 {
+            elk.iter().filter(|(_, _, t)| *t).count() as f32 / population as f32
+        } else {
+            0.0
+        };
+
+        samples.push(TickSample {
+            population,
+            mean_energy,
+            centroid_col,
+            radius_of_gyration,
+            frac_traveling,
+            net_energy,
+        });
+
+        // EnergyFlows accumulates until a consumer resets it (see ledger.rs);
+        // zero it so next tick's `net_energy` is this-tick-only, not cumulative.
+        *world.get_resource_mut::<EnergyFlows>().unwrap() = EnergyFlows::default();
+    }
+    RunTrace { samples }
+}
+
+/// Like `diagnose`, but over the *real* worldgen map and the real spawner — the
+/// actual scenario the GUI runs. Herd-shape over all elk mixes cohorts, so read
+/// `population`, `mean_energy`, and `frac_traveling` as the primary signals here;
+/// they alone tell clump-and-die (energy crashing, travel pinned high) apart from
+/// a healthy herd. Use this when a dummy plain won't reproduce a bug.
+pub fn diagnose_worldgen(params: ElkParams, ticks: u32) -> RunTrace {
+    let mut app = make_app();
+    app.insert_resource(params);
+    let width = app.world().get_resource::<Grid>().unwrap().width();
+
+    let mut samples = Vec::with_capacity(ticks as usize);
+    for _ in 0..ticks {
+        app.update();
+        let world = app.world_mut();
+        let flows = elk_flows(world);
+        let net_energy = flows.intake - flows.drain - flows.swim;
+
+        let elk = elk_snapshot(world);
+        let population = elk.len();
+        let cells: Vec<usize> = elk.iter().map(|(c, _, _)| *c).collect();
+        let (centroid_col, _) = crate::diagnostics::centroid(&cells, width);
+        let radius_of_gyration = crate::diagnostics::radius_of_gyration(&cells, width);
+        let mean_energy = if population > 0 {
+            elk.iter().map(|(_, e, _)| *e).sum::<f32>() / population as f32
+        } else {
+            0.0
+        };
+        let frac_traveling = if population > 0 {
+            elk.iter().filter(|(_, _, t)| *t).count() as f32 / population as f32
+        } else {
+            0.0
+        };
+        samples.push(TickSample {
+            population,
+            mean_energy,
+            centroid_col,
+            radius_of_gyration,
+            frac_traveling,
+            net_energy,
+        });
+
+        // EnergyFlows accumulates until a consumer resets it (see ledger.rs);
+        // zero it so next tick's `net_energy` is this-tick-only, not cumulative.
+        *world.get_resource_mut::<EnergyFlows>().unwrap() = EnergyFlows::default();
+    }
+    RunTrace { samples }
+}
+
+/// A dummy map with no worldgen: a uniform open plain whose every cell carries
+/// grass at `grass_frac` of its capacity. The controlled substrate for isolating
+/// herd dynamics from terrain — on flat, evenly-stocked ground the only thing
+/// shaping the herd is the decision model, so clumping or rolling is unambiguous.
+pub fn open_plain(width: usize, height: usize, grass_frac: f32) -> Grid {
+    let mut grid = Grid::new(width, height);
+    for i in 0..width * height {
+        grid.set_grass(i, grass_frac * grid.capacity(i));
+    }
+    grid
+}
+
 // ── Probe-world infrastructure (doc02.03, rung 6) ─────────────────────────────
 
 /// Layout constants for the canonical crossing probe grid.
@@ -179,7 +337,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
         // Override the GridPlugin's default with the probe grid.
         .insert_resource(grid)
         // Freeze the spawner so spawn_waves never fires (cooldown stays maxed).
-        .insert_resource(Spawner { cooldown: u32::MAX / 2, next_pack: 0, elapsed: 0 })
+        .insert_resource(Spawner { cooldown: u32::MAX / 2, next_pack: 0, elapsed: 0, anchor: None })
         // Persistent seeded RNG for deterministic probe assertions.
         .insert_resource(ProbeSeed::new(42));
 
@@ -205,6 +363,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
                 grazing: false,
                 at_edge: 0,
                 intake_rate: 0.0,
+                traveling: false,
             },
             LastDecision(Decision::default()),
         ));

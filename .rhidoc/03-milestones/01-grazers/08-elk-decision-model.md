@@ -55,6 +55,35 @@ This carries the **quantity → quality threshold**. Hunger accumulates tick by 
 
 Stand is selected when two conditions hold at once: the elk sits at a **local maximum of the spatial potential** (all four `∇V` neighbours are lower — a comfortable spot relative to the herd and terrain), *and* its hunger-grass term `∂V/∂store · intake` is below the cost of doing anything but conserve. Both simultaneously — a good position *and* no intake worth the conversion.
 
+## Commitment: the value field has a heading
+
+A value field that depends only on position and store is **memoryless and spatially symmetric**, and that symmetry is wrong inside a river. Standing mid-channel, both banks beckon equally and reversing costs nothing, so a purely positional `V` produces a limit cycle — the elk dips a step in, the gradient pulls it back, and it dithers in place instead of crossing.
+
+The fix is to give `V` a small dependence on the elk's recent **heading** — the direction of its last move. Continuing that heading scores a bonus; reversing it pays a penalty of equal size. This is partly energy-grounded — turning and re-accelerating dissipates locomotion energy, and abandoning a half-finished crossing wastes the swim energy already spent — and partly the phenomenological fact that a committed animal commits. The term is gentle on land (a mild bias against pointless backtracking) and strong in water, where it must dominate the symmetric pull of the two banks so a crossing, once begun, runs to the far side.
+
+Three behaviours emerge from this one term, with no per-elk state machine — the heading is read back from the position the renderer already stores:
+
+- **A crossing still has to be worth starting.** Heading is zero for an elk that grazed or stood, so the decision to *enter* water is governed entirely by the crossing incentive, unchanged.
+- **A started crossing finishes.** Once in water with a heading set, the in-water persistence outweighs the noisy symmetric gradients, so the elk marches to dry land rather than oscillating.
+- **A crossed river is not immediately re-crossed.** On landing, the heading still points away from the water, penalizing re-entry; combined with the lasting swim-drain cost, recrossing demands a far bank that is genuinely, not marginally, greener.
+
+## Foraging mode: grazing and travelling
+
+A purely per-tick pick over the palette has no commitment in *time*, only in space. Re-rolled every tick by the softmax, an elk takes a step, re-decides its whole destination, and takes a barely-correlated step next tick. At herd scale this reads as a **particle cloud** — a diffuse blob that jitters in place rather than a mass that moves.
+
+Real grazing herds do something else: they roll forward as a **leapfrogging wave**. Animals at the rear sit on grass the front already cropped, so they overtake the front to reach fresh forage, graze it down, and are overtaken in turn. The wave is not planned by any animal — it emerges from a depletion feedback loop.
+
+The model captures this with **one bit of committed state per elk — a foraging mode**, *graze* or *travel*. The toggle is gated on **reachable improvement**, not an absolute richness target:
+
+- **Graze** in place until the patch underfoot is drawn below `leave_frac` of its capacity *and* a meaningfully richer patch — at least `travel_margin` more, in capacity-fraction — lies within perception.
+- **Travel** — a directed dash, the softmax sharpened — while such a patch remains reachable, and **settle** the moment nothing better than underfoot is in reach (the elk has arrived at the local best).
+
+The reachable-improvement gate is load-bearing: an absolute "travel until you reach 60%-of-capacity grass" threshold is a one-way trap, because on thin or barren terrain *no* cell clears the bar, so the elk dashes forever, never feeding, and the herd clumps and starves. Gating on "is somewhere better actually reachable" means an elk surrounded by nothing better simply grazes what it has. The hysteresis that commits each phase for a run comes from the *asymmetry* of the two edges — leaving demands depletion **and** a better patch, continuing demands only a better patch — so the same local state resolves differently depending on which mode the elk is already in, without any sticky band to tune.
+
+Travel **sharpens the softmax temperature** (commit to the best direction rather than diffuse); the heading-persistence term then carries the dash in a straight line. Grazing is **never suppressed** — a travelling elk that finds worthwhile grass underfoot eats it. That is the structural guarantee the mode cannot starve the herd: the worst a misjudged mode can do is move an elk that might have stood still, never stop it from feeding where feeding is possible.
+
+Crucially, **no per-elk target is stored** — not a cell, not another animal. A target would dangle (the grazer it aimed at walks off or dies) or go stale (the patch is eaten before arrival), forcing re-validation, replan, and arrival-detection special cases, and would split steering into two arbitrating authorities. The mode is a single self-correcting bit re-grounded against the live world every tick. The forward direction is not stored either — it **emerges**: because the herd grazes from behind, the richest reachable cells lie ahead, so the dash climbs the depletion gradient forward, and the mass rolls. This is the same discipline as every other drive here — promote a transient impulse into a short-lived bias layered on the value field, never a hierarchy of plans.
+
 ## The principled limit
 
 Not every drive reduces to energy. Grass-gradient does (it is anticipated future energy — the scent of meals to convert). Water-cost does (locomotion energy plus swim drain). **Migration** is a seasonal compulsion and **cohesion / separation** are a behavioural prior (herd safety, no predation energy modelled), so these are phenomenological drives layered on top, not derived from the energy budget. Behaviour is over-determined — several determinations at once. The model's principled limit: the more each force is expressed as an expected energy consequence, the more the six-way palette collapses into descent of a single energy potential sampled thermally. Energy is the spine; migration and herd-feeling are soft tissue not yet ossified onto it.
@@ -83,3 +112,7 @@ The desire vector survives unrefactored; it stops standing in for the whole deci
 - **Temperature** — the noise level of selection; high diffuses behaviour, low makes it greedy.
 - **Quantity → quality threshold** — the point at which quantitative hunger accumulation flips behaviour into a qualitatively different mode.
 - **Over-determination** — behaviour produced by several determinations at once (energy plus phenomenological drives), not a single cause.
+- **Heading / persistence** — the direction of the elk's last move; a path-dependent term in `V` that rewards continuing it and penalizes reversing, breaking the memoryless symmetry that otherwise traps an elk mid-river.
+- **Foraging mode (graze / travel)** — one bit of committed state per elk, toggled on *reachable improvement*: travel while a meaningfully richer patch is in reach, settle on the local best. Travel sharpens the pick into a committed dash but never suppresses grazing, so it shapes movement without ever starving the herd; the asymmetry between the leave and continue conditions supplies the hysteresis. Turns particle-cloud jitter into a forward-rolling, leapfrogging herd.
+- **Reachable improvement** — the gate on travel: an elk moves on only while perception shows a patch richer than underfoot by `travel_margin`. Gating on what is actually reachable (rather than an absolute richness target) is what keeps the mode from trapping an elk in a perpetual dash across terrain that offers nothing better.
+- **Leapfrogging wave** — the emergent rolling grazing front: rear animals overtake the cropped front to reach fresh forage, producing coherent forward herd motion from a depletion feedback loop, with no per-agent target.

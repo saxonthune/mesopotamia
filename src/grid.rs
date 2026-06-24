@@ -36,6 +36,10 @@ pub struct Grid {
     /// Ford mask: true on cells authored as periodic shallow crossings along the
     /// main channel centerline. Read by Phase B to apply the crossing discount.
     ford: Vec<bool>,
+    /// Lake mask: true on cells filled by the metaball lake pass (as distinct from
+    /// river/tributary channels). The water-proximity field gives lake cells a
+    /// shorter bank reach than rivers, so lakes carry a tighter ring of grass.
+    lake: Vec<bool>,
     /// Soil-type gradient: 0 = dry steppe, 1 = moist riparian. Derived from the
     /// water-proximity field after the water layer runs. Drives two-tone dirt render
     /// and a gentle shrub-capacity nudge away from the riparian band.
@@ -45,6 +49,25 @@ pub struct Grid {
     /// excluded from water cells. Authored by `seed_rough`; purely data + render for
     /// now, with no traversal hookup.
     rough: Vec<f32>,
+    /// Continental-divide classification: true when the cell lies strictly east of
+    /// its nearest main river (by column). The watershed midway between adjacent
+    /// rivers is just where this flips. Authored by `seed_river_side`; shrub shading
+    /// reads it to tint east-side shrubs a lighter olive.
+    east_of_river: Vec<bool>,
+    /// Normalized [0, 1] distance to the nearest main river: 0 on a river, rising
+    /// to 1 at the farthest interfluve (the divide). Distinct from `water_prox`,
+    /// which also counts lakes — this is rivers only. Authored by `seed_river_side`;
+    /// flower colour interpolates white (near water) → cyan (on the divide) along it.
+    river_dist: Vec<f32>,
+    /// Flower presence: true on a random subset of shrub-bearing cells. A flowering
+    /// shrub draws a white→cyan diamond once it is fully grown. Authored by the
+    /// vegetation layer alongside shrub capacity.
+    flower: Vec<bool>,
+    /// Cosmetic soil-texture tint id: 0 = plain tan, 1 = a 1×2 speckle a hair
+    /// toward red, 2 = a 1×1 speckle a touch redder still. Breaks the flat tan
+    /// steppe into a subtle grain. Authored by `seed_soil_texture`; render reads
+    /// it to pick the dry-soil base colour.
+    soil_tint: Vec<u8>,
 }
 
 /// How fast grass regrows under the reaction-diffusion model: a cell gains
@@ -80,8 +103,13 @@ impl Grid {
             shrubs: vec![0.0; width * height],
             shrub_cap: vec![0.0; width * height],
             ford: vec![false; width * height],
+            lake: vec![false; width * height],
             soil_type: vec![0.0; width * height],
             rough: vec![0.0; width * height],
+            east_of_river: vec![false; width * height],
+            river_dist: vec![0.0; width * height],
+            flower: vec![false; width * height],
+            soil_tint: vec![0u8; width * height],
         }
     }
 
@@ -183,6 +211,17 @@ impl Grid {
         self.ford[index] = value;
     }
 
+    /// Whether this cell was filled by the lake pass. Read by the water-proximity
+    /// field to give lakes a shorter bank reach than rivers.
+    pub fn is_lake(&self, index: usize) -> bool {
+        self.lake[index]
+    }
+
+    /// Tag a cell as lake water. Authored by the lake pass alongside `set_water`.
+    pub fn set_lake(&mut self, index: usize, value: bool) {
+        self.lake[index] = value;
+    }
+
     pub fn soil_type(&self, index: usize) -> f32 {
         self.soil_type[index]
     }
@@ -201,8 +240,67 @@ impl Grid {
         self.rough[index] = value.clamp(0.0, MAX_ROUGH);
     }
 
+    /// Whether this cell lies strictly east of its nearest main river. Read by
+    /// shrub shading to pick the olive (east) vs green (west) tint.
+    pub fn east_of_river(&self, index: usize) -> bool {
+        self.east_of_river[index]
+    }
+
+    /// Set the continental-divide classification for a cell. Authored by
+    /// `seed_river_side` from the nearest-river Voronoi assignment.
+    pub fn set_east_of_river(&mut self, index: usize, value: bool) {
+        self.east_of_river[index] = value;
+    }
+
+    /// Normalized [0, 1] distance to the nearest main river. Read by flower
+    /// shading to interpolate white (near water) → cyan (on the divide).
+    pub fn river_dist(&self, index: usize) -> f32 {
+        self.river_dist[index]
+    }
+
+    /// Set the normalized river-distance for a cell. Authored by `seed_river_side`.
+    pub fn set_river_dist(&mut self, index: usize, value: f32) {
+        self.river_dist[index] = value.clamp(0.0, 1.0);
+    }
+
+    /// Whether this cell bears a flower. Read by flower rendering, gated on the
+    /// shrub being fully grown.
+    pub fn flower(&self, index: usize) -> bool {
+        self.flower[index]
+    }
+
+    /// Set flower presence for a cell. Authored by the vegetation layer.
+    pub fn set_flower(&mut self, index: usize, value: bool) {
+        self.flower[index] = value;
+    }
+
+    /// Shrub carrying capacity for a cell — the ceiling the standing crop grows
+    /// toward. Read by flower rendering to decide "fully grown".
+    pub fn shrub_cap(&self, index: usize) -> f32 {
+        self.shrub_cap[index]
+    }
+
+    /// Cosmetic soil-texture tint id (0/1/2). Read by render to pick the dry-soil
+    /// base colour.
+    pub fn soil_tint(&self, index: usize) -> u8 {
+        self.soil_tint[index]
+    }
+
+    /// Set the soil-texture tint id. Authored by `seed_soil_texture`.
+    pub fn set_soil_tint(&mut self, index: usize, value: u8) {
+        self.soil_tint[index] = value;
+    }
+
     pub fn shrubs(&self, index: usize) -> f32 {
         self.shrubs[index]
+    }
+
+    /// Seed the standing shrub crop for a cell, clamped to its carrying capacity.
+    /// World generation calls this so a freshly generated world starts with mature
+    /// shrubs already in place rather than growing them up from bare ground; the
+    /// runtime regrowth then merely maintains them. Set `shrub_cap` first.
+    pub fn set_shrubs(&mut self, index: usize, value: f32) {
+        self.shrubs[index] = value.clamp(0.0, self.shrub_cap[index]);
     }
 
     /// Strip shrubs from a cell (positive `amount` removes it). Floors at zero.
