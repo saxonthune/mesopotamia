@@ -30,6 +30,13 @@ test-all:
     cargo test
     cargo test --manifest-path driftscape/Cargo.toml
 
+# Run an #[ignore] investigation probe in RELEASE — the headless sim is compute-
+# bound (whole-grid growth + per-elk grass gradient each tick) and already runs at
+# max tick rate, so the only real speedup is optimised codegen (~10× over debug).
+# Usage: just probe working_presets_probe   (any probe fn name in tests/herd_shape.rs)
+probe name:
+    cargo test --release --test herd_shape {{name}} -- --ignored --nocapture
+
 # Wraps build-web.sh. Prereqs: `cargo install wasm-bindgen-cli --version 0.2.125`
 # (must match the wasm-bindgen dep) and, optionally, `cargo install wasm-opt`.
 
