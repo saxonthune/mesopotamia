@@ -2,7 +2,7 @@
 
 Machine-readable index for AI navigation. Read this file first, then open only the docs relevant to your query.
 
-**Retrieval strategy:** See doc00.04 for AI retrieval patterns.
+**Retrieval strategy:** See doc00.00 (codex index) for how to find and read docs efficiently.
 
 ## Column Definitions
 
@@ -55,7 +55,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | Ref | File | Summary | Tags | Deps | Refs | Attachments |
 |-----|------|---------|------|------|------|-------------|
 
-| doc02.00 | `00-index.md` |  |  | — | — | — |
+| doc02.00 | `00-index.md` | The design serves two equally weighted goals — a tuning game the player journeys through, and an aesthetically interesting lifecycle to watch unfold | design, game, aesthetics, lifecycle, goals | — | — | — |
 | doc02.01 | `01-reading-the-simulation.md` | The observability practice that makes emergent behavior legible — a ladder from a single agent's decision up to population invariants — and the craft literature behind building simulations as aesthetic experiences | observability, debugging, metrics, tooling, instrumentation, resources, craft | doc05.01, doc04.01 | doc01.03, doc02.03 | — |
 | doc02.02 | `02-worldgen-toolkit.md` | The catalogue of CS/algorithm operators that actualize the unfolding method — each one a structure-preserving transformation over the grid state, grouped by the role it plays in the generative sequence, tagged by whether the code calls it or it merely waits in the kit | worldgen, generation, algorithms, operators, toolkit, procgen | doc01.04, doc03.01.06 | doc01.04 | — |
 | doc02.03 | `03-the-game.md` | The grazers demo as light play — a three-stage arc from a broken herd, to a working migration the player tunes by hand, to an open score loop where the player cranks scarcity and refines a surviving model for the highest score | design, game, play, score, difficulty, tuning, arc | doc02.01, doc03.01.08 | — | — |
@@ -122,6 +122,7 @@ Quick lookup for file-path→doc mapping:
 | Tag | Relevant Docs |
 |-----|---------------|
 | `abm` | doc01.01 |
+| `aesthetics` | doc02.00 |
 | `ai` | doc00.04 |
 | `alexander` | doc01.04 |
 | `algorithms` | doc02.02 |
@@ -142,7 +143,7 @@ Quick lookup for file-path→doc mapping:
 | `debugging` | doc02.01 |
 | `decision` | doc03.01.08 |
 | `deep-research` | doc01.02.01.01, doc01.02.01.02 |
-| `design` | doc02.03 |
+| `design` | doc02.00, doc02.03 |
 | `dialectics` | doc01.03, doc03.01.08 |
 | `differentiation` | doc01.04 |
 | `difficulty` | doc02.03 |
@@ -158,8 +159,9 @@ Quick lookup for file-path→doc mapping:
 | `field` | doc03.01.06 |
 | `flocking` | doc03.01.05 |
 | `foraging` | doc03.01.05 |
-| `game` | doc02.03 |
+| `game` | doc02.00, doc02.03 |
 | `generation` | doc01.03, doc01.04, doc02.02 |
+| `goals` | doc02.00 |
 | `graph` | doc03.01.04 |
 | `grid` | doc03.01.00, doc03.01.01 |
 | `herd` | doc03.01.05 |
@@ -173,7 +175,7 @@ Quick lookup for file-path→doc mapping:
 | `lagrangian` | doc03.01.04 |
 | `land-tenure` | doc01.02.01.02 |
 | `layout` | doc03.01.02 |
-| `lifecycle` | doc03.02.00, doc03.02.01 |
+| `lifecycle` | doc02.00, doc03.02.00, doc03.02.01 |
 | `loop-vs-accumulator` | doc01.02.01.00, doc01.02.01.01, doc01.02.01.02, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05, doc01.03 |
 | `maintenance` | doc00.02, doc05.00 |
 | `mesopotamia` | doc01.02.01.00, doc01.02.01.03, doc01.02.01.04, doc01.02.01.05 |

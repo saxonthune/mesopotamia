@@ -42,6 +42,13 @@ gated and scaled by **difficulty** — the scarcity the player dials in by lower
 availability. A high score demands a hard world *and* a herd that still survives and
 advances through it.
 
+The score rewards **surviving**, not merely reaching far before dying. A crossing pays
+full credit; a starvation pays its eastward progress *minus a death penalty*, so an elk
+that dies even at the far bank scores well below one that crosses alive, and an elk that
+dies early scores *negative* — a wipeout actively sinks the rating. A herd that marches
+east and starves en masse therefore rates far below one that arrives intact. This is what
+makes a high score mean what it should: most of the herd lived.
+
 The loop is: crank the difficulty, watch the working model begin to fray under the
 scarcity, make a small tuning adjustment to shore it up, and push the difficulty higher.
 **Maxing the difficulty slider is the intended goal, not a degenerate exploit** — the

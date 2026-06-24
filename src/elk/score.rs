@@ -51,6 +51,15 @@ const PULL_PENALTY: f32 = 0.6;
 /// Normalised: `p = (cross_ratio / CROSS_REF).clamp(0, 1)` — so at `cross_ratio == 0`
 /// the factor is 1 (unpenalised) and at `cross_ratio == CROSS_REF` it is at full bite.
 const CROSS_REF: f32 = 2.0;
+/// Credit subtracted from a starvation's forage progress — the cost of *dying* as
+/// opposed to *crossing*. Without it, an elk that starves at the far bank (progress
+/// ≈ 0.94) scores almost as much as one that crosses alive (1.0), so a herd that
+/// marches east and dies en masse rates nearly a clean run. At 0.5 a far-bank death
+/// pays ~0.44 against a crossing's 1.0 (crossing alive ≈ 2.3× a death at the same
+/// column), and an *early* death goes net-negative — so a wipeout actively sinks the
+/// score. This is what makes a high score mean the herd is *surviving*, not just
+/// reaching far before it dies.
+const STARVE_PENALTY: f32 = 0.5;
 
 /// Difficulty in `[0, 1]` from the scarcity the player has dialed in: how far the
 /// regrowth rate (`regrow_ratio` — forage refill ÷ drain) sits below a comfortably
@@ -60,15 +69,19 @@ pub fn difficulty(regrow_ratio: f32) -> f32 {
     ((REGROW_EASY - regrow_ratio) / REGROW_EASY).clamp(0.0, 1.0)
 }
 
-/// Points one despawn pays into the rolling current score. The payout is the
-/// elk's *forage progress*: a crossing (`departed`) pays the full `1.0`, a
-/// starvation pays how far east it got (`progress = col / edge`). Scaled by
-/// `difficulty` (easy worlds pay ~nothing — the gate) and `POINT_SCALE` (lands
-/// strong play in the hundreds). Nothing is negative: a herd that dies early just
-/// pays little and the rolling score sags; one pushed far across lifts it. Survival
-/// is rewarded implicitly — elk kept alive reach higher progress before they go.
+/// Points one despawn pays into the rolling current score. A crossing (`departed`)
+/// pays full `1.0`; a starvation pays how far east it got *minus a death penalty*
+/// (`progress − STARVE_PENALTY`), so dying costs against crossing — and an early
+/// death goes net-negative and sinks the rolling score. Scaled by `difficulty`
+/// (easy worlds pay ~nothing — the gate) and `POINT_SCALE` (lands strong play in
+/// the hundreds). This is what makes a high score mean the herd *survives*: a herd
+/// that marches far east and starves en masse rates well below one that crosses alive.
 pub fn despawn_points(progress: f32, departed: bool, difficulty: f32) -> f32 {
-    let credit = if departed { 1.0 } else { progress.clamp(0.0, 1.0) };
+    let credit = if departed {
+        1.0
+    } else {
+        progress.clamp(0.0, 1.0) - STARVE_PENALTY
+    };
     credit * difficulty * POINT_SCALE
 }
 
@@ -162,12 +175,11 @@ mod tests {
         assert_eq!(despawn_points(1.0, true, 0.0), 0.0, "a crossing on easy mode pays 0");
     }
 
-    // Payout rises with progress; a crossing pays the most, an early death the
-    // least (but never negative) — so the score rewards forward progress.
+    // Payout rises with progress; a crossing pays the most, dying farther east beats
+    // dying early, and a crossing always beats starving at the same column.
     #[test]
     fn payout_rises_with_progress() {
         let d = 1.0;
-        assert!(despawn_points(0.1, false, d) >= 0.0, "an early death pays little, not negative");
         assert!(
             despawn_points(0.9, false, d) > despawn_points(0.1, false, d),
             "dying farther across pays more"
@@ -176,6 +188,20 @@ mod tests {
             despawn_points(0.95, false, d) < despawn_points(0.95, true, d),
             "crossing alive beats starving just short"
         );
+    }
+
+    // The death penalty: a crossing outscores a starvation at the *same* column by a
+    // wide margin, and an early death goes net-negative — a wipeout sinks the score.
+    // Breaking input: drop STARVE_PENALTY to 0 and both assertions fail.
+    #[test]
+    fn starvation_costs_against_crossing() {
+        let d = 1.0;
+        // A far-bank death is worth far less than a crossing at the same column.
+        let far_death = despawn_points(0.94, false, d);
+        let crossing = despawn_points(0.94, true, d);
+        assert!(crossing > far_death * 2.0, "crossing alive must dwarf a far-bank death");
+        // An early death is a net loss, not a small gain.
+        assert!(despawn_points(0.1, false, d) < 0.0, "an early death sinks the score");
     }
 
     // Difficulty scales the payout: the same outcome pays more under scarcity,
