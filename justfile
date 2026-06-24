@@ -8,6 +8,10 @@ default:
 demo1:
     cargo run --features bevy/dynamic_linking --bin demo1
 
+# Run the Driftscape terminal screensaver (Starliner). Quit with q/Esc/Ctrl-C.
+demo3:
+    cargo run --bin demo3
+
 # Pure-function/unit tests only, skipping the slow Bevy-linking integration
 # binaries. With a warm target dir it finishes in seconds.
 
