@@ -3,11 +3,13 @@ use bevy::window::WindowResolution;
 use bevy_egui::EguiPlugin;
 
 use mesopotamia::grid::GridPlugin;
+use mesopotamia::death_marker::DeathMarkerPlugin;
 use mesopotamia::elk::ElkSimPlugin;
 use mesopotamia::overlay::OverlayPlugin;
 use mesopotamia::settings::{self, UserSettings};
 use mesopotamia::sim::SimStatePlugin;
 use mesopotamia::ui::UiPlugin;
+use mesopotamia::unit_select::UnitSelectPlugin;
 use mesopotamia::render::RenderPlugin;
 use mesopotamia::worldgen::WorldgenPlugin;
 
@@ -28,7 +30,7 @@ fn main() {
         // The droppings nutrient cycle (poop → grass) is built and tested but
         // intentionally disabled in the shipped sim. To re-enable, add
         // `mesopotamia::droppings::DroppingsPlugin` to this tuple (and import it).
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
+        .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin))
         .insert_resource(settings);
 
     // Maximizing is a runtime request and only meaningful natively; on the web

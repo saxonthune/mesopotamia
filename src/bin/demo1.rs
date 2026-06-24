@@ -26,6 +26,8 @@ mod shrub_tile;
 mod droppings;
 #[path = "../elk/mod.rs"]
 mod elk;
+#[path = "../death_marker.rs"]
+mod death_marker;
 #[path = "../events.rs"]
 mod events;
 #[path = "../metrics.rs"]
@@ -42,11 +44,14 @@ mod history;
 mod sim;
 #[path = "../ui.rs"]
 mod ui;
+#[path = "../unit_select.rs"]
+mod unit_select;
 #[path = "../river/mod.rs"]
 mod river;
 #[path = "../worldgen/mod.rs"]
 mod worldgen;
 
+use crate::death_marker::DeathMarkerPlugin;
 use crate::elk::ElkSimPlugin;
 use crate::grid::GridPlugin;
 use crate::overlay::OverlayPlugin;
@@ -54,6 +59,7 @@ use crate::sim::SimStatePlugin;
 use crate::worldgen::WorldgenPlugin;
 use crate::settings::UserSettings;
 use crate::ui::UiPlugin;
+use crate::unit_select::UnitSelectPlugin;
 use render::RenderPlugin;
 
 /// CSS selector of the canvas the browser page provides. The per-demo HTML in
@@ -85,7 +91,7 @@ fn main() {
         // The droppings nutrient cycle (poop → grass) is built and tested but
         // intentionally disabled in the shipped demo. To re-enable, add
         // `droppings::DroppingsPlugin` to this tuple.
-        .add_plugins((RenderPlugin, UiPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin))
+        .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin))
         .insert_resource(settings);
 
     // Maximizing is native-only; the canvas sizes the window on the web.
