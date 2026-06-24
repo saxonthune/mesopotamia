@@ -4,26 +4,35 @@
 //! Each elk's life ends in a despawn that pays out points: the **forward progress**
 //! it made (how far east it got, full credit for a crossing) is the reward, a
 //! starvation subtracts a penalty so dying early costs. Each payout is scaled by
-//! the **difficulty** the player dialed in (how scarce they made the world) and by
+//! the **difficulty** the player dialed in (how scarce they made the world), by a
+//! **pull penalty** that discounts crossings bought with the migration force, and by
 //! a scale that lands strong play in the hundreds. The **current** score is a
 //! rolling per-elk average of those payouts — so it moves up and down as the herd
 //! does well or badly — and **high** tracks the best current ever reached.
 //!
 //! Difficulty both scales and *gates* the score: at difficulty 0 every payout is 0,
 //! so the only way to a high score is to impose scarcity and still bring the herd
-//! through. The decision content is pure (`difficulty`, `despawn_points`, `ewma`)
-//! and unit-tested; the system only gathers state and folds events through it.
+//! through. The pull penalty is orthogonal: a crossing earned on the natural drives
+//! (forage, green wave) scores full credit; one bought by cranking the migration pull
+//! scores only a fraction. The penalty uses the current smoothed herd pull-share at
+//! fold time — an approximation appropriate to a herd-level rating. The decision
+//! content is pure (`difficulty`, `despawn_points`, `pull_factor`, `ewma`) and
+//! unit-tested; the system only gathers state and folds events through it.
 
 use bevy::prelude::*;
 
 use crate::events::{EventKind, EventLog};
 use crate::grid::GRID_WIDTH;
 
+use super::components::DriveSamples;
 use super::ratios::RatioControls;
 use super::EDGE_COL;
 
 /// EWMA weight on the per-tick difficulty sample — slow, so the gauge is steady.
 const DIFFICULTY_ALPHA: f32 = 0.03;
+/// EWMA weight on the per-tick pull-share sample — same pace as difficulty, a
+/// steady gauge of how much the herd is leaning on the migration hand.
+const PULL_ALPHA: f32 = 0.03;
 /// EWMA weight on each despawn payout — the current score's rolling-per-elk feel,
 /// responsive over the last several elk to leave the world.
 const RATING_ALPHA: f32 = 0.12;
@@ -33,6 +42,11 @@ const REGROW_EASY: f32 = 0.2;
 /// Indexes a per-despawn payout (forage progress in [0, 1] × difficulty) into a
 /// current score that peaks in the hundreds under strong play at high difficulty.
 const POINT_SCALE: f32 = 500.0;
+/// Maximum score discount for relying on the migration pull. At full reliance
+/// (`pull_share == 1`) the payout is `1 − PULL_PENALTY` of the natural-drive payout.
+/// Start at 0.6 so a pull-bought crossing keeps 40% of the credit — punishing but
+/// not worthless, leaving the pull usable as a rescue tool at a score cost.
+const PULL_PENALTY: f32 = 0.6;
 
 /// Difficulty in `[0, 1]` from the scarcity the player has dialed in: how far the
 /// regrowth rate (`regrow_ratio` — forage refill ÷ drain) sits below a comfortably
@@ -54,6 +68,14 @@ pub fn despawn_points(progress: f32, departed: bool, difficulty: f32) -> f32 {
     credit * difficulty * POINT_SCALE
 }
 
+/// Score multiplier for how the crossing was earned. At `pull_share == 0` (all natural
+/// drive) the factor is 1 — full credit. At `pull_share == 1` (all magic pull) it falls
+/// to `1 − penalty`. Linear and clamped to `[1 − penalty, 1]`: relying on the pull costs
+/// score, but a pull-assisted crossing is never worthless and never scores negative.
+pub fn pull_factor(pull_share: f32, penalty: f32) -> f32 {
+    (1.0 - penalty * pull_share.clamp(0.0, 1.0)).clamp(1.0 - penalty, 1.0)
+}
+
 /// One exponential-moving-average step: `prev` relaxed toward `sample` by `alpha`.
 pub fn ewma(prev: f32, sample: f32, alpha: f32) -> f32 {
     prev + alpha * (sample - prev)
@@ -69,19 +91,27 @@ pub struct Score {
     pub high: f32,
     /// Smoothed current difficulty in `[0, 1]` — the gate, shown alongside.
     pub difficulty: f32,
+    /// Smoothed herd-mean migration reliance in [0, 1] — the fraction of drive effort
+    /// that is the migration ("magic") pull. The pull penalty scales payouts down by it.
+    pub pull_share: f32,
     /// Events already folded into the score — a cursor into `EventLog.total`.
     cursor: u64,
 }
 
-/// Update the difficulty (from the dialed scarcity) and fold any despawn events
-/// since last tick into the rolling current score, tracking the high-water mark.
+/// Update the difficulty (from the dialed scarcity), smooth the pull-share signal,
+/// and fold any despawn events since last tick into the rolling current score,
+/// tracking the high-water mark.
 pub(super) fn update_score(
     mut score: ResMut<Score>,
     events: Res<EventLog>,
     controls: Res<RatioControls>,
+    samples: Res<DriveSamples>,
 ) {
     let d = difficulty(controls.regrow_ratio);
     score.difficulty = ewma(score.difficulty, d, DIFFICULTY_ALPHA);
+
+    let herd_pull = samples.migration_share();
+    score.pull_share = ewma(score.pull_share, herd_pull, PULL_ALPHA);
 
     // Fold the events pushed since our cursor — newest `new` entries in the ring.
     // The monotonic `total` survives ring eviction, so each despawn scores once.
@@ -93,7 +123,8 @@ pub(super) fn update_score(
         for e in events.recent.iter().skip(start) {
             let progress = (e.cell % GRID_WIDTH) as f32 / edge;
             let departed = matches!(e.kind, EventKind::Departed);
-            let payout = despawn_points(progress, departed, score.difficulty);
+            let payout = despawn_points(progress, departed, score.difficulty)
+                * pull_factor(score.pull_share, PULL_PENALTY);
             score.current = ewma(score.current, payout, RATING_ALPHA);
             score.high = score.high.max(score.current);
         }
@@ -166,5 +197,46 @@ mod tests {
     fn ewma_relaxes_toward_the_sample() {
         assert!((ewma(0.0, 1.0, 0.5) - 0.5).abs() < 1e-6);
         assert!((ewma(2.0, 2.0, 0.3) - 2.0).abs() < 1e-6, "agreement is a fixed point");
+    }
+
+    // pull_factor endpoints: no reliance → full credit; full reliance → 1 − penalty.
+    #[test]
+    fn pull_factor_endpoints() {
+        assert!((pull_factor(0.0, 0.6) - 1.0).abs() < 1e-6, "zero pull share → full credit");
+        assert!((pull_factor(1.0, 0.6) - 0.4).abs() < 1e-6, "full pull share → 1 − penalty");
+    }
+
+    // pull_factor is monotone decreasing: more reliance on the pull never raises
+    // the factor. Breaking input: if the factor rose with share, this would fail.
+    #[test]
+    fn pull_factor_monotone_decreasing() {
+        let shares = [0.0_f32, 0.25, 0.5, 0.75, 1.0];
+        let factors: Vec<f32> = shares.iter().map(|&s| pull_factor(s, 0.6)).collect();
+        for w in factors.windows(2) {
+            assert!(w[0] >= w[1], "factor must not rise as pull_share increases: {} < {}", w[0], w[1]);
+        }
+    }
+
+    // pull_factor is bounded in [1 − penalty, 1] including out-of-range shares.
+    #[test]
+    fn pull_factor_bounded() {
+        let penalty = 0.6_f32;
+        for share in [-0.5_f32, 0.0, 0.5, 1.0, 1.5, 2.0] {
+            let f = pull_factor(share, penalty);
+            assert!(f >= 1.0 - penalty - 1e-6, "factor below floor at share={}: {}", share, f);
+            assert!(f <= 1.0 + 1e-6, "factor above ceiling at share={}: {}", share, f);
+        }
+    }
+
+    // A pull-bought crossing scores strictly less than a foraged one. This is the
+    // headline property the penalty exists to enforce.
+    #[test]
+    fn payout_falls_with_pull_reliance() {
+        let progress = 1.0_f32;
+        let diff = 0.8_f32;
+        let base = despawn_points(progress, true, diff);
+        let foraged = base * pull_factor(0.0, PULL_PENALTY);
+        let pulled = base * pull_factor(0.8, PULL_PENALTY);
+        assert!(foraged > pulled, "foraged crossing must outscore a pull-bought one");
     }
 }

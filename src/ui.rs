@@ -201,7 +201,7 @@ const SCORE_BRIGHT: f32 = 120.0;
 /// green the higher it runs), the session `high` beside it, and a difficulty bar —
 /// the gate that scales every point. A high score takes both: crank difficulty
 /// (a scarcer world) *and* bring the herd far across before it dies.
-fn render_score_gauge(ui: &mut egui::Ui, score: &Score) {
+fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
     use egui::{Color32, RichText};
 
     let lit = (score.current / SCORE_BRIGHT).clamp(0.0, 1.0);
@@ -222,6 +222,40 @@ fn render_score_gauge(ui: &mut egui::Ui, score: &Score) {
             ui.label(RichText::new(format!("high  {:.0}", score.high)).size(15.0));
         });
     });
+
+    // Herd vitals: pop, energy, pull — each with a trend arrow so tweaks have feedback.
+    const LOOKBACK: usize = 300;
+    const EPS_POP: f32 = 1.0;
+    const EPS_ENERGY: f32 = 0.005;
+    const EPS_PULL: f32 = 0.01;
+    let pop = history.population.back().copied().unwrap_or(0.0);
+    let pop_arr = trend_arrow(trend(&history.population, LOOKBACK, EPS_POP));
+    let energy = history.avg_energy.back().copied().unwrap_or(0.0);
+    let energy_arr = trend_arrow(trend(&history.avg_energy, LOOKBACK, EPS_ENERGY));
+    let pull_pct = score.pull_share * 100.0;
+    let pull_series: std::collections::VecDeque<f32> = {
+        let slots = &history.migration_share;
+        if slots.is_empty() {
+            std::collections::VecDeque::new()
+        } else {
+            let len = slots[0].len();
+            (0..len)
+                .map(|i| {
+                    let sum: f32 =
+                        slots.iter().map(|s| s.get(i).copied().unwrap_or(0.0)).sum();
+                    sum / slots.len() as f32
+                })
+                .collect()
+        }
+    };
+    let pull_arr = trend_arrow(trend(&pull_series, LOOKBACK, EPS_PULL));
+    ui.label(
+        RichText::new(format!(
+            "pop {pop:.0} {pop_arr}   energy {energy:.2} {energy_arr}   pull {pull_pct:.0}% {pull_arr}"
+        ))
+        .size(11.0)
+        .weak(),
+    );
 
     ui.separator();
     render_difficulty(ui, score.difficulty);
@@ -398,7 +432,7 @@ fn graphs_bar(
         egui::Window::new(Graph::SurvivalScore.label())
             .default_size([340.0, 110.0])
             .collapsible(false)
-            .show(ctx, |ui| render_score_gauge(ui, &score));
+            .show(ctx, |ui| render_score_gauge(ui, &score, &history));
     }
 
     // Time-series graphs: live in their own floating windows.
@@ -557,6 +591,7 @@ fn control_panel(
     herds: Res<Herds>,
     history: Res<History>,
     drive_samples: Res<DriveSamples>,
+    score: Res<Score>,
     last_decisions: Query<&LastDecision>,
 ) -> Result {
     egui::TopBottomPanel::bottom("control_panel")
@@ -590,7 +625,7 @@ fn control_panel(
                     panel_flow(ui, vec![
                         Panel::new("Grass", grass_items(growth.as_mut(), fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
                         // Behaviour carries the most rows, so give it a wider column.
-                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio)))]).width(300.0),
+                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio, &drive_samples, &score)))]).width(300.0),
                         Panel::new("Abundance (measure)", abundance_items(ab_params.as_mut())),
                         Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                     ])
@@ -1078,13 +1113,28 @@ fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
     ]
 }
 
-fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32) {
+fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32, drive_samples: &DriveSamples, score: &Score) {
+    render_drive_mix_bar(ui, drive_mix(drive_samples));
+    ui.separator();
     ui.label("drive weights");
     slider(ui, &mut p.separation, 0.0..=3.0, "separation");
     slider(ui, &mut p.cohesion, 0.0..=3.0, "cohesion");
     slider(ui, &mut p.grass, 0.0..=3.0, "grass-seeking");
     slider(ui, &mut p.social, 0.0..=3.0, "social foraging");
     slider(ui, cross_ratio, 0.0..=2.0, "migration ÷ crossing cost");
+    {
+        let pct = score.pull_share * 100.0;
+        let color = difficulty_color(score.pull_share);
+        ui.label(
+            egui::RichText::new(format!("magic pull  {pct:.0}%"))
+                .size(11.0)
+                .color(color),
+        )
+        .on_hover_text(
+            "Relying on the migration pull caps your score — the pull penalty discounts \
+             crossings bought this way. A high reading means you're leaving points on the table.",
+        );
+    }
     slider(ui, &mut p.quiet, 0.05..=3.0, "migration crossover (quiet)");
     slider(ui, &mut p.cross, 0.0..=4.0, "water crossing (× hunger)");
     ui.separator();
@@ -1137,6 +1187,114 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     slider(ui, &mut p.intake_smoothing, 0.001..=0.3, "intake smoothing (α)");
     slider(ui, &mut p.giving_up, 0.0..=0.99, "giving-up ratio (× habitat mean)");
     slider(ui, &mut p.leave_boost, 0.0..=4.0, "migration boost when leaving");
+}
+
+/// Herd-mean normalised drive mix, in contributions() order: [sep, coh, grass, social,
+/// migration]. Averages each component's magnitude over slots with count > 0, then
+/// normalises to sum 1. All-zero (idle herd) returns [0; 5].
+pub fn drive_mix(samples: &DriveSamples) -> [f32; 5] {
+    let mut totals = [0.0f32; 5];
+    let mut active = 0u32;
+    for ds in &samples.per_slot {
+        if ds.count == 0 {
+            continue;
+        }
+        totals[0] += ds.sep;
+        totals[1] += ds.coh;
+        totals[2] += ds.grass;
+        totals[3] += ds.social;
+        totals[4] += ds.migration;
+        active += 1;
+    }
+    if active == 0 {
+        return [0.0; 5];
+    }
+    for t in &mut totals {
+        *t /= active as f32;
+    }
+    let sum: f32 = totals.iter().sum();
+    if sum < 1e-6 {
+        return [0.0; 5];
+    }
+    totals.map(|v| v / sum)
+}
+
+/// Direction of change for a time series.
+pub enum Trend {
+    Up,
+    Down,
+    Flat,
+}
+
+/// Direction of a series over the last `lookback` samples: compares the latest value to
+/// the one `lookback` back. Flat if the absolute change is within `eps` or history is
+/// too short.
+pub fn trend(series: &std::collections::VecDeque<f32>, lookback: usize, eps: f32) -> Trend {
+    if series.len() <= lookback {
+        return Trend::Flat;
+    }
+    let latest = *series.back().unwrap();
+    let back = series[series.len() - 1 - lookback];
+    let delta = latest - back;
+    if delta > eps {
+        Trend::Up
+    } else if delta < -eps {
+        Trend::Down
+    } else {
+        Trend::Flat
+    }
+}
+
+pub fn trend_arrow(t: Trend) -> &'static str {
+    match t {
+        Trend::Up => "^",
+        Trend::Down => "v",
+        Trend::Flat => "-",
+    }
+}
+
+/// Compact horizontal stacked bar showing the herd drive mix at the top of
+/// `behaviour_tab`. Proportional segments coloured by `DRIVE_COLORS`; hover shows
+/// percentages for all five drives.
+fn render_drive_mix_bar(ui: &mut egui::Ui, mix: [f32; 5]) {
+    let sum: f32 = mix.iter().sum();
+    ui.label(egui::RichText::new("drive mix (live)").size(11.0).weak());
+    if sum < 1e-6 {
+        ui.weak("—  idle herd");
+        return;
+    }
+    let bar_w = ui.available_width().min(280.0);
+    let bar_h = 14.0;
+    let (resp, painter) =
+        ui.allocate_painter(egui::vec2(bar_w, bar_h), egui::Sense::hover());
+    let r = resp.rect;
+    let mut x = r.left();
+    for i in 0..5 {
+        let w = mix[i] * bar_w;
+        let seg = egui::Rect::from_min_max(
+            egui::pos2(x, r.top()),
+            egui::pos2((x + w).min(r.right()), r.bottom()),
+        );
+        painter.rect_filled(seg, 0.0, DRIVE_COLORS[i]);
+        x += w;
+    }
+    let hover = (0..5)
+        .map(|i| format!("{}: {:.0}%", DRIVE_LABELS[i], mix[i] * 100.0))
+        .collect::<Vec<_>>()
+        .join("  ");
+    resp.on_hover_text(hover);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        for i in 0..5 {
+            if mix[i] > 0.04 {
+                ui.label(
+                    egui::RichText::new(format!("{:.0}%", mix[i] * 100.0))
+                        .size(10.0)
+                        .color(DRIVE_COLORS[i]),
+                );
+            }
+        }
+    });
 }
 
 fn view_tab(ui: &mut egui::Ui, cam: &mut CameraSettings) {
@@ -1237,5 +1395,111 @@ mod tests {
     #[test]
     fn collapsed_area_yields_none() {
         assert!(world_viewport(Vec2::new(0.0, 960.0), Vec2::ZERO, 1.0, UVec2::new(1280, 960)).is_none());
+    }
+
+    // ── drive_mix ─────────────────────────────────────────────────────────────
+
+    fn make_samples(slot_data: &[(f32, f32, f32, f32, f32, u32)]) -> crate::elk::DriveSamples {
+        use crate::elk::DriveSample;
+        crate::elk::DriveSamples {
+            per_slot: slot_data
+                .iter()
+                .map(|&(sep, coh, grass, social, migration, count)| DriveSample {
+                    sep,
+                    coh,
+                    grass,
+                    social,
+                    migration,
+                    count,
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn drive_mix_all_zero_returns_zero_array() {
+        let s = make_samples(&[(0.0, 0.0, 0.0, 0.0, 0.0, 0)]);
+        assert_eq!(drive_mix(&s), [0.0; 5]);
+    }
+
+    #[test]
+    fn drive_mix_idle_herd_empty_slots_returns_zero() {
+        let s = make_samples(&[
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
+        ]);
+        assert_eq!(drive_mix(&s), [0.0; 5]);
+    }
+
+    #[test]
+    fn drive_mix_sums_to_one_when_nonzero() {
+        let s = make_samples(&[(1.0, 2.0, 3.0, 0.5, 1.5, 10)]);
+        let mix = drive_mix(&s);
+        let sum: f32 = mix.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-5, "sum was {sum}");
+    }
+
+    #[test]
+    fn drive_mix_grass_only_concentrates_at_index_2() {
+        let s = make_samples(&[(0.0, 0.0, 5.0, 0.0, 0.0, 10)]);
+        let mix = drive_mix(&s);
+        assert!((mix[2] - 1.0).abs() < 1e-5, "grass index should be 1.0, got {}", mix[2]);
+        assert!(mix[0] < 1e-6);
+        assert!(mix[1] < 1e-6);
+        assert!(mix[3] < 1e-6);
+        assert!(mix[4] < 1e-6);
+    }
+
+    #[test]
+    fn drive_mix_averages_across_active_slots() {
+        // Two slots: first has grass=1, second has migration=1; average → 0.5 each.
+        let s = make_samples(&[(0.0, 0.0, 1.0, 0.0, 0.0, 5), (0.0, 0.0, 0.0, 0.0, 1.0, 5)]);
+        let mix = drive_mix(&s);
+        assert!((mix[2] - 0.5).abs() < 1e-5, "grass should be 0.5, got {}", mix[2]);
+        assert!((mix[4] - 0.5).abs() < 1e-5, "migration should be 0.5, got {}", mix[4]);
+    }
+
+    #[test]
+    fn drive_mix_ignores_empty_slots() {
+        // One active slot, one empty (count=0) — result should be identical to one slot.
+        let s_one = make_samples(&[(1.0, 0.0, 0.0, 0.0, 0.0, 3)]);
+        let s_two = make_samples(&[(1.0, 0.0, 0.0, 0.0, 0.0, 3), (0.0, 0.0, 5.0, 0.0, 0.0, 0)]);
+        assert_eq!(drive_mix(&s_one), drive_mix(&s_two));
+    }
+
+    // ── trend ─────────────────────────────────────────────────────────────────
+
+    fn deque(values: &[f32]) -> std::collections::VecDeque<f32> {
+        values.iter().copied().collect()
+    }
+
+    #[test]
+    fn trend_up_when_latest_exceeds_lookback() {
+        let s = deque(&[1.0, 1.0, 1.0, 2.0]);
+        assert!(matches!(trend(&s, 2, 0.05), Trend::Up));
+    }
+
+    #[test]
+    fn trend_down_when_latest_below_lookback() {
+        let s = deque(&[2.0, 2.0, 2.0, 1.0]);
+        assert!(matches!(trend(&s, 2, 0.05), Trend::Down));
+    }
+
+    #[test]
+    fn trend_flat_within_eps() {
+        let s = deque(&[1.0, 1.01, 0.99, 1.02]);
+        assert!(matches!(trend(&s, 2, 0.1), Trend::Flat));
+    }
+
+    #[test]
+    fn trend_flat_when_series_too_short() {
+        let s = deque(&[1.0, 2.0]);
+        assert!(matches!(trend(&s, 5, 0.01), Trend::Flat));
+    }
+
+    #[test]
+    fn trend_flat_on_empty_series() {
+        let s = deque(&[]);
+        assert!(matches!(trend(&s, 3, 0.01), Trend::Flat));
     }
 }
