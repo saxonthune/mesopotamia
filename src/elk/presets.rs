@@ -24,22 +24,18 @@ use crate::grid::GreenWave;
 use super::components::ElkParams;
 use super::ratios::RatioControls;
 
-/// The forage-sticky movement the working presets share: the herd follows the
-/// green-up front (`freshness_weight`), leapfrogs forward off depleted ground
-/// (`sightline_*`), forms a rolling column (`cohesion_lead`), and moves as a sticky
-/// glob (`momentum`/`temperature`). Survival on the long march to the river comes
-/// from the slow-chew + low-drain standard physiology baked into `ElkParams::default`
-/// — these overrides are the *movement* the player tunes on top of it. Economy
-/// (bite_ratio/regrow) and the green wave are set per preset.
+/// The forage-sticky perception the working presets share: the herd follows the
+/// green-up front (`freshness_weight`) and leapfrogs forward off depleted ground
+/// (`sightline_*`), reaching a little farther for its local gradient (`grass_radius`).
+/// Survival on the long march to the river comes from the slow-chew + low-drain
+/// standard physiology baked into `ElkParams::default`; these overrides are the
+/// *forage perception* tuned on top of it. The steer weights themselves live in
+/// `HerdParams`; economy (bite_ratio/regrow) and the green wave are set per preset.
 fn forage_sticky(p: &mut ElkParams) {
-    p.grass = 2.0;
     p.grass_radius = 8.0;
     p.freshness_weight = 4.0;
     p.sightline_range = 24.0;
     p.sightline_weight = 3.0;
-    p.cohesion_lead = 1.0;
-    p.momentum = 0.5;
-    p.temperature = 0.4;
 }
 
 /// One named regime: the full set of tunables that define it.
@@ -73,7 +69,6 @@ fn can_cross_params(p: &mut ElkParams) {
 /// pick, longer sight) for a herd that has to hold together under scarcity.
 fn optimized_params(p: &mut ElkParams) {
     forage_sticky(p);
-    p.temperature = 0.35;
     p.sightline_range = 28.0;
 }
 
@@ -153,7 +148,7 @@ mod tests {
         let mut ratios = RatioControls { bite_ratio: 0.0, regrow_ratio: 0.0, cross_ratio: 0.0 };
         let mut wave = GreenWave { strength: -1.0, speed: -1.0, wavelength: -1.0 };
         let mut params = ElkParams::default();
-        params.grass = 999.0; // dirty it to prove apply() resets
+        params.grass_radius = 999.0; // dirty it to prove apply() resets
 
         apply(&PRESETS[0], &mut ratios, &mut wave, &mut params);
 
@@ -165,7 +160,7 @@ mod tests {
         assert_eq!(wave.strength, wd.strength);
         assert_eq!(wave.speed, wd.speed);
         assert_eq!(wave.wavelength, wd.wavelength);
-        assert_eq!(params.grass, ElkParams::default().grass, "apply() must reset ElkParams");
+        assert_eq!(params.grass_radius, ElkParams::default().grass_radius, "apply() must reset ElkParams");
     }
 
     // Applying a non-default preset writes its bundle onto the resources.
@@ -181,7 +176,7 @@ mod tests {
         assert_eq!(ratios.cross_ratio, 0.0, "can-cross fords on natural drives, not the pull");
         assert_eq!(ratios.regrow_ratio, 0.25);
         assert_eq!(wave.strength, 0.4);
-        assert_eq!(params.grass, 2.0, "can-cross raises the grass weight");
+        assert_eq!(params.grass_radius, 8.0, "can-cross widens forage perception");
         assert_eq!(params.freshness_weight, 4.0, "can-cross follows the green-up front");
         assert_eq!(params.sightline_weight, 3.0, "can-cross leapfrogs forward");
     }

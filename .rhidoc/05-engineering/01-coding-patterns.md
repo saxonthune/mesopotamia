@@ -1,6 +1,6 @@
 ---
 title: Coding Patterns
-summary: How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants
+summary: How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, macro thresholds derived from their determinants, and comments that carry only what the code cannot show
 tags: [patterns, code, architecture, modules, testing]
 deps: [doc03.01.02, doc03.01.04, doc04.01]
 ---
@@ -34,3 +34,11 @@ A value the simulation balances around is a field on a params resource with a sl
 ## Macro thresholds derive from their determinants
 
 A behavioural invariant is pinned by a threshold, and the threshold is expressed relative to whatever determines it — never mirrored from the code or calibrated to one world. A test reads the source-of-truth constant (`EDGE_COL`, `TARGET_POPULATION`) rather than copying its value; a traversal budget scales with the distance to cover (`GRID_WIDTH`); an ecological floor scales with the world's grass ceiling (`Σ capacity`), not a fixed crop count. A magic number in a macro test is a hidden coupling to the one configuration it was written under: change the grid size or a field's layout and the test breaks for the wrong reason. Thresholds start loose and tighten only when a real regression motivates it (doc04.01).
+
+## Comments carry what the code cannot
+
+A comment exists only to hold what the code itself cannot show. The code is the complete account of *what happens*, and a reader — person or agent — recovers that account from the code directly; a comment that restates it adds nothing and is removed.
+
+The first move, when a fact feels worth a comment, is to put the fact in the code instead: a bare `bool` becomes a named enum, a magic number becomes a named constant, an assumed invariant becomes a type or an assertion. A fact encoded this way cannot fall out of step with the code, and needs no comment.
+
+What is left for a comment is only what the code genuinely cannot hold: why this approach rather than an obvious alternative, a non-obvious invariant, a deliberate surprise (*looks wrong, is right because…*), or a dependence on something elsewhere. The comment gives the *why*, never the *what*. Because such a comment states something the code cannot check, it can quietly go stale; it stays short and sits next to whatever makes it checkable — a test, an assertion — where one exists.

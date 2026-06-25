@@ -4,7 +4,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
-use crate::elk::{Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herding, Herds, RatioControls, Score, Spawner};
+use crate::elk::{Cohort, Elk, ElkParams, ElkSimPlugin, EnergyFlows, HerdParams, Herding, Herds, RatioControls, Score, Spawner};
 use crate::droppings::DroppingsPlugin;
 use crate::grid::{GreenWave, Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
@@ -12,6 +12,12 @@ use crate::worldgen::{WorldSeed, WorldgenPlugin};
 
 const HZ: f64 = 10.0;
 const PERIOD: Duration = Duration::from_millis(100);
+
+/// Fixed seeds for the reproducible worldgen diagnostic — one for the terrain,
+/// one (decorrelated) for the spawn sequence — so the 800-tick gate replays a
+/// single pinned run instead of fresh entropy each time.
+const WORLDGEN_PROBE_SEED: u64 = 0x_E1C_0DE_5EED;
+const SPAWN_PROBE_SEED: u64 = 0x_5A1A_D_5EED;
 
 /// Build a headless app without a renderer or window.
 pub fn make_app() -> App {
@@ -185,12 +191,11 @@ pub fn evaluate_bundle_seeded(
     }
 }
 
-/// doc02.02 counterfactual: run with `migration = 0` and return the farthest
-/// column the herd reached — natural drives alone carry the journey.
+/// doc02.02 counterfactual: the farthest column the herd reaches on the natural
+/// forage drives. The migration *pull* is retired — the herding model only fords on
+/// forage — so this is the journey by construction, with no compass to disable.
 pub fn journey_natural(params: ElkParams, ticks: u32) -> usize {
-    let mut p = params;
-    p.migration = 0.0;
-    run_metrics(p, ticks).max_col
+    run_metrics(params, ticks).max_col
 }
 
 // ── Diagnostic tracing (herd-shape time series) ───────────────────────────────
@@ -222,8 +227,8 @@ pub struct RunTrace {
 
 /// Collect `(cell, energy, traveling)` for every elk in the world.
 fn elk_snapshot(world: &mut World) -> Vec<(usize, f32, bool)> {
-    let mut q = world.query::<&Elk>();
-    q.iter(world).map(|e| (e.cell, e.energy, e.traveling)).collect()
+    let mut q = world.query::<(&Elk, &Herding)>();
+    q.iter(world).map(|(e, h)| (e.cell, e.energy, h.is_traveling())).collect()
 }
 
 /// Run a controlled headless scenario — a hand-authored `grid`, a fixed set of
@@ -299,6 +304,11 @@ pub fn diagnose(
 pub fn diagnose_worldgen(params: ElkParams, ticks: u32) -> RunTrace {
     let mut app = make_app();
     app.insert_resource(params);
+    // Pin both seeds so the diagnostic replays identically: WorldSeed governs the
+    // terrain (make_app's default is fresh entropy), and the spawner seed governs
+    // each wave's size and position. Without this the gate measures noise.
+    app.insert_resource(WorldSeed(WORLDGEN_PROBE_SEED));
+    app.world_mut().resource_mut::<Spawner>().reseed(SPAWN_PROBE_SEED);
     let width = app.world().get_resource::<Grid>().unwrap().width();
 
     let mut samples = Vec::with_capacity(ticks as usize);
@@ -349,6 +359,163 @@ pub fn open_plain(width: usize, height: usize, grass_frac: f32) -> Grid {
         grid.set_grass(i, grass_frac * grid.capacity(i));
     }
     grid
+}
+
+/// A uniform open plain split by one vertical river at `river_col`, with a single
+/// ford at `ford_row`. The dry-land analogue of `open_plain` plus a crossable
+/// barrier — the smallest fixed feature that exercises the Travel→Cross handoff
+/// without worldgen noise. Grass fills both banks to `grass_frac` of capacity; the
+/// river column carries deep water (no grass) save the ford cell, which stays dry
+/// land so a herd has exactly one place to cross.
+pub fn river_plain(
+    width: usize,
+    height: usize,
+    grass_frac: f32,
+    river_col: usize,
+    ford_row: usize,
+) -> Grid {
+    let mut grid = Grid::new(width, height);
+    for i in 0..width * height {
+        grid.set_grass(i, grass_frac * grid.capacity(i));
+    }
+    for row in 0..height {
+        let cell = row * width + river_col;
+        if row == ford_row {
+            grid.set_ford(cell, true);
+            continue;
+        }
+        grid.set_water(cell, 1.0);
+        grid.set_water_prox(cell, 0.0);
+        grid.set_grass(cell, 0.0);
+    }
+    grid
+}
+
+/// An ASCII snapshot of the grid with elk overlaid — the per-tick spatial readout
+/// the aggregate traces can't give. Each cell is one character: an elk's state
+/// where one stands (`g`raze, `T`ravel, `X`-cross), a digit/`@` where several
+/// stack, else terrain (`~` water, `+` ford, ` .:#` for rising forage). This is
+/// what makes a stuck pair or a diffusing blob visible at a glance.
+pub fn ascii_frame(world: &mut World) -> String {
+    use crate::elk::HerdState;
+    use std::collections::HashMap;
+
+    let mut occ: HashMap<usize, Vec<HerdState>> = HashMap::new();
+    let mut q = world.query::<(&Elk, &Herding)>();
+    for (e, h) in q.iter(world) {
+        occ.entry(e.cell).or_default().push(h.state);
+    }
+
+    let grid = world.get_resource::<Grid>().unwrap();
+    let (w, h) = (grid.width(), grid.height());
+    let mut out = String::with_capacity((w + 1) * h);
+    for row in 0..h {
+        for col in 0..w {
+            let cell = row * w + col;
+            let ch = match occ.get(&cell) {
+                Some(states) if states.len() == 1 => match states[0] {
+                    HerdState::Graze => 'g',
+                    HerdState::Travel => 'T',
+                    HerdState::Cross => 'X',
+                },
+                Some(states) if states.len() <= 9 => {
+                    char::from_digit(states.len() as u32, 10).unwrap()
+                }
+                Some(_) => '@',
+                None if grid.is_ford(cell) => '+',
+                None if grid.water(cell) > 0.01 => '~',
+                None => {
+                    let f = grid.food_frac(cell);
+                    if f < 0.1 { ' ' } else if f < 0.4 { '.' } else if f < 0.7 { ':' } else { '#' }
+                }
+            };
+            out.push(ch);
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// The happy-path milestones of one isolated herd run: did the mass advance east,
+/// did it reach the far edge, and how many elk left the map versus died versus
+/// linger. `edge_col` is the runtime far-edge band `cull` despawns at, so
+/// `reached_edge` and `all_departed` measure the actual end-of-map exit, not a
+/// proxy. This is the readout that says "the herd crossed and walked off the map"
+/// without watching frames.
+#[derive(Clone, Copy, Debug)]
+pub struct MigrationReport {
+    pub start_pop: usize,
+    pub start_col: f32,
+    pub end_col: f32,
+    pub max_col: usize,
+    pub edge_col: usize,
+    pub alive: usize,
+    pub deaths: u32,
+    pub departures: u32,
+}
+
+impl MigrationReport {
+    /// The herd's leading edge touched the despawn band at least once.
+    pub fn reached_edge(&self) -> bool {
+        self.max_col >= self.edge_col
+    }
+    /// Every elk that started either walked off the far edge — none died, none stuck.
+    pub fn all_departed(&self) -> bool {
+        self.departures as usize == self.start_pop && self.deaths == 0 && self.alive == 0
+    }
+}
+
+/// Run one isolated herd over a hand-built map and report the happy-path milestones.
+/// Registers the probe elk as a single cohort so `cull`/`metabolize` tally
+/// departures and deaths (probe elk are otherwise cohort-less), then steps `ticks`
+/// times tracking the farthest column reached. Use `ascii_frame` in a test loop to
+/// *watch* a run; use this to *assert* one.
+pub fn run_migration(
+    grid: Grid,
+    starts: &[(usize, u8)],
+    params: ElkParams,
+    herd: HerdParams,
+    start_energy: f32,
+    ticks: u32,
+) -> MigrationReport {
+    let edge_col = grid.width().saturating_sub(2);
+    let start_pop = starts.len();
+    let mut app = make_probe_app(grid, starts);
+    app.insert_resource(params);
+    app.insert_resource(herd);
+    {
+        let world = app.world_mut();
+        world
+            .get_resource_mut::<Herds>()
+            .unwrap()
+            .cohorts
+            .insert(0, Cohort { spawned: start_pop as u32, ..Default::default() });
+        let mut q = world.query::<&mut Elk>();
+        for mut elk in q.iter_mut(world) {
+            elk.energy = start_energy;
+        }
+    }
+
+    let start_col = centroid_col(app.world_mut());
+    let mut max_col = 0usize;
+    for _ in 0..ticks {
+        app.update();
+        max_col = max_col.max(max_col_reached(app.world_mut()));
+    }
+    let end_col = centroid_col(app.world_mut());
+
+    let world = app.world_mut();
+    let c = world.get_resource::<Herds>().unwrap().cohorts.get(&0).cloned().unwrap_or_default();
+    MigrationReport {
+        start_pop,
+        start_col,
+        end_col,
+        max_col,
+        edge_col,
+        alive: c.alive as usize,
+        deaths: c.deaths,
+        departures: c.departures,
+    }
 }
 
 // ── Probe-world infrastructure (doc02.03, rung 6) ─────────────────────────────
@@ -409,7 +576,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
         // Override the GridPlugin's default with the probe grid.
         .insert_resource(grid)
         // Freeze the spawner so spawn_waves never fires (cooldown stays maxed).
-        .insert_resource(Spawner { cooldown: u32::MAX / 2, next_pack: 0, elapsed: 0, anchor: None });
+        .insert_resource(Spawner { cooldown: u32::MAX / 2, ..Default::default() });
 
     // Request transition to Running. SimStatePlugin starts in Sim::Generating;
     // run one warm-up update so StateTransition processes the transition before
@@ -434,8 +601,6 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
                 digesting: Vec::new(),
                 grazing: false,
                 at_edge: 0,
-                intake_rate: 0.0,
-                traveling: false,
             },
             Herding::default(),
         ));

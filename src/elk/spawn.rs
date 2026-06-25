@@ -2,9 +2,9 @@ use bevy::prelude::*;
 use rand::Rng;
 
 use crate::events::{Event, EventKind, EventLog};
-use crate::grid::{GRID_HEIGHT, GRID_WIDTH};
+use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH};
 
-use super::components::{Cohort, Elk, Herds, Packs, Spawner, MAX_COHORTS};
+use super::components::{Cohort, Elk, Herds, Spawner, MAX_COHORTS};
 use super::herding::Herding;
 use super::ledger::EnergyFlows;
 use super::color::elk_color;
@@ -108,8 +108,6 @@ fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
                 digesting: Vec::new(),
                 grazing: false,
                 at_edge: 0,
-                intake_rate: 0.0,
-                traveling: false,
             },
             Herding::default(),
         ));
@@ -138,7 +136,6 @@ pub(super) fn tally_herds(mut herds: ResMut<Herds>, elk: Query<&Elk>) {
 pub(super) fn spawn_waves(
     mut commands: Commands,
     mut spawner: ResMut<Spawner>,
-    mut packs: ResMut<Packs>,
     mut herds: ResMut<Herds>,
     elk: Query<(), With<Elk>>,
     mut flows: ResMut<EnergyFlows>,
@@ -159,27 +156,25 @@ pub(super) fn spawn_waves(
         return;
     }
 
-    let mut rng = rand::rng();
+    // Deref once so the RNG field and the bookkeeping fields are disjoint borrows
+    // (field access through `ResMut`'s Deref would borrow the whole resource).
+    let spawner = &mut *spawner;
     let slot = spawner.next_pack;
-    let code = rng.random_range(0..0x0100_0000u32); // 6 hex digits
-    let size = herd_size(base, &mut rng, SIZE_JITTER);
+    let code = spawner.rng.random_range(0..0x0100_0000u32); // 6 hex digits
+    let size = herd_size(base, &mut spawner.rng, SIZE_JITTER);
 
     // The first wave starts mid-height; later waves random-walk from the last
     // spot, with an occasional jump to a fresh spot so the trail doesn't ossify.
-    let anchor = match spawner.anchor {
-        None => seed_anchor(&mut rng, SPAWN_ZONE_COLS),
-        Some(a) if rng.random_range(0.0..1.0) >= JUMP_PROB => {
-            step_anchor(a, &mut rng, ANCHOR_WALK_MIN, ANCHOR_WALK_MAX, SPAWN_ZONE_COLS)
+    let prev_anchor = spawner.anchor;
+    let anchor = match prev_anchor {
+        None => seed_anchor(&mut spawner.rng, SPAWN_ZONE_COLS),
+        Some(a) if spawner.rng.random_range(0.0..1.0) >= JUMP_PROB => {
+            step_anchor(a, &mut spawner.rng, ANCHOR_WALK_MIN, ANCHOR_WALK_MAX, SPAWN_ZONE_COLS)
         }
-        Some(_) => random_anchor(&mut rng, SPAWN_ZONE_COLS),
+        Some(_) => random_anchor(&mut spawner.rng, SPAWN_ZONE_COLS),
     };
     spawner.anchor = Some(anchor);
-    let cells = scatter(anchor, size, &mut rng, HERD_SPREAD);
-
-    // A reused slot starts a fresh cohort: reset its migration pressure and
-    // reseed growth. The old cohort's record lives on in `herds`.
-    packs.migration[slot as usize] = 0.0;
-    packs.growth[slot as usize] = rng.random_range(0.5..1.5);
+    let cells = scatter(anchor, size, &mut spawner.rng, HERD_SPREAD);
 
     herds.cohorts.insert(code, Cohort { slot, spawned: size as u32, ..default() });
     herds.order.push(code);
@@ -212,28 +207,32 @@ pub(super) fn teardown(
     elk: Query<Entity, With<Elk>>,
     mut spawner: ResMut<Spawner>,
     mut herds: ResMut<Herds>,
-    mut packs: ResMut<Packs>,
 ) {
     for e in &elk {
         commands.entity(e).despawn();
     }
     *spawner = Spawner::default();
     *herds = Herds::default();
-    *packs = Packs::new();
 }
 
 /// Despawns any elk that has lingered at the far edge long enough to count as
 /// having left the map. Elk despawn individually, so a partial pack empties out.
 pub(super) fn cull(
     mut commands: Commands,
+    grid: Res<Grid>,
     mut herds: ResMut<Herds>,
     mut elk: Query<(Entity, &mut Elk)>,
     mut flows: ResMut<EnergyFlows>,
     mut event_log: ResMut<EventLog>,
     spawner: Res<Spawner>,
 ) {
+    // The far edge is the two rightmost columns of the *runtime* grid, not the
+    // compile-time GRID_WIDTH — so despawn-at-edge works on any map size (the
+    // small lab maps as well as the full world).
+    let width = grid.width();
+    let edge_col = width.saturating_sub(2);
     for (entity, mut elk) in &mut elk {
-        if elk.cell % GRID_WIDTH >= EDGE_COL {
+        if elk.cell % width >= edge_col {
             elk.at_edge += 1;
             if elk.at_edge >= EDGE_TICKS {
                 if let Some(c) = herds.cohorts.get_mut(&elk.code) {

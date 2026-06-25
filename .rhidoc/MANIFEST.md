@@ -114,7 +114,7 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 |-----|------|---------|------|------|------|-------------|
 
 | doc05.00 | `00-index.md` | How the code is shaped and kept maintainable — module boundaries, pure tested functions, feature plugins, and tunables as params | code, patterns, maintenance | — | — | — |
-| doc05.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, and macro thresholds derived from their determinants | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc04.01 | doc02.01, doc04.01 | — |
+| doc05.01 | `01-coding-patterns.md` | How code is shaped in this project — small modules, pure metrics, feature plugins, the shared field as integration seam, tunables as params, macro thresholds derived from their determinants, and comments that carry only what the code cannot show | patterns, code, architecture, modules, testing | doc03.01.02, doc03.01.04, doc04.01 | doc02.01, doc04.01 | — |
 
 ## Tag Index
 

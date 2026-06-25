@@ -29,6 +29,25 @@ use super::movement::{cross_desire, forage_across, forage_sightline, grass_gradi
 /// A water level at or above this makes a cell count as water for crossing.
 const WATER_EPS: f32 = 0.01;
 
+/// Graze-cohesion dead radius (cells): inside this distance of the herd centroid an
+/// elk feels no restoring pull, so a well-placed grazer sits still. Separation owns
+/// the range below it (anti-stack), cohesion the range above (anti-diffuse); the gap
+/// between is the loose-clump the herd settles into.
+const GRAZE_COH_DEAD: f32 = 0.8;
+
+/// Graze-cohesion slow radius (cells): the restoring pull is at full strength beyond
+/// this and ramps to zero at the dead radius. Kept small (a few cells) so cohesion is
+/// firm — a large value makes the pull too gradual near the centre and the herd
+/// settles into a loose, hollow ring instead of a tight clump.
+const GRAZE_COH_SLOW: f32 = 2.5;
+
+/// Golden angle (radians). Stacked elk sit at zero distance, where `separation`'s
+/// inverse-square term skips them (the `d² > 0` guard) — so they could never split.
+/// Each gets a distinct escape direction `i · GOLDEN_ANGLE`; the golden angle spreads
+/// successive indices as far apart as possible, so coincident elk fan out rather than
+/// all picking the same step and re-stacking.
+const GOLDEN_ANGLE: f32 = 2.399_963_2;
+
 /// One elk's committed movement state: which behaviour it runs and the goal that
 /// behaviour steers toward. Overwritten in place each tick (never inserted or
 /// removed) so the archetype never churns — same discipline as `LastDecision`.
@@ -44,6 +63,23 @@ pub struct Herding {
 impl Default for Herding {
     fn default() -> Self {
         Herding { state: HerdState::Graze, goal: Goal::None, dwell: 0 }
+    }
+}
+
+impl Herding {
+    /// Whether the elk is on the move rather than holding its patch — true in any
+    /// state but `Graze`. The single source of truth other systems read instead of
+    /// a mirrored flag, so movement state can never drift out of sync.
+    pub fn is_traveling(&self) -> bool {
+        self.state != HerdState::Graze
+    }
+
+    /// Whether the elk may feed this tick. Feeding is suppressed only mid-crossing
+    /// — an elk in deep water cannot graze. Metabolism depends on this contract, not
+    /// on the `HerdState` variants, so new states can set their own feeding policy
+    /// here without metabolism reaching into the enum.
+    pub fn permits_feeding(&self) -> bool {
+        self.state != HerdState::Cross
     }
 }
 
@@ -91,7 +127,17 @@ pub struct HerdParams {
     /// cell aside, never a continuous repulsion field that stalls the herd.
     pub separation: f32,
     /// Weight on cohesion — the "follow the herd" pull, amplified as confidence falls.
+    /// Kept low: too strong and it reels a leading elk back to the lagging centroid, so
+    /// the herd can never stretch into a travelling column (and, because the herd pulses
+    /// graze↔travel constantly, a firm pull also re-clumps and stalls it each pulse).
     pub cohesion: f32,
+    /// Weight on alignment — steer toward the average heading of moving neighbours
+    /// (velocity matching, Millington §3.3.6). This is the third flocking rule: without
+    /// it cohesion alone collapses the herd to a blob, while alignment is what lets the
+    /// group translate *together* as a rolling column. Kept below cohesion (the book's
+    /// separation > cohesion > alignment ordering). Scaled by neighbour coherence, so a
+    /// scattered herd feels little pull and a coherent one locks into a column.
+    pub alignment: f32,
     pub sep_radius: f32,
     pub coh_radius: f32,
     /// Forage-signal magnitude at which an elk fully trusts its own goal (confidence 0.5).
@@ -118,7 +164,8 @@ impl Default for HerdParams {
             slow_radius: 4.0,
             arrive_radius: 0.6,
             separation: 0.5,
-            cohesion: 0.5,
+            cohesion: 0.2,
+            alignment: 0.3,
             sep_radius: 1.5,
             coh_radius: 8.0,
             confidence_ref: 0.5,
@@ -161,6 +208,35 @@ pub fn separation(pos: Vec2, others: &[Vec2], radius: f32) -> Vec2 {
         }
     }
     acc
+}
+
+/// The cohesion target for an elk: the centroid of same-slot herd-mates within
+/// `coh_radius`, or — when none are in range — the single *nearest* herd-mate at any
+/// distance. The fallback is what reels a lost tail back in: gating cohesion purely on
+/// `coh_radius` leaves a straggler that has slipped past it with no neighbours, hence
+/// no restoring pull, so it diffuses away for good. Steering a detached elk toward its
+/// closest kin always gives it a heading home. Returns `None` only for a lone elk with
+/// no kin at all. `kin` are same-slot neighbour positions excluding the elk itself.
+pub fn cohesion_target(pos: Vec2, kin: &[Vec2], coh_radius: f32) -> Option<Vec2> {
+    let r2 = coh_radius * coh_radius;
+    let mut sum = Vec2::ZERO;
+    let mut n = 0.0_f32;
+    let mut nearest: Option<(f32, Vec2)> = None;
+    for &k in kin {
+        let d2 = (k - pos).length_squared();
+        if d2 <= r2 {
+            sum += k;
+            n += 1.0;
+        }
+        if nearest.is_none_or(|(bd, _)| d2 < bd) {
+            nearest = Some((d2, k));
+        }
+    }
+    if n > 0.0 {
+        Some(sum / n)
+    } else {
+        nearest.map(|(_, p)| p)
+    }
 }
 
 /// An elk's confidence in its own goal, in [0, 1]: `signal / (signal + reference)`.
@@ -282,31 +358,65 @@ pub(super) fn herd_step(
     mut elk_q: Query<(&mut Elk, &mut Herding)>,
     mut flows: ResMut<EnergyFlows>,
 ) {
-    // Phase 1: snapshot (cell centre, slot) for every elk in query order — movement is
-    // grid-locked, so the neighbour geometry is read off cell centres.
-    let snapshot: Vec<(Vec2, u8)> =
-        elk_q.iter().map(|(elk, _)| (cell_center(elk.cell, &grid), elk.slot)).collect();
+    // Phase 1: snapshot (cell centre, heading, slot) for every elk in query order —
+    // movement is grid-locked, so neighbour geometry is read off cell centres. The
+    // heading is the current step direction (only while actually moving — a settled elk
+    // contributes no heading), which alignment matches.
+    let snapshot: Vec<(Vec2, Vec2, u8)> = elk_q
+        .iter()
+        .map(|(elk, _)| {
+            let pos = cell_center(elk.cell, &grid);
+            let vel = if elk.move_rate > 0.0 {
+                pos - cell_center(elk.prev_cell, &grid)
+            } else {
+                Vec2::ZERO
+            };
+            (pos, vel, elk.slot)
+        })
+        .collect();
 
     for (i, (mut elk, mut herd)) in elk_q.iter_mut().enumerate() {
-        let (pos, slot) = snapshot[i];
+        let (pos, _vel, slot) = snapshot[i];
 
         // Neighbour drives from the snapshot: separation from all, cohesion to the
-        // same-slot centroid. Both in cell-coordinate distances.
+        // same-slot centroid (with a nearest-kin fallback for stragglers), alignment to
+        // the same-slot mean heading within range. Cell-coord units.
         let mut others = Vec::new();
-        let mut coh_sum = Vec2::ZERO;
-        let mut coh_n = 0.0_f32;
-        for (j, &(opos, oslot)) in snapshot.iter().enumerate() {
+        let mut kin = Vec::new();
+        let mut align_sum = Vec2::ZERO;
+        let mut align_n = 0.0_f32;
+        let mut coincident = 0u32;
+        for (j, &(opos, ovel, oslot)) in snapshot.iter().enumerate() {
             if j == i {
                 continue;
             }
             others.push(opos);
-            if oslot == slot && (opos - pos).length() <= hp.coh_radius {
-                coh_sum += opos;
-                coh_n += 1.0;
+            if opos == pos {
+                coincident += 1;
+            }
+            if oslot == slot {
+                kin.push(opos);
+                if (opos - pos).length() <= hp.coh_radius {
+                    align_sum += ovel.normalize_or_zero();
+                    align_n += 1.0;
+                }
             }
         }
-        let sep = separation(pos, &others, hp.sep_radius) * hp.separation;
-        let coh_dir = if coh_n > 0.0 { (coh_sum / coh_n - pos).normalize_or_zero() } else { Vec2::ZERO };
+        // Coincident elk get a deterministic escape kick (separation alone can't split
+        // a stack — see GOLDEN_ANGLE). One unit per stacked neighbour, so a deeper pile
+        // pushes out harder; scaled to clear the dead-band and actually commit a step.
+        let stack_kick = if coincident > 0 {
+            Vec2::from_angle(i as f32 * GOLDEN_ANGLE) * hp.separation * coincident as f32
+        } else {
+            Vec2::ZERO
+        };
+        let sep = separation(pos, &others, hp.sep_radius) * hp.separation + stack_kick;
+        let coh_center = cohesion_target(pos, &kin, hp.coh_radius).unwrap_or(pos);
+        let coh_dir = (coh_center - pos).normalize_or_zero();
+        // Mean neighbour heading, scaled by coherence: `align_sum/align_n` is an average of
+        // unit headings, so its length is ~1 when the herd moves as one and ~0 when
+        // scattered — a scattered herd feels no alignment pull, a coherent one locks in.
+        let align = if align_n > 0.0 { (align_sum / align_n) * hp.alignment } else { Vec2::ZERO };
 
         // Own forage signal: the local gradient plus the long-range sightline. Its
         // magnitude is the confidence that decides leading vs following.
@@ -320,6 +430,20 @@ pub(super) fn herd_step(
 
         herd.dwell = herd.dwell.saturating_add(1);
 
+        // Crossing is evaluated independent of move state and heading: a ford is worth
+        // taking whenever adjacent water hides far-bank forage that out-scores staying,
+        // even for a content grazer. The old check lived inside Travel and only fired
+        // when the blended heading happened to point into the water — so a herd that
+        // reached a lush near bank settled into Graze and never even considered the
+        // crossing. This commits to the ford on the forage merits alone.
+        if herd.state != HerdState::Cross {
+            if let Some(far) = best_crossing(here, &grid, &ep) {
+                herd.state = HerdState::Cross;
+                herd.goal = Goal::FarBank(far);
+                herd.dwell = 0;
+            }
+        }
+
         // Run the state machine: produce a desired heading and (maybe) transition.
         // The desired vector's *direction* picks the grid step and its *magnitude*
         // gates the dead-band; the state shapes movement only — feeding is decoupled
@@ -327,10 +451,15 @@ pub(super) fn herd_step(
         let desired;
         match herd.state {
             HerdState::Graze => {
-                // Hold and feed: separation relieves crowding, a faint cohesion drift
-                // rides under the dead-band — so a settled, well-spaced grazer takes no
-                // step, and only a crowded one nudges a cell aside.
-                desired = sep + coh_dir * hp.graze_speed;
+                // Hold and feed. Separation owns the short range (a minimum spacing,
+                // anti-stack); cohesion owns the long range — an Arrive toward the herd
+                // centroid with a dead zone (`GRAZE_COH_DEAD`), so an elk drifted off the
+                // group steps back while a well-placed grazer sits still. The earlier
+                // `coh_dir * graze_speed` was mute: its magnitude sat below the dead-band,
+                // so Graze had repulsion but no restoring pull and the herd froze into a
+                // spaced crystal.
+                let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
+                desired = sep + restore + align;
                 let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
                 if should_leave_patch(here_frac, best_frac, hp.leave_frac, hp.travel_margin) {
                     let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
@@ -350,16 +479,7 @@ pub(super) fn herd_step(
                 let arrive_v = arrive(pos, target, hp.slow_radius, hp.arrive_radius, hp.max_speed);
                 // Blend: trust own arrive by confidence, fall back to the herd as it drops.
                 let follow = coh_dir * (hp.max_speed * hp.cohesion * (1.0 - conf));
-                desired = arrive_v * conf + follow + sep;
-
-                // Crossing check: if the cell one step ahead is water, weigh a ford.
-                if let Some((far, cross)) = crossing_ahead(pos, desired, here, &grid, &ep) {
-                    if cross {
-                        herd.state = HerdState::Cross;
-                        herd.goal = Goal::FarBank(far);
-                        herd.dwell = 0;
-                    }
-                }
+                desired = arrive_v * conf + follow + align + sep;
 
                 // Settle on arrival, on a stale goal, or when nothing better remains.
                 let arrived = (target - pos).length() < hp.arrive_radius;
@@ -385,8 +505,6 @@ pub(super) fn herd_step(
                 }
             }
         }
-
-        elk.traveling = herd.state != HerdState::Graze;
 
         // Grid-locked motion: commit a whole-cell step only when settled, then animate
         // the slide. Committing the entire step (rather than a sub-cell drift) is the
@@ -422,36 +540,33 @@ pub(super) fn herd_step(
     }
 }
 
-/// If the cell one step ahead along `heading` is water, look across for the far bank
-/// and decide whether the ford is worth it. Returns `(far_bank_cell, worth_it)`, or
-/// `None` when no water lies immediately ahead. Reuses the crossing scorers verbatim.
-fn crossing_ahead(
-    pos: Vec2,
-    heading: Vec2,
-    here: usize,
-    grid: &Grid,
-    ep: &ElkParams,
-) -> Option<(usize, bool)> {
-    if heading.length() < 1e-3 {
-        return None;
-    }
-    let (dx, dy) = if heading.x.abs() >= heading.y.abs() {
-        (if heading.x >= 0.0 { 1 } else { -1 }, 0)
-    } else {
-        (0, if heading.y >= 0.0 { 1 } else { -1 })
-    };
-    let ahead = grid.step(here, dx, dy)?;
-    if grid.water(ahead) < WATER_EPS {
-        return None;
-    }
-    let peek = ep.cross_peek.max(1.0) as usize;
-    let (far, eff) = forage_across(grid, here, dx, dy, ep.ford_discount, peek)?;
-    let _ = pos;
+/// The best worthwhile ford from `here`, or `None` if no adjacent water repays the
+/// swim. Over each cardinal neighbour that is water, peek across to the far bank and
+/// score the crossing; return the far-bank cell with the highest *positive*
+/// `cross_desire`. Independent of move state and heading, so a grazer beside a river
+/// that hides richer far-bank forage commits to the ford on the forage merits alone —
+/// the gate is "is the far bank worth the swim", not "am I already heading into it".
+fn best_crossing(here: usize, grid: &Grid, ep: &ElkParams) -> Option<usize> {
     let here_attract = attract(here, grid, ep);
-    let across = attract(far, grid, ep);
-    let cost = swim_cost(eff, ep.swim_reluctance);
-    // `ahead` is a water cell (≈ 0 forage); the dry option is staying put.
-    Some((far, cross_desire(here_attract, here_attract, across, cost) > 0.0))
+    let peek = ep.cross_peek.max(1.0) as usize;
+    let mut best: Option<(usize, f32)> = None;
+    for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+        let Some(ahead) = grid.step(here, dx, dy) else { continue };
+        if grid.water(ahead) < WATER_EPS {
+            continue;
+        }
+        let Some((far, eff)) = forage_across(grid, here, dx, dy, ep.ford_discount, peek) else {
+            continue;
+        };
+        let across = attract(far, grid, ep);
+        let cost = swim_cost(eff, ep.swim_reluctance);
+        // `ahead` is water (≈ 0 forage); the dry option is staying put.
+        let desire = cross_desire(here_attract, here_attract, across, cost);
+        if desire > 0.0 && best.is_none_or(|(_, d)| desire > d) {
+            best = Some((far, desire));
+        }
+    }
+    best.map(|(far, _)| far)
 }
 
 #[cfg(test)]
@@ -481,6 +596,42 @@ mod tests {
         let far = arrive(Vec2::ZERO, Vec2::new(3.0, 0.0), 4.0, 0.6, 0.5).length();
         let near = arrive(Vec2::ZERO, Vec2::new(1.5, 0.0), 4.0, 0.6, 0.5).length();
         assert!(near < far, "closer must be slower: {near} !< {far}");
+    }
+
+    // ── cohesion_target ───────────────────────────────────────────────────────────
+
+    // With kin in range the target is their centroid (the ordinary cohesion pull).
+    #[test]
+    fn cohesion_target_is_centroid_of_in_range_kin() {
+        let kin = [Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
+        let c = cohesion_target(Vec2::ZERO, &kin, 8.0).unwrap();
+        assert!((c - Vec2::new(1.0, 1.0)).length() < 1e-6, "centroid expected, got {c:?}");
+    }
+
+    // The straggler case: no kin within radius ⇒ steer toward the *nearest* kin, not
+    // give up. This is the fix for a lost tail diffusing away — the in-range gate alone
+    // would return the elk's own position (zero pull) here.
+    #[test]
+    fn cohesion_target_falls_back_to_nearest_when_none_in_range() {
+        let far = Vec2::new(20.0, 0.0);
+        let farther = Vec2::new(40.0, 0.0);
+        let c = cohesion_target(Vec2::ZERO, &[farther, far], 8.0).unwrap();
+        assert_eq!(c, far, "should steer toward the nearer of two out-of-range kin");
+    }
+
+    // In-range kin always win over a closer-counted fallback: presence of any neighbour
+    // within radius means the centroid path, never the nearest-only path.
+    #[test]
+    fn cohesion_target_prefers_in_range_over_fallback() {
+        let kin = [Vec2::new(1.0, 0.0), Vec2::new(50.0, 0.0)];
+        let c = cohesion_target(Vec2::ZERO, &kin, 8.0).unwrap();
+        assert_eq!(c, Vec2::new(1.0, 0.0), "only the in-range kin counts toward the centroid");
+    }
+
+    // A lone elk with no kin has no cohesion target.
+    #[test]
+    fn cohesion_target_none_without_kin() {
+        assert_eq!(cohesion_target(Vec2::ZERO, &[], 8.0), None);
     }
 
     // ── confidence ────────────────────────────────────────────────────────────────

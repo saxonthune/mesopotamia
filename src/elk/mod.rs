@@ -10,7 +10,7 @@ pub mod abundance;
 pub mod presets;
 pub mod ratios;
 
-pub use components::{Cohort, Elk, ElkParams, Herds, Packs, Spawner};
+pub use components::{Cohort, Elk, ElkParams, Herds, Spawner};
 pub use ratios::RatioControls;
 pub use score::Score;
 #[allow(unused_imports)]
@@ -37,7 +37,6 @@ pub const PACK_COUNT: usize = 8;
 impl Plugin for ElkSimPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EventsPlugin)
-            .insert_resource(Packs::new())
             .init_resource::<Spawner>()
             .init_resource::<ElkParams>()
             .init_resource::<HerdParams>()
@@ -54,7 +53,6 @@ impl Plugin for ElkSimPlugin {
                     herding::herd_step,
                     metabolism::graze,
                     metabolism::metabolize,
-                    metabolism::migrate_pressure,
                     spawn::spawn_waves,
                     spawn::cull,
                     // Order-independent: the monotonic event cursor folds each

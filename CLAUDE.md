@@ -12,6 +12,15 @@ This project keeps its specifications in a `.rhidoc/` docs workspace. The docs a
 
 Before writing or changing code, read `doc05.01` (Coding Patterns). Its rules are standing — one concept per module, decisions extracted into pure tested functions, feature plugins over a thin root, tunables as params — and apply to every code change without being asked. The easy default of one large module that does everything is the wrong one here.
 
+## Comments Say Only What the Code Can't
+
+Write a comment only when it carries something the code itself cannot show. This is a standing rule (the full version is a pattern in `doc05.01`).
+
+- Don't restate what the code does. If a reader can get it from the code right there, delete the comment.
+- Before commenting, move the fact into the code where you can: a bare `bool` becomes an enum, a magic number a named constant, an assumed invariant a type or an assertion. Prefer this every time — a fact in the code can't go stale.
+- Only comment what the code genuinely can't hold: why this approach over another, a non-obvious invariant, a deliberate surprise ("looks wrong, is right because…"), or a dependence on something elsewhere. Explain the *why*, never the *what*.
+- Such a comment states something the code can't check, so it can silently go stale. Keep it short and put it next to whatever makes it checkable (a test, an assert) when you can.
+
 ## Test with `just test-fast` While Iterating
 
 Default to `just test-fast` (`cargo test --lib`) while writing code — it runs the pure-function unit tests in seconds and skips the slow Bevy-linking integration binaries. Do **not** run `cargo test` or `just test-all` after every change; the full suite links the engine and is the pre-merge gate, run once before handing work off or when a change touches the macro/integration invariants. When in doubt, `test-fast` during the loop, `test-all` at the end.

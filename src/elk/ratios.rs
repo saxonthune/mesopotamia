@@ -16,10 +16,10 @@ pub struct RatioControls {
     /// regrowth ÷ drain: `intrinsic * MAX_GRASS * graze_yield / energy_drain`.
     /// Default 0.175 → GrowthRate.intrinsic = 0.02.
     pub regrow_ratio: f32,
-    /// migration ÷ crossing cost: `migration / water_cost`.
-    /// Default 0.0 → the migration pull is off. The pull is the opt-in *crutch*
-    /// (training wheels): the player can crank it to force a crossing, at a score
-    /// penalty, but the stock/broken herd has no eastward drive at all and mills.
+    /// The crossing-pull crutch, in [0, 1]. The herding model fords on the natural
+    /// forage drives, so this no longer steers movement; it survives only as the
+    /// opt-in score *penalty* knob (`score::pull_factor`) — cranking it to lean on a
+    /// forced crossing costs points. Default 0.0 → no penalty.
     pub cross_ratio: f32,
 }
 
@@ -56,16 +56,10 @@ pub fn intrinsic_from(regrow_ratio: f32, energy_drain: f32, graze_yield: f32, ca
     regrow_ratio * energy_drain / (cap_ref * graze_yield)
 }
 
-/// `cross_ratio = migration / water_cost`
-/// ⇒ `migration = cross_ratio * water_cost`
-pub fn migration_from(cross_ratio: f32, water_cost: f32) -> f32 {
-    cross_ratio * water_cost
-}
-
-/// Bevy system: reads `RatioControls` and anchor params, writes the three
-/// derived values into `ElkParams` and `GrowthRate`. Derive in dependency
-/// order: graze_yield first (needed by regrowth ratio), then intrinsic,
-/// then migration.
+/// Bevy system: reads `RatioControls` and anchor params, writes the two derived
+/// economy values into `ElkParams` and `GrowthRate`. Derive in dependency order:
+/// graze_yield first (needed by the regrowth ratio), then intrinsic. `cross_ratio`
+/// derives nothing — it feeds only the score penalty.
 pub fn apply_ratios(
     controls: Res<RatioControls>,
     mut elk: ResMut<ElkParams>,
@@ -78,7 +72,6 @@ pub fn apply_ratios(
     if gy > 0.0 {
         growth.intrinsic = intrinsic_from(controls.regrow_ratio, elk.energy_drain, gy, MAX_GRASS);
     }
-    elk.migration = migration_from(controls.cross_ratio, elk.water_cost);
 }
 
 #[cfg(test)]
@@ -90,7 +83,6 @@ mod tests {
         let rc = RatioControls::default();
         let bite = 0.5_f32;
         let energy_drain = 0.004_f32;
-        let water_cost = 2.0_f32;
 
         // bite_ratio 2.5, bite 0.5, drain 0.004 → 2.5*0.004/0.5 = 0.02.
         let graze_yield = graze_yield_from(rc.bite_ratio, bite, energy_drain);
@@ -100,10 +92,6 @@ mod tests {
         // 0.175*0.004/(1.0*0.02) = 0.035.
         let intrinsic = intrinsic_from(rc.regrow_ratio, energy_drain, graze_yield, MAX_GRASS);
         assert!((intrinsic - 0.035).abs() < 1e-6, "intrinsic {intrinsic}");
-
-        // Pull is off by default (cross_ratio 0), so the derived migration force is 0.
-        let migration = migration_from(rc.cross_ratio, water_cost);
-        assert!((migration - 0.0).abs() < 1e-6, "migration {migration}");
     }
 
     #[test]
@@ -124,16 +112,6 @@ mod tests {
         for r in [0.1_f32, 0.175, 0.5] {
             let intr = intrinsic_from(r, energy_drain, graze_yield, MAX_GRASS);
             let back = intr * MAX_GRASS * graze_yield / energy_drain;
-            assert!((back - r).abs() < 1e-5, "round-trip {r} → {back}");
-        }
-    }
-
-    #[test]
-    fn cross_ratio_round_trips() {
-        let water_cost = 2.0_f32;
-        for r in [0.2_f32, 0.35, 1.0] {
-            let mig = migration_from(r, water_cost);
-            let back = mig / water_cost;
             assert!((back - r).abs() < 1e-5, "round-trip {r} → {back}");
         }
     }

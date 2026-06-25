@@ -27,18 +27,6 @@ fn crossing_probe_elk_reaches_far_bank() {
 
 // ── Ablation probes ───────────────────────────────────────────────────────────
 
-/// Cohesion is an inter-elk drive; a solo elk is unaffected. Zeroing it must not
-/// prevent crossing — this tests the ablation infrastructure and confirms cohesion
-/// does not gate the crossing.
-#[test]
-fn crossing_probe_ablation_cohesion_does_not_gate() {
-    let ticks = probe_ablation(ElkParams::default(), |p| p.cohesion = 0.0, 200);
-    assert!(
-        ticks < 200,
-        "ablation (cohesion=0): elk did not cross in 200 ticks (first crossed at tick={ticks})"
-    );
-}
-
 /// Forage *perception* is what carries the elk across: the grass-gradient signal
 /// reaches over `grass_radius` cells to sense the far-bank forage, pulling the elk
 /// into Travel toward the ford. Collapsing that radius to a single cell blinds the

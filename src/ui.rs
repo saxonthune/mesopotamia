@@ -5,7 +5,7 @@ use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
-use crate::elk::{Elk, ElkParams, Herds, RatioControls, Score};
+use crate::elk::{Elk, ElkParams, Herding, Herds, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
 use crate::grid::{GreenWave, Grid, GrowthRate};
@@ -776,7 +776,7 @@ const PORTRAIT_H: f32 = 168.0;
 fn selection_tab(
     ui: &mut egui::Ui,
     sel: &mut UnitSelectState,
-    elk: &Query<(Entity, &Elk)>,
+    elk: &Query<(Entity, &Elk, &Herding)>,
 ) {
     // Snapshot the order so the roster can iterate while clicks mutate `focused`.
     let units = sel.units.clone();
@@ -806,7 +806,7 @@ fn selection_tab(
             .show(roster, |ui| {
             ui.horizontal_wrapped(|ui| {
             for &e in &units {
-                let Ok((_, ec)) = elk.get(e) else { continue };
+                let Ok((_, ec, _)) = elk.get(e) else { continue };
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(THUMB, THUMB), egui::Sense::click());
                 let painter = ui.painter_at(rect);
                 draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
@@ -851,7 +851,7 @@ fn selection_tab(
             .id_salt("unit_stats")
             .auto_shrink([false, false])
             .show(stats, |ui| match sel.focused.and_then(|e| elk.get(e).ok()) {
-            Some((e, ec)) => {
+            Some((e, ec, hc)) => {
                 ui.heading(format!("elk {:06x}", ec.code));
                 ui.horizontal(|ui| {
                     let idx = units.iter().position(|&x| x == e);
@@ -873,9 +873,9 @@ fn selection_tab(
                 ui.label(format!(
                     "{}  ·  {}",
                     if ec.grazing { "grazing" } else { "not grazing" },
-                    if ec.traveling { "traveling" } else { "foraging" },
+                    if hc.is_traveling() { "traveling" } else { "foraging" },
                 ));
-                ui.label(format!("intake {:.3}  ·  digesting {}", ec.intake_rate, ec.digesting.len()));
+                ui.label(format!("digesting {}", ec.digesting.len()));
                 ui.label(format!("cell {}", ec.cell));
             }
             None => {
@@ -891,7 +891,7 @@ fn selection_tab(
         );
         let painter = portrait.painter_at(rect);
         match sel.focused.and_then(|e| elk.get(e).ok()) {
-            Some((_, ec)) => {
+            Some((_, ec, _)) => {
                 draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
                 painter.text(
                     rect.center_bottom() + egui::vec2(0.0, -8.0),
@@ -1168,21 +1168,11 @@ fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
 }
 
 fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32) {
-    ui.label("drive weights");
-    slider(ui, &mut p.separation, 0.0..=3.0, "separation");
-    slider(ui, &mut p.cohesion, 0.0..=3.0, "cohesion");
-    slider(ui, &mut p.grass, 0.0..=3.0, "grass-seeking");
-    slider(ui, &mut p.social, 0.0..=3.0, "social foraging");
-    slider(ui, cross_ratio, 0.0..=2.0, "migration ÷ crossing cost");
-    slider(ui, &mut p.quiet, 0.05..=3.0, "migration crossover (quiet)");
-    slider(ui, &mut p.cross, 0.0..=4.0, "water crossing (× hunger)");
-    ui.separator();
-    ui.label("perception (cells)");
-    slider(ui, &mut p.sep_radius, 1.0..=10.0, "separation radius");
-    slider(ui, &mut p.coh_radius, 1.0..=20.0, "cohesion radius");
-    slider(ui, &mut p.grass_radius, 1.0..=12.0, "grass radius");
-    slider(ui, &mut p.social_radius, 1.0..=40.0, "social radius");
-    slider(ui, &mut p.temperature, 0.1..=2.0, "step randomness");
+    ui.label("forage perception");
+    slider(ui, &mut p.grass_radius, 1.0..=12.0, "grass radius (cells)");
+    slider(ui, &mut p.freshness_weight, 0.0..=6.0, "freshness weight (green-up front)");
+    slider(ui, &mut p.sightline_range, 0.0..=32.0, "sightline range (cells)");
+    slider(ui, &mut p.sightline_weight, 0.0..=5.0, "sightline weight (leapfrog)");
     ui.separator();
     ui.label("metabolism");
     slider(ui, &mut p.bite, 0.0..=1.0, "bite / graze (max)");
@@ -1213,19 +1203,10 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
     slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");
-    slider(ui, &mut p.momentum, 0.0..=2.0, "heading persistence (land)");
-    slider(ui, &mut p.momentum_water, 0.0..=3.0, "heading persistence (water)");
-    ui.separator();
-    ui.label("foraging mode (leapfrog)");
-    slider(ui, &mut p.leave_frac, 0.0..=1.0, "leave patch below (× capacity)");
-    slider(ui, &mut p.travel_margin, 0.0..=1.0, "travel if richer by (× capacity)");
-    slider(ui, &mut p.travel_focus, 0.05..=1.0, "travel focus (temp ×)");
-    slider(ui, &mut p.mig_growth, 0.0..=0.01, "migration growth / tick");
-    ui.separator();
-    ui.label("patch leaving");
-    slider(ui, &mut p.intake_smoothing, 0.001..=0.3, "intake smoothing (α)");
-    slider(ui, &mut p.giving_up, 0.0..=0.99, "giving-up ratio (× habitat mean)");
-    slider(ui, &mut p.leave_boost, 0.0..=4.0, "migration boost when leaving");
+    slider(ui, &mut p.cross_peek, 1.0..=40.0, "cross peek (far-bank sight)");
+    slider(ui, &mut p.swim_reluctance, 0.0..=2.0, "swim reluctance (decision cost)");
+    // The crossing-pull crutch: no longer steers movement, kept as the score penalty.
+    slider(ui, cross_ratio, 0.0..=2.0, "crossing pull (score penalty)");
 }
 
 /// Direction of change for a time series.

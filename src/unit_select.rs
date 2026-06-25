@@ -13,7 +13,7 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
-use crate::elk::{elk_color, Elk};
+use crate::elk::{elk_color, Elk, Herding};
 use crate::render::{cell_world_pos, WorldCamera};
 
 /// Pointer travel (in logical points) past which a left-press becomes a box drag
@@ -54,7 +54,7 @@ pub struct UnitSelectState {
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct SelectionParams<'w, 's> {
     pub state: ResMut<'w, UnitSelectState>,
-    pub elk: Query<'w, 's, (Entity, &'static Elk)>,
+    pub elk: Query<'w, 's, (Entity, &'static Elk, &'static Herding)>,
 }
 
 pub struct UnitSelectPlugin;

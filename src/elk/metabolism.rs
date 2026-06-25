@@ -3,16 +3,9 @@ use bevy::prelude::*;
 use crate::events::{Event, EventKind, EventLog};
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams, Herds, Packs, Spawner};
-use super::herding::{HerdState, Herding};
+use super::components::{Elk, ElkParams, Herds, Spawner};
+use super::herding::Herding;
 use super::ledger::EnergyFlows;
-
-pub(super) fn migrate_pressure(params: Res<ElkParams>, mut packs: ResMut<Packs>) {
-    for i in 0..packs.migration.len() {
-        let g = packs.growth[i] * params.mig_growth;
-        packs.migration[i] = (packs.migration[i] + g).min(1.0);
-    }
-}
 
 /// The bite an elk takes from a grass cell, or `None` when the cell isn't worth
 /// biting. Grazing leaves a giving-up density — `graze_floor · capacity` of grass
@@ -37,24 +30,20 @@ pub(super) fn graze(
     mut elk: Query<(&mut Elk, &Herding)>,
     mut flows: ResMut<EnergyFlows>,
 ) {
-    let alpha = params.intake_smoothing;
-
     for (mut elk, herd) in &mut elk {
-        let intake_this_tick;
         // Feeding is decoupled from movement: an elk eats whenever worthwhile food
-        // sits underfoot and it is not mid-water-crossing — the structural guarantee
-        // (doc03.01.09) that the movement model can never starve a herd standing on
-        // food. The shrub/grass checks below gate on availability, so this only
-        // *permits* feeding; it never forces an empty bite.
-        if herd.state != HerdState::Cross {
+        // sits underfoot and the state permits it (suppressed only mid-crossing) —
+        // the structural guarantee (doc03.01.09) that the movement model can never
+        // starve a herd standing on food. The shrub/grass checks below gate on
+        // availability, so this only *permits* feeding; it never forces an empty bite.
+        if herd.permits_feeding() {
             if grid.shrubs(elk.cell) > 0.05 {
                 // Shrubs first: a big, concentrated bite that strips the shrub and
                 // pays more energy than grass — the reward for crossing dry ground.
                 grid.eat_shrubs(elk.cell, params.shrub_bite);
                 let before = elk.energy;
                 elk.energy = (elk.energy + params.shrub_energy).min(1.0);
-                intake_this_tick = elk.energy - before;
-                flows.intake += intake_this_tick;
+                flows.intake += elk.energy - before;
                 elk.grazing = true;
             } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {
                 // Giving-up density: a bite takes only the grass above the floor and
@@ -64,19 +53,15 @@ pub(super) fn graze(
                 grid.grow_grass(elk.cell, -bitten);
                 let before = elk.energy;
                 elk.energy = (elk.energy + bitten * params.graze_yield).min(1.0);
-                intake_this_tick = elk.energy - before;
-                flows.intake += intake_this_tick;
-                elk.grazing = true; // raise the beacon other elk forage toward
+                flows.intake += elk.energy - before;
+                elk.grazing = true;
             } else {
-                intake_this_tick = 0.0;
                 elk.grazing = false;
             }
         } else {
             // Mid-crossing: no eating this tick.
-            intake_this_tick = 0.0;
             elk.grazing = false;
         }
-        elk.intake_rate = (1.0 - alpha) * elk.intake_rate + alpha * intake_this_tick;
     }
 }
 
