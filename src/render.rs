@@ -683,13 +683,22 @@ fn cell_pos(cell: usize) -> Vec2 {
     )
 }
 
-/// Slide each elk sprite from its previous cell to its current one across the tick.
+/// Slide each elk sprite along its current grid step. The herding model commits
+/// whole-cell steps and advances `move_t` (0 → 1) each fixed tick; the sprite lerps
+/// `prev_cell → cell` by that progress, sub-sampled with the fixed-step overstep so
+/// the motion is smooth at render rate rather than stepping at the 10 Hz sim rate.
+/// `move_rate` is the per-tick `move_t` increment, so `move_t - move_rate` is the
+/// progress at the start of the current tick — interpolating from there to `move_t`
+/// by the overstep fraction tracks the slide without overshooting (and is flat at the
+/// destination once settled, where `move_rate` is zero).
 fn sync_elk_transform(time: Res<Time<Fixed>>, mut elk: Query<(&Elk, &mut Transform)>) {
-    let t = time.overstep_fraction();
+    let over = time.overstep_fraction();
     for (elk, mut transform) in &mut elk {
-        let pos = cell_pos(elk.prev_cell).lerp(cell_pos(elk.cell), t);
-        transform.translation.x = pos.x;
-        transform.translation.y = pos.y;
+        let t_start = (elk.move_t - elk.move_rate).max(0.0);
+        let t = (t_start + elk.move_rate * over).clamp(0.0, 1.0);
+        let p = cell_pos(elk.prev_cell).lerp(cell_pos(elk.cell), t);
+        transform.translation.x = p.x;
+        transform.translation.y = p.y;
     }
 }
 

@@ -4,9 +4,9 @@ use rand::Rng;
 use crate::events::{Event, EventKind, EventLog};
 use crate::grid::{GRID_HEIGHT, GRID_WIDTH};
 
-use super::components::{Cohort, DriveSample, DriveSamples, Elk, Herds, LastDecision, Packs, Spawner, MAX_COHORTS};
+use super::components::{Cohort, Elk, Herds, Packs, Spawner, MAX_COHORTS};
+use super::herding::Herding;
 use super::ledger::EnergyFlows;
-use super::movement::Decision;
 use super::color::elk_color;
 
 const TILE_SIZE: f32 = 16.0;
@@ -92,12 +92,16 @@ fn scatter(anchor: Vec2, size: usize, rng: &mut impl Rng, spread: f32) -> Vec<us
 fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
     let color = elk_color(slot as usize, false);
     for &cell in cells {
+        // Start settled on the spawn cell; the herding model commits whole-cell steps
+        // from here and keeps `prev_cell`/`move_t` in sync for the render slide.
         commands.spawn((
             Sprite::from_color(color, Vec2::splat(TILE_SIZE * 0.7)),
             Transform::from_xyz(0.0, 0.0, 1.0),
             Elk {
                 cell,
                 prev_cell: cell,
+                move_t: 1.0,
+                move_rate: 0.0,
                 slot,
                 code,
                 energy: 1.0,
@@ -107,7 +111,7 @@ fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
                 intake_rate: 0.0,
                 traveling: false,
             },
-            LastDecision(Decision::default()),
+            Herding::default(),
         ));
     }
 }
@@ -209,7 +213,6 @@ pub(super) fn teardown(
     mut spawner: ResMut<Spawner>,
     mut herds: ResMut<Herds>,
     mut packs: ResMut<Packs>,
-    mut drive_samples: ResMut<DriveSamples>,
 ) {
     for e in &elk {
         commands.entity(e).despawn();
@@ -217,7 +220,6 @@ pub(super) fn teardown(
     *spawner = Spawner::default();
     *herds = Herds::default();
     *packs = Packs::new();
-    drive_samples.per_slot = vec![DriveSample::default(); super::PACK_COUNT];
 }
 
 /// Despawns any elk that has lingered at the far edge long enough to count as

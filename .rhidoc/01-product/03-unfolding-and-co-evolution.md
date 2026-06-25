@@ -60,6 +60,37 @@ patterns are not detected and fired by a controller; they are the aggregate of l
 back on themselves. The dialectical loop is the emergent stance stated as a process: contradiction,
 co-determination, change.
 
+## Phenomena are produced, not installed
+
+The discipline that governs generation — differentiation over addition — governs the simulation too,
+and there it has teeth. A macro phenomenon is something the model **produces**; it is never something
+the model is **given**. To write an observed pattern directly as a system — a function whose output
+*is* the phenomenon — is the dynamic form of addition: the effect installed as its own cause. It is
+backwards in exactly the way an overprinted noise octave is backwards, and for the same reason. The
+pattern can no longer surprise (it was specified, not discovered); it must be hand-tuned to look
+right (which smuggles the conclusion in as a parameter); and it cannot answer to the rest of the
+system, because nothing in the system caused it.
+
+A travelling green-up wave written as a function of column and tick is the cautionary case. The
+green wave is real — migrating grazers surf the spring flush of new growth — but it is a *phenomenon*:
+in the world it emerges where a moving driver (the season, the sun) meets local conditions (moisture,
+soil, what has already grown and been grazed). Coding the green band directly reifies that emergent
+output as a primitive. The tell is twofold. First, it must be tuned to fit the very behaviour it is
+meant to explain — *how would we know the wave is timed to the herd?* — which is circular: the herd's
+migration is supposed to be the wave's consequence, not its specification. Second, it is decoupled
+from the actors: grass greens up on the function's schedule whether or not the herd grazed there, so
+the environment stops being a term the actors co-author and reverts to a backdrop they read. Both are
+the disease the co-evolution stance exists to prevent.
+
+The correct shape is always the same: **model the cause, let the phenomenon emerge.** An exogenous
+*driver* is legitimate — the world-unfold takes a seed, co-evolution takes an environment, and a
+green-up may take a moving seasonal signal, because the sun is a real cause external to the
+ecosystem. What is illegitimate is encoding the *result*. So a green wave is built by letting a
+simple moving growth-condition act on the grass field through the same local growth, senescence, and
+diffusion rules already present, with grazing feeding back into it — and the band, its timing, and
+its coupling to the herd fall out. If a behaviour has to be installed to appear, that is the signal
+that its generative conditions have not yet been found, not that it needs a controller.
+
 ## Quantity becomes quality
 
 Co-evolution does not drift endlessly. It runs on a **contradiction between two kinds of variable**:

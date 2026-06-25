@@ -108,8 +108,11 @@ pub struct GreenWave {
 impl Default for GreenWave {
     fn default() -> Self {
         Self {
-            strength: 0.5,
-            // Crest advances 85 * 0.010 = 0.85 cells/tick; crosses 256 cells in ~300 ticks.
+            // Unplugged (0 = off): the travelling green-up crest is a phenomenon coded
+            // as its own cause — an addition the co-evolution stance rejects (doc01.03).
+            // The grass field falls back to plain reaction-diffusion regrowth. Migration
+            // is to re-emerge from a real driver + forage perception, not this crest.
+            strength: 0.0,
             speed: 0.010,
             wavelength: 85.0,
         }
@@ -358,9 +361,28 @@ impl Grid {
 
     /// Total forage an elk perceives at a cell — grass plus shrubs. The herd's
     /// grass-seeking drive steers up this combined field, so shrub clumps pull
-    /// foragers the same way rich grass does.
+    /// foragers the same way rich grass does. The standing-crop half of the **food
+    /// boundary**: every behaviour/scanning system reads food through `forage`,
+    /// `food_capacity`, and `food_frac` and never touches grass or shrubs directly,
+    /// so the two plant components are one substrate to the herd.
     pub fn forage(&self, index: usize) -> f32 {
         self.grass[index] + self.shrubs[index]
+    }
+
+    /// Total food a cell can carry — grass capacity plus shrub capacity. The
+    /// denominator of the food boundary: what `forage` is measured against.
+    pub fn food_capacity(&self, index: usize) -> f32 {
+        self.capacity(index) + self.shrub_cap[index]
+    }
+
+    /// How full a cell's food is, in [0, 1]: `forage / food_capacity`. Zero where a
+    /// cell can carry no food (open water, bare rough). This is the single fullness
+    /// signal the patch-leaving decision reads — unified over grass and shrubs, so a
+    /// herd on the dry steppe perceives its shrubs the same way a riparian herd
+    /// perceives its grass, and leapfrogs depleted clumps either way.
+    pub fn food_frac(&self, index: usize) -> f32 {
+        let cap = self.food_capacity(index);
+        if cap > 1e-6 { (self.forage(index) / cap).clamp(0.0, 1.0) } else { 0.0 }
     }
 
     /// Total standing grass biomass across the whole grid — Σ grass. A macro

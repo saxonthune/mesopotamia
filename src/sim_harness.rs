@@ -4,8 +4,7 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
-use crate::elk::{Decision, DriveSamples, Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herds, LastDecision, ProbeSeed, RatioControls, Score, Spawner};
-use crate::elk::{combine_drives, grass_gradient, graze_value, stand_value, step_water_penalty, Act, Candidate};
+use crate::elk::{Elk, ElkParams, ElkSimPlugin, EnergyFlows, Herding, Herds, RatioControls, Score, Spawner};
 use crate::droppings::DroppingsPlugin;
 use crate::grid::{GreenWave, Grid, GridPlugin};
 use crate::sim::{Sim, SimStatePlugin};
@@ -68,47 +67,24 @@ pub fn centroid_col(world: &mut World) -> f32 {
 pub struct RunMetrics {
     pub survival: f32,
     pub max_col: usize,
-    pub mean_migration_share: f32,
 }
 
 /// Run a headless app for `ticks` steps with the given `ElkParams` and collect
-/// the doc02.02 metrics: survival, farthest column reached, and time-averaged
-/// migration share across active pack slots.
+/// the doc02.02 metrics: survival and farthest column reached.
 pub fn run_metrics(params: ElkParams, ticks: u32) -> RunMetrics {
     let mut app = make_app();
     // Override the plugin default — insert_resource replaces init_resource's value.
     app.insert_resource(params);
 
-    let mut share_acc = 0.0_f32;
-    let mut share_ticks = 0u32;
     let mut max_col = 0usize;
 
     for _ in 0..ticks {
         app.update();
-        let world = app.world_mut();
-
-        // Sample per-slot migration share for this tick (borrow dropped before query below).
-        let tick_share: f32 = {
-            let samples = world.get_resource::<DriveSamples>().unwrap();
-            let active: Vec<f32> = samples
-                .per_slot
-                .iter()
-                .filter(|s| s.count > 0)
-                .map(|s| s.migration_share())
-                .collect();
-            if active.is_empty() { 0.0 } else { active.iter().sum::<f32>() / active.len() as f32 }
-        };
-        share_acc += tick_share;
-        share_ticks += 1;
-
-        let col = max_col_reached(world);
+        let col = max_col_reached(app.world_mut());
         if col > max_col {
             max_col = col;
         }
     }
-
-    let mean_migration_share =
-        if share_ticks > 0 { share_acc / share_ticks as f32 } else { 0.0 };
 
     let world = app.world_mut();
     let herds = world.get_resource::<Herds>().unwrap();
@@ -122,24 +98,21 @@ pub fn run_metrics(params: ElkParams, ticks: u32) -> RunMetrics {
         1.0
     };
 
-    RunMetrics { survival, max_col, mean_migration_share }
+    RunMetrics { survival, max_col }
 }
 
 /// Outcome of evaluating a full slider bundle over the real worldgen map — the
 /// signals that define each preset's goal. `survival`/`max_col`/`centroid_col`
-/// say whether the herd lived and how far east it rolled; `mean_migration_share`
-/// and `pull_share` say how much of that was bought with the magic pull; the
-/// `score_*` and `difficulty` fields read the live Survival Score the player sees.
+/// say whether the herd lived and how far east it rolled; the `score_*` and
+/// `difficulty` fields read the live Survival Score the player sees.
 #[derive(Clone, Copy, Debug)]
 pub struct PresetOutcome {
     pub survival: f32,
     pub max_col: usize,
     pub centroid_col: f32,
-    pub mean_migration_share: f32,
     pub score_high: f32,
     pub score_current: f32,
     pub difficulty: f32,
-    pub pull_share: f32,
 }
 
 /// Run the real worldgen scenario with a full slider bundle and read out the
@@ -177,36 +150,19 @@ pub fn evaluate_bundle_seeded(
     app.insert_resource(ratios);
     app.insert_resource(wave);
 
-    let mut share_acc = 0.0_f32;
-    let mut share_ticks = 0u32;
     let mut max_col = 0usize;
 
     for _ in 0..ticks {
         app.update();
-        let world = app.world_mut();
-        let tick_share: f32 = {
-            let samples = world.get_resource::<DriveSamples>().unwrap();
-            let active: Vec<f32> = samples
-                .per_slot
-                .iter()
-                .filter(|s| s.count > 0)
-                .map(|s| s.migration_share())
-                .collect();
-            if active.is_empty() { 0.0 } else { active.iter().sum::<f32>() / active.len() as f32 }
-        };
-        share_acc += tick_share;
-        share_ticks += 1;
-        max_col = max_col.max(max_col_reached(world));
+        max_col = max_col.max(max_col_reached(app.world_mut()));
     }
 
     let centroid = centroid_col(app.world_mut());
-    let mean_migration_share =
-        if share_ticks > 0 { share_acc / share_ticks as f32 } else { 0.0 };
 
     let world = app.world_mut();
     let score = world.get_resource::<Score>().unwrap();
-    let (score_high, score_current, difficulty, pull_share) =
-        (score.high, score.current, score.difficulty, score.pull_share);
+    let (score_high, score_current, difficulty) =
+        (score.high, score.current, score.difficulty);
 
     let herds = world.get_resource::<Herds>().unwrap();
     let (total_deaths, total_spawned) =
@@ -223,11 +179,9 @@ pub fn evaluate_bundle_seeded(
         survival,
         max_col,
         centroid_col: centroid,
-        mean_migration_share,
         score_high,
         score_current,
         difficulty,
-        pull_share,
     }
 }
 
@@ -439,8 +393,8 @@ pub fn probe_grid() -> Grid {
 }
 
 /// Build a headless probe app over a hand-constructed grid, bypassing worldgen.
-/// Inserts `ProbeSeed(42)` so `herd_move` is deterministic across all probe runs.
 /// `elk_starts` is a list of `(cell, slot)` pairs — one Elk entity is spawned per entry.
+/// The herding movement model is deterministic (no RNG), so probe runs replay exactly.
 ///
 /// Internally runs one warm-up `update()` to process the state transition from
 /// `Sim::Generating` (SimStatePlugin default) → `Sim::Running` before elk are
@@ -455,9 +409,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
         // Override the GridPlugin's default with the probe grid.
         .insert_resource(grid)
         // Freeze the spawner so spawn_waves never fires (cooldown stays maxed).
-        .insert_resource(Spawner { cooldown: u32::MAX / 2, next_pack: 0, elapsed: 0, anchor: None })
-        // Persistent seeded RNG for deterministic probe assertions.
-        .insert_resource(ProbeSeed::new(42));
+        .insert_resource(Spawner { cooldown: u32::MAX / 2, next_pack: 0, elapsed: 0, anchor: None });
 
     // Request transition to Running. SimStatePlugin starts in Sim::Generating;
     // run one warm-up update so StateTransition processes the transition before
@@ -468,12 +420,14 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
     app.update(); // warm-up: Generating → Running, no elk yet
 
     // Spawn probe elk directly into the world (no Sprite/Transform needed —
-    // movement and metabolism systems only query Elk + LastDecision).
+    // movement and metabolism systems only query Elk + Herding).
     for &(cell, slot) in elk_starts {
         app.world_mut().spawn((
             Elk {
                 cell,
                 prev_cell: cell,
+                move_t: 1.0,
+                move_rate: 0.0,
                 slot,
                 code: 0,
                 energy: 0.3,
@@ -483,98 +437,11 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
                 intake_rate: 0.0,
                 traveling: false,
             },
-            LastDecision(Decision::default()),
+            Herding::default(),
         ));
     }
 
     app
-}
-
-/// A thin trait for stepping one decision without the full ECS context.
-/// Backed by `FieldDecider` which uses the real grass-gradient path, scoped
-/// to field drives only (no per-elk neighbour context available at this boundary).
-pub trait Decider {
-    fn decide(&self, cell: usize, grid: &Grid, params: &ElkParams) -> Decision;
-}
-
-/// Field-only implementation: uses `grass_gradient` + `combine_drives` with
-/// zero sep/coh/social and fixed neutral energy. Deterministic (no RNG).
-///
-/// **Limitation**: separation, cohesion, and social foraging are absent — these
-/// require the positions of other elk, which are not available at the trait
-/// boundary. For a single-agent probe this is exact; for multi-agent probes the
-/// field decision is an approximation.
-pub struct FieldDecider {
-    /// Elk energy level fed to `combine_drives`; affects the appetite multiplier.
-    pub energy: f32,
-    /// Pack migration pressure (0..=1).
-    pub pressure: f32,
-}
-
-impl Default for FieldDecider {
-    fn default() -> Self {
-        Self { energy: 0.5, pressure: 0.0 }
-    }
-}
-
-impl Decider for FieldDecider {
-    fn decide(&self, cell: usize, grid: &Grid, params: &ElkParams) -> Decision {
-        let grass_dir = grass_gradient(cell, grid, params);
-        let drives = combine_drives(
-            Vec2::ZERO, Vec2::ZERO, grass_dir, Vec2::ZERO,
-            params, self.pressure, self.energy, 1.0,
-        );
-        let desire = drives.total();
-
-        let steps: [(isize, isize); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
-        let mut options = Vec::with_capacity(6);
-        let mut best_score = f32::NEG_INFINITY;
-        let mut best_idx: Option<usize> = None;
-
-        for &(dx, dy) in &steps {
-            if let Some(next) = grid.step(cell, dx, dy) {
-                let penalty = step_water_penalty(
-                    grid.water(next), grid.is_ford(next),
-                    params.water_cost, params.ford_discount,
-                );
-                let score = desire.dot(Vec2::new(dx as f32, dy as f32)) - penalty;
-                if score > best_score {
-                    best_score = score;
-                    best_idx = Some(options.len());
-                }
-                options.push(Candidate { act: Act::Step(dx, dy), score, penalty, weight: 1.0 });
-            }
-        }
-
-        // Stand candidate
-        {
-            let score = stand_value();
-            if score > best_score {
-                best_score = score;
-                best_idx = Some(options.len());
-            }
-            options.push(Candidate { act: Act::Stand, score, penalty: 0.0, weight: 1.0 });
-        }
-
-        // Graze candidate
-        {
-            let here_forage = grid.forage(cell);
-            let score = graze_value(here_forage, self.energy, params.dwell);
-            if score > best_score {
-                best_score = score;
-                best_idx = Some(options.len());
-            }
-            options.push(Candidate { act: Act::Graze, score, penalty: 0.0, weight: 1.0 });
-        }
-
-        let chosen = if best_score.is_finite() { best_idx } else { None };
-        let chosen_act = if let Some(idx) = chosen {
-            options[idx].act
-        } else {
-            Act::Stand
-        };
-        Decision { drives, options, chosen, chosen_act, temperature: params.temperature }
-    }
 }
 
 /// Run the crossing probe with one drive modified and return the tick at which

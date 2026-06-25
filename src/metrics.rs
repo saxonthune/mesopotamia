@@ -17,6 +17,8 @@ mod tests {
         Elk {
             cell: 0,
             prev_cell: 0,
+            move_t: 1.0,
+            move_rate: 0.0,
             slot: 0,
             code: 0,
             energy,

@@ -3,22 +3,22 @@ mod color;
 mod ledger;
 mod spawn;
 mod movement;
+mod herding;
 mod metabolism;
 mod score;
 pub mod abundance;
 pub mod presets;
 pub mod ratios;
 
-pub use components::{Cohort, DriveSample, DriveSamples, Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
+pub use components::{Cohort, Elk, ElkParams, Herds, Packs, Spawner};
 pub use ratios::RatioControls;
 pub use score::Score;
-// Used by sim_harness probe infrastructure; not imported by the main binary.
-#[allow(unused_imports)]
-pub use components::ProbeSeed;
 #[allow(unused_imports)]
 pub use ledger::{energy_expected_delta, energy_ledger_closes, population_balances, EnergyFlows};
 #[allow(unused_imports)]
-pub use movement::{cell_water_penalty, cohesion_lead_weight, combine_drives, cross_desire, forage_gate, forage_sightline, grass_gradient, graze_value, migration_residual, stand_value, step_water_penalty, Act, Candidate, Decomposable, Decision, Drives};
+pub use movement::{cell_water_penalty, cross_desire, forage_across, forage_sightline, grass_gradient, step_water_penalty, swim_cost};
+#[allow(unused_imports)]
+pub use herding::{HerdParams, HerdState, Herding, Goal};
 // Lifecycle constants the macro-sim harness asserts against — exported so the
 // tests read the single source of truth instead of mirroring magic numbers.
 #[allow(unused_imports)]
@@ -38,14 +38,11 @@ impl Plugin for ElkSimPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EventsPlugin)
             .insert_resource(Packs::new())
-            .insert_resource(DriveSamples {
-                per_slot: vec![DriveSample::default(); PACK_COUNT],
-            })
             .init_resource::<Spawner>()
             .init_resource::<ElkParams>()
+            .init_resource::<HerdParams>()
             .init_resource::<Herds>()
             .init_resource::<EnergyFlows>()
-            .init_resource::<HabitatIntake>()
             .init_resource::<abundance::AbundanceParams>()
             .init_resource::<RatioControls>()
             .init_resource::<Score>()
@@ -54,7 +51,7 @@ impl Plugin for ElkSimPlugin {
             .add_systems(
                 FixedUpdate,
                 (
-                    movement::herd_move,
+                    herding::herd_step,
                     metabolism::graze,
                     metabolism::metabolize,
                     metabolism::migrate_pressure,

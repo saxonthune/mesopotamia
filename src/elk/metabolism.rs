@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use crate::events::{Event, EventKind, EventLog};
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams, HabitatIntake, Herds, LastDecision, Packs, Spawner};
+use super::components::{Elk, ElkParams, Herds, Packs, Spawner};
+use super::herding::{HerdState, Herding};
 use super::ledger::EnergyFlows;
-use super::movement::Act;
 
 pub(super) fn migrate_pressure(params: Res<ElkParams>, mut packs: ResMut<Packs>) {
     for i in 0..packs.migration.len() {
@@ -34,17 +34,19 @@ fn worthwhile_bite(grid: &Grid, cell: usize, params: &ElkParams) -> Option<f32> 
 pub(super) fn graze(
     mut grid: ResMut<Grid>,
     params: Res<ElkParams>,
-    mut elk: Query<(&mut Elk, &LastDecision)>,
+    mut elk: Query<(&mut Elk, &Herding)>,
     mut flows: ResMut<EnergyFlows>,
-    mut habitat_intake: ResMut<HabitatIntake>,
 ) {
     let alpha = params.intake_smoothing;
-    let mut sum = 0.0_f32;
-    let mut count = 0u32;
 
-    for (mut elk, last_decision) in &mut elk {
+    for (mut elk, herd) in &mut elk {
         let intake_this_tick;
-        if last_decision.0.chosen_act == Act::Graze {
+        // Feeding is decoupled from movement: an elk eats whenever worthwhile food
+        // sits underfoot and it is not mid-water-crossing — the structural guarantee
+        // (doc03.01.09) that the movement model can never starve a herd standing on
+        // food. The shrub/grass checks below gate on availability, so this only
+        // *permits* feeding; it never forces an empty bite.
+        if herd.state != HerdState::Cross {
             if grid.shrubs(elk.cell) > 0.05 {
                 // Shrubs first: a big, concentrated bite that strips the shrub and
                 // pays more energy than grass — the reward for crossing dry ground.
@@ -70,17 +72,12 @@ pub(super) fn graze(
                 elk.grazing = false;
             }
         } else {
-            // Mover or standee: no eating this tick, but still post 0-intake so
-            // the forage_gate signal stays well-defined.
+            // Mid-crossing: no eating this tick.
             intake_this_tick = 0.0;
             elk.grazing = false;
         }
         elk.intake_rate = (1.0 - alpha) * elk.intake_rate + alpha * intake_this_tick;
-        sum += elk.intake_rate;
-        count += 1;
     }
-
-    habitat_intake.mean = if count > 0 { sum / count as f32 } else { 0.0 };
 }
 
 /// Every tick the elk spends energy just being alive; an elk that runs out
@@ -91,10 +88,11 @@ pub(super) fn metabolize(
     mut herds: ResMut<Herds>,
     spawner: Res<Spawner>,
     mut event_log: ResMut<EventLog>,
-    mut elk: Query<(Entity, &mut Elk, Option<&LastDecision>)>,
+    mut elk: Query<(Entity, &mut Elk)>,
     mut flows: ResMut<EnergyFlows>,
 ) {
-    for (entity, mut elk, last_decision) in &mut elk {
+    let w = crate::grid::GRID_WIDTH as isize;
+    for (entity, mut elk) in &mut elk {
         flows.drain += params.energy_drain;
         elk.energy -= params.energy_drain;
         if elk.energy <= 0.0 {
@@ -102,11 +100,11 @@ pub(super) fn metabolize(
             if let Some(c) = herds.cohorts.get_mut(&elk.code) {
                 c.deaths += 1;
             }
-            let chosen_step = last_decision.and_then(|ld| {
-                ld.0.chosen.and_then(|i| ld.0.options.get(i).and_then(|e| {
-                    if let crate::elk::Act::Step(dx, dy) = e.act { Some((dx, dy)) } else { None }
-                }))
-            });
+            // The elk's last grid step (prev_cell → cell), recorded on the death
+            // event so the death-sites overlay can show which way it was heading.
+            let (pc, c) = (elk.prev_cell as isize, elk.cell as isize);
+            let (dx, dy) = (c % w - pc % w, c / w - pc / w);
+            let chosen_step = if dx == 0 && dy == 0 { None } else { Some((dx, dy)) };
             event_log.push(Event {
                 tick: spawner.elapsed as u64,
                 cell: elk.cell,

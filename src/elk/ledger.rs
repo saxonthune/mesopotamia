@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use super::components::Herds;
 
 /// Accumulated energy flows across all elk for a single tick.
-/// Written by graze, metabolize, herd_move, spawn_waves, and cull.
+/// Written by graze, metabolize, herd_step, spawn_waves, and cull.
 /// Must be reset before each tick by whichever consumer needs per-tick accounting.
 #[derive(Resource, Default, Clone, Copy)]
 pub struct EnergyFlows {

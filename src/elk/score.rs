@@ -12,27 +12,22 @@
 //!
 //! Difficulty both scales and *gates* the score: at difficulty 0 every payout is 0,
 //! so the only way to a high score is to impose scarcity and still bring the herd
-//! through. The pull penalty is orthogonal: a crossing earned on the natural drives
-//! (forage, green wave) scores full credit; one bought by cranking the migration pull
-//! scores only a fraction. The penalty uses the current smoothed herd pull-share at
-//! fold time — an approximation appropriate to a herd-level rating. The decision
-//! content is pure (`difficulty`, `despawn_points`, `pull_factor`, `ewma`) and
-//! unit-tested; the system only gathers state and folds events through it.
+//! through. The pull penalty is orthogonal: a crossing earned by letting the herd
+//! forage its way across scores full credit; one bought by cranking the dialed
+//! migration ÷ crossing-cost slider (`cross_ratio`) scores only a fraction. The
+//! decision content is pure (`difficulty`, `despawn_points`, `pull_factor`, `ewma`)
+//! and unit-tested; the system only gathers state and folds events through it.
 
 use bevy::prelude::*;
 
 use crate::events::{EventKind, EventLog};
 use crate::grid::GRID_WIDTH;
 
-use super::components::DriveSamples;
 use super::ratios::RatioControls;
 use super::EDGE_COL;
 
 /// EWMA weight on the per-tick difficulty sample — slow, so the gauge is steady.
 const DIFFICULTY_ALPHA: f32 = 0.03;
-/// EWMA weight on the per-tick pull-share sample — same pace as difficulty, a
-/// steady gauge of how much the herd is leaning on the migration hand.
-const PULL_ALPHA: f32 = 0.03;
 /// EWMA weight on each despawn payout — the current score's rolling-per-elk feel,
 /// responsive over the last several elk to leave the world.
 const RATING_ALPHA: f32 = 0.12;
@@ -108,31 +103,23 @@ pub struct Score {
     pub high: f32,
     /// Smoothed current difficulty in `[0, 1]` — the gate, shown alongside.
     pub difficulty: f32,
-    /// Smoothed herd-mean migration reliance in [0, 1] — the fraction of drive effort
-    /// that is the migration ("magic") pull. The pull penalty scales payouts down by it.
-    pub pull_share: f32,
     /// Events already folded into the score — a cursor into `EventLog.total`.
     cursor: u64,
 }
 
-/// Update the difficulty (from the dialed scarcity), smooth the pull-share signal,
-/// and fold any despawn events since last tick into the rolling current score,
-/// tracking the high-water mark.
+/// Update the difficulty (from the dialed scarcity) and fold any despawn events
+/// since last tick into the rolling current score, tracking the high-water mark.
 pub(super) fn update_score(
     mut score: ResMut<Score>,
     events: Res<EventLog>,
     controls: Res<RatioControls>,
-    samples: Res<DriveSamples>,
 ) {
     let d = difficulty(controls.regrow_ratio);
     score.difficulty = ewma(score.difficulty, d, DIFFICULTY_ALPHA);
 
-    let herd_pull = samples.migration_share();
-    score.pull_share = ewma(score.pull_share, herd_pull, PULL_ALPHA);
-
     // Normalised dialed pull in [0, 1] — the penalty argument for the score multiplier.
-    // Keyed off the *slider* value, not the realized herd share, so cranking the pull
-    // immediately costs score; `score.pull_share` still updates for the HUD readout.
+    // Keyed off the `cross_ratio` slider, so cranking the migration ÷ crossing-cost
+    // dial immediately costs score.
     let p = (controls.cross_ratio / CROSS_REF).clamp(0.0, 1.0);
 
     // Fold the events pushed since our cursor — newest `new` entries in the ring.

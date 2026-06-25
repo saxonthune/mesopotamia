@@ -1,11 +1,10 @@
 //! Herd-level resource-abundance metrics.
 //!
 //! These quantify whether a herd's local patch supplies more than it consumes —
-//! the mechanism behind elk that camp and graze instead of migrating. Migration
-//! force is a residual that only fills in as the local drives fall quiet
-//! (`movement::migration_residual`), so a herd whose nearby forage regrows faster
-//! than it is eaten never feels the pressure to move. Measuring that surplus is
-//! how we prove the herd has no reason to migrate.
+//! the mechanism behind elk that camp and graze instead of migrating. A herd whose
+//! nearby forage regrows faster than it is eaten has no depletion gradient pushing
+//! it onward, so it stays put. Measuring that surplus is how we prove the herd has
+//! no reason to migrate.
 //!
 //! Measured at the herd (centroid + radius) rather than per elk, so the cost is a
 //! handful of grid scans per tick instead of one per animal. Pure view state:

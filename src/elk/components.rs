@@ -1,17 +1,26 @@
 use bevy::prelude::*;
 use std::collections::HashMap;
 
-use super::movement::Decision;
-
 pub(crate) const MAX_COHORTS: usize = 64;
 
 #[derive(Component)]
 pub struct Elk {
+    /// Grid cell the elk occupies — the source of truth for every cell-based system
+    /// (graze, score, events, edge detection). Movement is grid-locked: an elk only
+    /// ever steps to one of its eight neighbours, so `cell` is always a real cell,
+    /// never a sub-cell position.
     pub cell: usize,
-    /// The cell the elk occupied before its last move. The simulation only ever
-    /// reads `cell`; this exists purely so the renderer can slide the sprite from
-    /// the old cell to the new one across a tick instead of snapping.
+    /// The cell the elk is sliding *from*, for render interpolation. Equals `cell`
+    /// when settled.
     pub prev_cell: usize,
+    /// Slide progress from `prev_cell` to `cell`, in [0, 1]. 1.0 = settled on `cell`;
+    /// below 1.0 the elk is mid-step and committed (it does not re-decide). The
+    /// renderer lerps `prev_cell → cell` by this, sub-sampled with the fixed-step
+    /// overstep, so a step animates smoothly across frames rather than snapping.
+    pub move_t: f32,
+    /// Per-tick increment applied to `move_t` for the current slide — the step's
+    /// animation speed in cells/tick. Zero when settled.
+    pub move_rate: f32,
     /// Recycled pack *slot* (0..PACK_COUNT); indexes `Packs` and `HerdStats`.
     pub slot: u8,
     /// Stable cohort identity, shown as a 6-digit hex code. Unlike `slot`, this
@@ -37,11 +46,6 @@ pub struct Elk {
     /// forward as a leapfrogging wave instead of milling like a particle cloud.
     pub traveling: bool,
 }
-
-/// The decision record written by `herd_move` each tick. Present on every elk;
-/// overwritten in place to avoid per-tick archetype moves.
-#[derive(Component)]
-pub struct LastDecision(pub Decision);
 
 /// Drives the herd lifecycle: spaces spawns into waves and keeps the headcount
 /// near a target that itself grows over time.
@@ -176,84 +180,6 @@ pub struct ElkParams {
     pub swim_reluctance: f32,
 }
 
-/// Latest-tick mean drive breakdown per pack slot, written by `herd_move` and
-/// read by the UI (pie/graphs) and the balancing sweep. Index by `slot`.
-#[derive(Resource, Default)]
-pub struct DriveSamples {
-    /// Mean `Drives` over the elk of each slot this tick (zeroed `DriveSample` for
-    /// an empty slot). Length == PACK_COUNT.
-    pub per_slot: Vec<DriveSample>,
-}
-
-impl DriveSamples {
-    /// Population-weighted migration ("magnetic pull") share across all herds, in
-    /// [0, 1]: 1 means the herd moves only because the migration hand pushes it, 0
-    /// means it travels entirely on its natural drives. Each slot's share is
-    /// weighted by its headcount; 0 when nothing pulls anywhere. No longer shown in
-    /// the UI (the survival score replaced the pull gauge), but kept and tested as
-    /// the canonical migration-reliance metric for balance analysis.
-    #[allow(dead_code)]
-    pub fn migration_share(&self) -> f32 {
-        let mut migration = 0.0;
-        let mut total = 0.0;
-        for s in &self.per_slot {
-            let w = s.count as f32;
-            migration += s.migration * w;
-            total += (s.sep + s.coh + s.grass + s.social + s.migration) * w;
-        }
-        if total > 1e-6 { migration / total } else { 0.0 }
-    }
-}
-
-/// Per-slot mean drive magnitudes for one tick.
-#[derive(Default, Clone, Copy)]
-pub struct DriveSample {
-    pub sep: f32,
-    pub coh: f32,
-    pub grass: f32,
-    pub social: f32,
-    pub migration: f32,
-    pub count: u32,
-}
-
-impl DriveSample {
-    /// Fraction of total pull effort that is the migration force, in [0, 1]:
-    /// `migration` over the sum of all five magnitudes. 0 when nothing pulls.
-    #[allow(dead_code)] // consumed by ui-declarative-panels-graphs and balancing-param-sweep
-    pub fn migration_share(&self) -> f32 {
-        let sum = self.sep + self.coh + self.grass + self.social + self.migration;
-        if sum > 1e-6 { self.migration / sum } else { 0.0 }
-    }
-}
-
-/// When present, `herd_move` uses this persistent RNG for deterministic picks
-/// instead of the thread RNG. The `SmallRng` state evolves across ticks so
-/// consecutive ticks produce different random values. Absent in normal runs.
-#[derive(Resource)]
-pub struct ProbeSeed(rand::rngs::SmallRng);
-
-impl ProbeSeed {
-    // Constructed only by `sim_harness` (probe runs); the `demo1` binary
-    // re-includes this module without the harness, so its copy sees no caller.
-    #[allow(dead_code)]
-    pub fn new(seed: u64) -> Self {
-        use rand::SeedableRng;
-        Self(rand::rngs::SmallRng::seed_from_u64(seed))
-    }
-
-    pub fn rng(&mut self) -> &mut rand::rngs::SmallRng {
-        &mut self.0
-    }
-}
-
-/// Running habitat-average intake — the mean of all elk `intake_rate` values,
-/// recomputed each tick in `graze`. `herd_move` reads this to scale the patch-
-/// leaving gate: an elk with below-average local intake is nudged to leave.
-#[derive(Resource, Default)]
-pub struct HabitatIntake {
-    pub mean: f32,
-}
-
 impl Default for ElkParams {
     fn default() -> Self {
         Self {
@@ -335,43 +261,5 @@ impl Default for ElkParams {
             // facing green far-bank grass will commit, but a fed one won't wander in.
             swim_reluctance: 0.6,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample(migration: f32, natural: f32, count: u32) -> DriveSample {
-        // Spread the natural magnitude across the four natural drives evenly.
-        let each = natural / 4.0;
-        DriveSample { sep: each, coh: each, grass: each, social: each, migration, count }
-    }
-
-    #[test]
-    fn aggregate_share_zero_when_no_herds() {
-        let s = DriveSamples { per_slot: vec![DriveSample::default(); 3] };
-        assert_eq!(s.migration_share(), 0.0);
-    }
-
-    #[test]
-    fn aggregate_share_all_migration_is_one() {
-        let s = DriveSamples { per_slot: vec![sample(1.0, 0.0, 5)] };
-        assert!((s.migration_share() - 1.0).abs() < 1e-6);
-    }
-
-    #[test]
-    fn aggregate_share_weights_by_headcount() {
-        // Slot A (10 elk) is all natural drive; slot B (1 elk) is all migration.
-        // The big herd dominates, so the global share stays near zero.
-        let s = DriveSamples { per_slot: vec![sample(0.0, 1.0, 10), sample(1.0, 0.0, 1)] };
-        let share = s.migration_share();
-        assert!(share < 0.1, "big natural herd should keep share low, got {share}");
-    }
-
-    #[test]
-    fn aggregate_share_half_and_half() {
-        let s = DriveSamples { per_slot: vec![sample(1.0, 1.0, 4)] };
-        assert!((s.migration_share() - 0.5).abs() < 1e-6);
     }
 }

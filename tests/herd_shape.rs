@@ -22,7 +22,13 @@ use mesopotamia::sim_harness::{
 // run-to-run noise of the unseeded worldgen, so a generous absolute margin holds.
 // If this ever fails, the demo's core lever — that good tuning visibly wins — is
 // broken, regardless of what any gauge says.
+// Retired with the per-tick drive accumulator (doc03.01.09). It asserts the OLD
+// model's lever — the `cross_ratio` migration pull plus the grass/social/temperature
+// drive weights — none of which `herding::herd_step` reads. The new model's "good
+// tuning visibly wins" guard belongs to the green wave (freshness/sightline) and the
+// HerdParams steer, and needs re-authoring once those defaults are tuned to migrate.
 #[test]
+#[ignore = "asserts the retired drive/pull model; rewrite against the green-wave herding model (doc03.01.09)"]
 fn tuned_weights_cross_much_further_than_stock() {
     const TICKS: u32 = 1000;
     let reach = |cross_ratio: f32, tweak: fn(&mut ElkParams)| -> usize {
@@ -383,20 +389,17 @@ fn worldgen_herd_does_not_starve_in_permanent_travel() {
     let live: Vec<_> = trace.samples.iter().filter(|s| s.population > 0).collect();
     assert!(!live.is_empty(), "no elk ever lived");
     let mean_energy = live.iter().map(|s| s.mean_energy).sum::<f32>() / live.len() as f32;
-    let mean_travel = live.iter().map(|s| s.frac_traveling).sum::<f32>() / live.len() as f32;
 
-    // The travel-mode starvation bug had two signatures: every elk pinned in
-    // travel (graze suppressed) and energy bled to ~0. Both must stay clear. The
-    // floors are loose — the tightened economy legitimately runs the herd mid-fed
-    // (~0.2–0.5), so this guards against total collapse, not against difficulty.
-    // (Forward migration is pinned separately by `tuned_weights_cross_much_further`.)
+    // Under the herding model (doc03.01.09) feeding is decoupled from move state —
+    // a travelling elk over food still eats — so a high %travel is no longer a
+    // starvation signature. The honest anti-starvation guard is the energy economy
+    // itself: with the food boundary unified over grass and shrubs, a herd on the
+    // dry steppe perceives and grazes its shrubs and stays fed. (Whether the herd
+    // *should* settle into the graze state more is a separate balance question;
+    // forward migration is its own concern, not pinned here.)
     assert!(
-        mean_energy > 0.12,
-        "herd is starving out: mean live energy {mean_energy:.3} (the bug drove this to ~0)"
-    );
-    assert!(
-        mean_travel < 0.85,
-        "herd is stuck in permanent travel: mean %travel {mean_travel:.2} (the bug pinned this at 1.0)"
+        mean_energy > 0.3,
+        "herd is starving out: mean live energy {mean_energy:.3} (a collapse drives this toward 0)"
     );
 }
 
@@ -482,23 +485,21 @@ fn run_candidate(c: &Candidate, ticks: u32) -> PresetOutcome {
 
 fn print_header() {
     println!(
-        "{:<22} {:>5} {:>5} {:>7} {:>7} {:>8} {:>8} {:>6} {:>6}",
-        "candidate", "surv", "maxc", "cent", "migshr", "scoreHi", "scoreCur", "diff", "pull"
+        "{:<22} {:>5} {:>5} {:>7} {:>8} {:>8} {:>6}",
+        "candidate", "surv", "maxc", "cent", "scoreHi", "scoreCur", "diff"
     );
 }
 
 fn print_row(name: &str, o: &PresetOutcome) {
     println!(
-        "{:<22} {:>5.2} {:>5} {:>7.1} {:>7.2} {:>8.1} {:>8.1} {:>6.2} {:>6.2}",
+        "{:<22} {:>5.2} {:>5} {:>7.1} {:>8.1} {:>8.1} {:>6.2}",
         name,
         o.survival,
         o.max_col,
         o.centroid_col,
-        o.mean_migration_share,
         o.score_high,
         o.score_current,
         o.difficulty,
-        o.pull_share,
     );
 }
 

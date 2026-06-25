@@ -5,12 +5,13 @@ use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
-use crate::elk::{Act, Decomposable, Decision, Elk, ElkParams, Herds, LastDecision, DriveSamples, RatioControls, Score};
+use crate::elk::{Elk, ElkParams, Herds, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
 use crate::grid::{GreenWave, Grid, GrowthRate};
 use crate::history::History;
-use crate::render::{cell_world_pos, CameraSettings, WorldCamera};
+use crate::render::{cell_world_pos, WorldCamera};
+use crate::unit_select::{draw_elk_silhouette, herd_color32, SelectionParams, UnitSelectState};
 
 pub struct UiPlugin;
 
@@ -18,6 +19,7 @@ impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiState>()
             .init_resource::<History>()
+            .init_resource::<WorldViewRect>()
             // pick_herd (world click → select) runs before the panel draws it.
             .add_systems(Update, (pick_herd, keyboard_speed, crate::history::sample_history))
             // Install the Phosphor icon font once the egui context exists, so the
@@ -31,6 +33,18 @@ impl Plugin for UiPlugin {
                 (graphs_bar, control_panel, set_camera_viewport).chain(),
             );
     }
+}
+
+/// The screen rect (logical points) the world camera fills: full width, from the
+/// bottom of the top graphs bar down to the bottom of the window — deliberately
+/// *independent of the bottom dock's height*. `graphs_bar` writes it after it
+/// reserves the top strip; `set_camera_viewport` reads it. Anchoring the world to
+/// this dock-agnostic rect is what makes the dock slide over a fixed map (a sheet
+/// of paper over the table) instead of re-centring and resizing it on every drag.
+#[derive(Resource, Default)]
+struct WorldViewRect {
+    min: Vec2,
+    size: Vec2,
 }
 
 /// A toggleable field overlay rendered in the world view. `ALL` drives the
@@ -60,7 +74,6 @@ pub struct UiState {
     tab: Tab,
     selected: Option<u32>, // hex code of the herd shown in the details pane;
     // persists on a dead/migrated cohort until the user picks another.
-    selected_elk: Option<Entity>, // the specific elk entity last picked by world click
     visible: std::collections::HashSet<Graph>, // overview graphs toggled on in the top bar
     pub overlays: std::collections::HashSet<Overlay>, // field overlays active in the world view
     histogram_metric: usize, // index into ELK_METRICS for the distribution histogram
@@ -71,7 +84,6 @@ impl Default for UiState {
         Self {
             tab: Tab::default(),
             selected: None,
-            selected_elk: None,
             // The survival score is the demo's headline metric, so it opens on its
             // own; every other graph starts hidden behind its toggle.
             visible: std::collections::HashSet::from([Graph::SurvivalScore]),
@@ -86,6 +98,9 @@ enum Tab {
     #[default]
     Sliders,
     Herds,
+    /// The box-selection roster + details. Auto-shown when a selection exists and
+    /// hidden when it empties; never the default.
+    Selection,
 }
 
 /// A toggleable overview graph shown in the top bar. `ALL` drives both the
@@ -130,11 +145,6 @@ struct PlotSpec<'a> {
     series: Vec<(&'a str, &'a std::collections::VecDeque<f32>)>,
 }
 
-/// One slice of a pie chart: short display label, hover explanation, magnitude, fill colour.
-struct PieSpec<'a> {
-    slices: Vec<(&'a str, &'a str, f32, egui::Color32)>,
-}
-
 /// Declarative panel content. Add new variants here before `Custom` so the
 /// match in `render_items` stays exhaustive and easy to extend.
 #[allow(dead_code)]
@@ -144,8 +154,6 @@ enum Item<'a> {
     Separator,
     /// Line graph via egui_plot.
     Plot(PlotSpec<'a>),
-    /// Pie chart drawn with egui's Painter.
-    Pie(PieSpec<'a>),
     /// Progressive-disclosure group: a `CollapsingHeader` wrapping nested items.
     Section { title: &'a str, items: Vec<Item<'a>>, default_open: bool },
     /// Escape hatch for complex bodies that can't yet be expressed as items.
@@ -160,7 +168,6 @@ fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
             Item::Label(text) => { ui.label(text); }
             Item::Separator => { ui.separator(); }
             Item::Plot(spec) => render_plot(ui, spec),
-            Item::Pie(spec) => render_pie(ui, &spec.slices),
             Item::Section { title, items, default_open } => {
                 egui::CollapsingHeader::new(title)
                     .default_open(default_open)
@@ -223,35 +230,17 @@ fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
         });
     });
 
-    // Herd vitals: pop, energy, pull — each with a trend arrow so tweaks have feedback.
+    // Herd vitals: pop, energy — each with a trend arrow so tweaks have feedback.
     const LOOKBACK: usize = 300;
     const EPS_POP: f32 = 1.0;
     const EPS_ENERGY: f32 = 0.005;
-    const EPS_PULL: f32 = 0.01;
     let pop = history.population.back().copied().unwrap_or(0.0);
     let pop_arr = trend_arrow(trend(&history.population, LOOKBACK, EPS_POP));
     let energy = history.avg_energy.back().copied().unwrap_or(0.0);
     let energy_arr = trend_arrow(trend(&history.avg_energy, LOOKBACK, EPS_ENERGY));
-    let pull_pct = score.pull_share * 100.0;
-    let pull_series: std::collections::VecDeque<f32> = {
-        let slots = &history.migration_share;
-        if slots.is_empty() {
-            std::collections::VecDeque::new()
-        } else {
-            let len = slots[0].len();
-            (0..len)
-                .map(|i| {
-                    let sum: f32 =
-                        slots.iter().map(|s| s.get(i).copied().unwrap_or(0.0)).sum();
-                    sum / slots.len() as f32
-                })
-                .collect()
-        }
-    };
-    let pull_arr = trend_arrow(trend(&pull_series, LOOKBACK, EPS_PULL));
     ui.label(
         RichText::new(format!(
-            "pop {pop:.0} {pop_arr}   energy {energy:.2} {energy_arr}   pull {pull_pct:.0}% {pull_arr}"
+            "pop {pop:.0} {pop_arr}   energy {energy:.2} {energy_arr}"
         ))
         .size(11.0)
         .weak(),
@@ -311,44 +300,6 @@ fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
     });
 }
 
-fn render_pie(ui: &mut egui::Ui, slices: &[(&str, &str, f32, egui::Color32)]) {
-    let total: f32 = slices.iter().map(|(_, _, v, _)| *v).sum();
-    if total < 1e-6 {
-        ui.label("no drive data");
-        return;
-    }
-
-    let size = 120.0f32;
-    let (resp, painter) = ui.allocate_painter(egui::vec2(size, size), egui::Sense::hover());
-    let center = resp.rect.center();
-    let radius = size * 0.45;
-
-    let mut start = -std::f32::consts::FRAC_PI_2;
-    for &(_, _, value, color) in slices {
-        let sweep = value / total * std::f32::consts::TAU;
-        let steps = ((sweep * radius / 2.0) as usize).max(3);
-        let mut pts: Vec<egui::Pos2> = Vec::with_capacity(steps + 2);
-        pts.push(center);
-        for k in 0..=steps {
-            let a = start + sweep * k as f32 / steps as f32;
-            pts.push(center + egui::vec2(a.cos(), a.sin()) * radius);
-        }
-        painter.add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
-        start += sweep;
-    }
-
-    // Legend: labelled colour swatches, one per row. Hover for the full
-    // explanation and weight — progressive disclosure, visible label first.
-    for &(label, explain, value, color) in slices {
-        let row_resp = ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::hover());
-            ui.painter().rect_filled(rect, 2.0, color);
-            ui.label(label);
-        }).response;
-        row_resp.on_hover_text(format!("{explain}\n(weight {value:.2})"));
-    }
-}
-
 /// One self-contained control group: a heading and an ordered list of items.
 struct Panel<'a> {
     title: &'a str,
@@ -399,6 +350,7 @@ fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
 fn graphs_bar(
     mut contexts: EguiContexts,
     mut state: ResMut<UiState>,
+    mut view_rect: ResMut<WorldViewRect>,
     history: Res<History>,
     elk: Query<&Elk>,
     event_log: Res<EventLog>,
@@ -406,7 +358,7 @@ fn graphs_bar(
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
-    egui::TopBottomPanel::top("graphs_bar").show(ctx, |ui| {
+    let top = egui::TopBottomPanel::top("graphs_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.label("graphs:");
             for g in Graph::ALL {
@@ -425,6 +377,15 @@ fn graphs_bar(
             }
         });
     });
+
+    // Record the world's view rect for `set_camera_viewport`: full width, from the
+    // bottom of this top bar to the window's bottom edge. It deliberately ignores
+    // the bottom dock, so dragging the dock taller/shorter never moves the map —
+    // the dock simply covers more or less of a fixed world.
+    let screen = ctx.viewport_rect();
+    let top_bottom = top.response.rect.bottom();
+    view_rect.min = Vec2::new(screen.min.x, top_bottom);
+    view_rect.size = Vec2::new(screen.width(), (screen.bottom() - top_bottom).max(0.0));
 
     // Survival score: the live rating, its session high, and the difficulty gate.
     // Its own window so it floats over the world.
@@ -593,24 +554,59 @@ fn control_panel(
     mut elk_params: ResMut<ElkParams>,
     mut ratio_controls: ResMut<RatioControls>,
     mut world: WorldTunables,
-    mut camera: ResMut<CameraSettings>,
     mut time: ResMut<Time<Virtual>>,
     mut world_seed: ResMut<crate::worldgen::WorldSeed>,
     mut next_state: ResMut<NextState<crate::sim::Sim>>,
     herds: Res<Herds>,
     history: Res<History>,
-    drive_samples: Res<DriveSamples>,
-    score: Res<Score>,
-    last_decisions: Query<&LastDecision>,
+    mut selection: SelectionParams,
+    mut dock_settle_frames: Local<u32>,
 ) -> Result {
-    egui::TopBottomPanel::bottom("control_panel")
-        .resizable(true)
-        .default_height(280.0)
-        .min_height(120.0)
+    // Open at a quarter of the window height. The window is created at a default
+    // size and the OS/WM resizes it to its real size a few frames later, so
+    // locking the height once on frame 0 would pin the dock to a quarter of the
+    // *initial* size. Force the height to 25% (min == max) until the window has
+    // settled, then relax to a user-resizable panel — egui keeps the height the
+    // user last saw, which is the settled quarter.
+    const DOCK_SETTLE_FRAMES: u32 = 30;
+    let target_height = contexts.ctx_mut()?.viewport_rect().height() * 0.25;
+    let settling = *dock_settle_frames < DOCK_SETTLE_FRAMES;
+    if settling {
+        *dock_settle_frames += 1;
+    }
+    let mut panel = egui::TopBottomPanel::bottom("control_panel").resizable(true);
+    panel = if settling {
+        panel.min_height(target_height).max_height(target_height)
+    } else {
+        panel.min_height(120.0)
+    };
+    panel
         .show(contexts.ctx_mut()?, |ui| {
+            // Box-selection housekeeping: drop despawned units, auto-open the tab
+            // on a fresh capture, and fall back off it when the group empties.
+            {
+                let elk = &selection.elk;
+                selection.state.units.retain(|e| elk.get(*e).is_ok());
+                if let Some(f) = selection.state.focused {
+                    if elk.get(f).is_err() {
+                        selection.state.focused = None;
+                    }
+                }
+            }
+            if selection.state.just_selected {
+                state.tab = Tab::Selection;
+                selection.state.just_selected = false;
+            }
+            let has_units = !selection.state.units.is_empty();
+            if !has_units && state.tab == Tab::Selection {
+                state.tab = Tab::Sliders;
+            }
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut state.tab, Tab::Sliders, "Sliders");
                 ui.selectable_value(&mut state.tab, Tab::Herds, "Herds");
+                if has_units {
+                    ui.selectable_value(&mut state.tab, Tab::Selection, "Selection");
+                }
                 ui.separator();
                 speed_inline(ui, time.as_mut());
                 ui.separator();
@@ -650,12 +646,12 @@ fn control_panel(
                     panel_flow(ui, vec![
                         Panel::new("Grass", grass_items(world.growth.as_mut(), world.fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
                         // Behaviour carries the most rows, so give it a wider column.
-                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio, &drive_samples, &score)))]).width(300.0),
+                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio)))]).width(300.0),
                         Panel::new("Abundance (measure)", abundance_items(world.ab_params.as_mut())),
-                        Panel::new("View", vec![Item::Custom(Box::new(|ui| view_tab(ui, camera.as_mut())))]),
                     ])
                 }
-                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history, &drive_samples, &last_decisions),
+                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history),
+                Tab::Selection => selection_tab(ui, selection.state.as_mut(), &selection.elk),
             });
         });
     Ok(())
@@ -664,7 +660,7 @@ fn control_panel(
 /// The Herds tab: a scrollable list of herd cards on the left; clicking one
 /// shows its full details in the scrollable pane on the right. The selection
 /// persists on a dead/migrated cohort until the user picks another.
-fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History, drive_samples: &DriveSamples, last_decisions: &Query<&LastDecision>) {
+fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History) {
     let alive: Vec<u32> = herds
         .order
         .iter()
@@ -692,7 +688,7 @@ fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &H
                 .selected
                 .and_then(|c| herds.cohorts.get(&c).map(|co| (c, co)))
             {
-                Some((code, co)) => herd_details(ui, code, co, history, drive_samples, state.selected_elk, last_decisions),
+                Some((code, co)) => herd_details(ui, code, co, history),
                 None => {
                     ui.weak("select a herd");
                 }
@@ -737,44 +733,11 @@ fn herd_card(ui: &mut egui::Ui, code: u32, co: &crate::elk::Cohort, state: &mut 
     }
 }
 
-const DRIVE_COLORS: [egui::Color32; 5] = [
-    egui::Color32::from_rgb(70, 130, 180),  // sep   — steel blue
-    egui::Color32::from_rgb(60, 179, 113),  // coh   — medium sea green
-    egui::Color32::from_rgb(34, 139, 34),   // grass — forest green
-    egui::Color32::from_rgb(255, 165, 0),   // social — orange
-    egui::Color32::from_rgb(180, 60, 80),   // migration — crimson
-];
-
-/// Short display labels per drive, in the same order as `DRIVE_COLORS` and
-/// `Drives::contributions`. Shown as visible text beside the colour swatch in the
-/// drive pie legend; hover reveals the full `DRIVE_EXPLAIN` text.
-const DRIVE_LABELS: [&str; 5] = [
-    "Separation",
-    "Cohesion",
-    "Forage",
-    "Foraging cue",
-    "Migration",
-];
-
-/// Plain-language explanation per drive, in the same order as `DRIVE_COLORS` and
-/// `Drives::contributions`. Shown on hover as the deeper-disclosure tier beneath
-/// the visible `DRIVE_LABELS`.
-const DRIVE_EXPLAIN: [&str; 5] = [
-    "Separation — spacing out so the herd doesn't pile onto one cell",
-    "Cohesion — drifting back toward packmates",
-    "Forage — pull up the grass/shrub gradient toward food",
-    "Foraging cue — drawn toward others already grazing",
-    "Migration — the slow push toward the far side of the map",
-];
-
 fn herd_details(
     ui: &mut egui::Ui,
     code: u32,
     co: &crate::elk::Cohort,
     history: &History,
-    drive_samples: &DriveSamples,
-    selected_elk: Option<Entity>,
-    last_decisions: &Query<&LastDecision>,
 ) {
     ui.heading(format!("pack {code:06x}"));
     ui.label(format!("status: {}", if co.alive > 0 { "alive" } else { "no survivors" }));
@@ -790,19 +753,6 @@ fn herd_details(
     ui.label(format!("migrated out: {}", co.departures));
     ui.separator();
 
-    // Drive-split pie for this herd's slot.
-    let slot = co.slot as usize;
-    if let Some(ds) = drive_samples.per_slot.get(slot) {
-        let mags = [ds.sep, ds.coh, ds.grass, ds.social, ds.migration];
-        let pie_slices: Vec<(&str, &str, f32, egui::Color32)> = (0..5)
-            .map(|i| (DRIVE_LABELS[i], DRIVE_EXPLAIN[i], mags[i], DRIVE_COLORS[i]))
-            .collect();
-        ui.label("drive composition:");
-        render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
-    }
-
-    ui.separator();
-
     // Population over time (all elk).
     render_items(ui, vec![
         Item::Label("population".to_string()),
@@ -812,90 +762,165 @@ fn herd_details(
             series: vec![("population", &history.population)],
         }),
     ]);
-
-    // Migration share for this slot over time.
-    if let Some(share_buf) = history.migration_share.get(slot) {
-        render_items(ui, vec![
-            Item::Label("migration share".to_string()),
-            Item::Plot(PlotSpec {
-                id: &format!("mig_share_{slot}"),
-                height: 80.0,
-                series: vec![("migration share", share_buf)],
-            }),
-        ]);
-    }
-
-    ui.separator();
-    match selected_elk.and_then(|e| last_decisions.get(e).ok()) {
-        Some(ld) => elk_decision_panel(ui, &ld.0),
-        None => { ui.weak("no elk selected — click one to inspect its decision"); }
-    }
 }
 
-/// Compass glyph for a unit step in grid space (world +y is up, so +row points up).
-fn step_arrow(step: (isize, isize)) -> &'static str {
-    match step {
-        (1, 0) => "→",
-        (-1, 0) => "←",
-        (0, 1) => "↑",
-        (0, -1) => "↓",
-        _ => "•",
-    }
-}
+/// Thumbnail edge length in the selection roster, in points.
+const THUMB: f32 = 58.0;
+/// Reserved portrait height in points — programmer-art space for real elk art.
+const PORTRAIT_H: f32 = 168.0;
 
-fn act_glyph(act: Act) -> String {
-    match act {
-        Act::Step(dx, dy) => step_arrow((dx, dy)).to_string(),
-        Act::Stand => "■".to_string(),
-        Act::Graze => "🌿".to_string(),
-    }
-}
+/// The Selection tab: a three-column side-split — roster | stats | portrait. The
+/// roster is the StarCraft-style thumbnail array (each a herd-tinted silhouette
+/// with code + energy bar); clicking one focuses it into the stats and portrait
+/// columns. Stale (despawned) units are pruned by `control_panel` before this runs.
+fn selection_tab(
+    ui: &mut egui::Ui,
+    sel: &mut UnitSelectState,
+    elk: &Query<(Entity, &Elk)>,
+) {
+    // Snapshot the order so the roster can iterate while clicks mutate `focused`.
+    let units = sel.units.clone();
+    let total = sel.captured_total;
 
-fn elk_decision_panel(ui: &mut egui::Ui, decision: &Decision) {
-    ui.label("selected elk — last decision");
-
-    // Drive decomposition: labelled swatches with hover for full explanation.
-    // `contributions` is in DRIVE_LABELS/DRIVE_COLORS/DRIVE_EXPLAIN order.
-    let contributions = decision.drives.contributions();
-    let pie_slices: Vec<(&str, &str, f32, egui::Color32)> = contributions
-        .iter()
-        .enumerate()
-        .map(|(i, (_, vec))| (DRIVE_LABELS[i], DRIVE_EXPLAIN[i], vec.length(), DRIVE_COLORS[i]))
-        .collect();
-    ui.label("drive breakdown:");
-    render_items(ui, vec![Item::Pie(PieSpec { slices: pie_slices })]);
-
-    // Step options as direction arrows — the chosen one tinted, the rest dimmed.
-    // Hover any arrow for its score / water penalty / pick chance, so there are no
-    // coordinate tuples or column headers to decode.
-    let total_weight: f32 = decision.options.iter().map(|e| e.weight).sum();
-    if decision.options.is_empty() {
-        ui.weak("hemmed in — nowhere to step");
-    } else {
-        ui.label("step options (hover for scores):");
-        ui.horizontal(|ui| {
-            for (idx, eval) in decision.options.iter().enumerate() {
-                let prob = if total_weight > 1e-6 { eval.weight / total_weight } else { 0.0 };
-                let chosen = decision.chosen == Some(idx);
-                let mut text = egui::RichText::new(act_glyph(eval.act)).size(20.0);
-                text = if chosen {
-                    text.strong().color(egui::Color32::from_rgb(120, 200, 120))
-                } else {
-                    text.weak()
-                };
-                ui.label(text).on_hover_text(format!(
-                    "score {:.2} · water penalty {:.2} · pick chance {:.0}%",
-                    eval.score, eval.penalty, prob * 100.0
-                ));
+    ui.columns(3, |cols| {
+        // ── Roster ──────────────────────────────────────────────────────────
+        let roster = &mut cols[0];
+        roster.horizontal(|ui| {
+            let header = if units.len() < total {
+                format!("{} of {} selected", units.len(), total)
+            } else {
+                format!("{} selected", units.len())
+            };
+            ui.strong(header);
+            if ui.button("clear").clicked() {
+                sel.units.clear();
+                sel.focused = None;
             }
         });
-    }
+        roster.separator();
+        // Only the roster scrolls — its own area, bounded to the column height, so
+        // the thumbnail array pages independently while stats/portrait stay put.
+        egui::ScrollArea::vertical()
+            .id_salt("unit_roster")
+            .auto_shrink([false, false])
+            .show(roster, |ui| {
+            ui.horizontal_wrapped(|ui| {
+            for &e in &units {
+                let Ok((_, ec)) = elk.get(e) else { continue };
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(THUMB, THUMB), egui::Sense::click());
+                let painter = ui.painter_at(rect);
+                draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
+                // Energy bar pinned to the thumbnail's bottom edge.
+                let bar = egui::Rect::from_min_max(
+                    egui::pos2(rect.left() + 3.0, rect.bottom() - 7.0),
+                    egui::pos2(rect.right() - 3.0, rect.bottom() - 3.0),
+                );
+                painter.rect_filled(bar, 0.0, egui::Color32::from_gray(40));
+                let fill = egui::Rect::from_min_max(
+                    bar.min,
+                    egui::pos2(bar.left() + bar.width() * ec.energy.clamp(0.0, 1.0), bar.bottom()),
+                );
+                painter.rect_filled(fill, 0.0, egui::Color32::from_rgb(120, 200, 120));
+                painter.text(
+                    rect.left_top() + egui::vec2(3.0, 2.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{:06x}", ec.code),
+                    egui::FontId::monospace(9.0),
+                    egui::Color32::WHITE,
+                );
+                if sel.focused == Some(e) {
+                    painter.rect_stroke(
+                        rect,
+                        3.0,
+                        egui::Stroke::new(2.0, egui::Color32::WHITE),
+                        egui::StrokeKind::Inside,
+                    );
+                }
+                if resp.clicked() {
+                    sel.focused = Some(e);
+                }
+            }
+            });
+        });
+
+        // ── Stats ───────────────────────────────────────────────────────────
+        // Independent scroll: the drive breakdown can run tall without dragging
+        // the roster or portrait along with it.
+        let stats = &mut cols[1];
+        egui::ScrollArea::vertical()
+            .id_salt("unit_stats")
+            .auto_shrink([false, false])
+            .show(stats, |ui| match sel.focused.and_then(|e| elk.get(e).ok()) {
+            Some((e, ec)) => {
+                ui.heading(format!("elk {:06x}", ec.code));
+                ui.horizontal(|ui| {
+                    let idx = units.iter().position(|&x| x == e);
+                    if ui.button("‹ prev").clicked() {
+                        if let Some(i) = idx {
+                            sel.focused = Some(units[(i + units.len() - 1) % units.len()]);
+                        }
+                    }
+                    if ui.button("next ›").clicked() {
+                        if let Some(i) = idx {
+                            sel.focused = Some(units[(i + 1) % units.len()]);
+                        }
+                    }
+                });
+                ui.add(
+                    egui::ProgressBar::new(ec.energy.clamp(0.0, 1.0))
+                        .text(format!("energy {:.0}%", ec.energy * 100.0)),
+                );
+                ui.label(format!(
+                    "{}  ·  {}",
+                    if ec.grazing { "grazing" } else { "not grazing" },
+                    if ec.traveling { "traveling" } else { "foraging" },
+                ));
+                ui.label(format!("intake {:.3}  ·  digesting {}", ec.intake_rate, ec.digesting.len()));
+                ui.label(format!("cell {}", ec.cell));
+            }
+            None => {
+                ui.weak("select a unit");
+            }
+        });
+
+        // ── Portrait ────────────────────────────────────────────────────────
+        let portrait = &mut cols[2];
+        let (rect, _) = portrait.allocate_exact_size(
+            egui::vec2(portrait.available_width(), PORTRAIT_H),
+            egui::Sense::hover(),
+        );
+        let painter = portrait.painter_at(rect);
+        match sel.focused.and_then(|e| elk.get(e).ok()) {
+            Some((_, ec)) => {
+                draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
+                painter.text(
+                    rect.center_bottom() + egui::vec2(0.0, -8.0),
+                    egui::Align2::CENTER_BOTTOM,
+                    format!("{:06x}", ec.code),
+                    egui::FontId::monospace(15.0),
+                    egui::Color32::WHITE,
+                );
+            }
+            None => {
+                painter.rect_filled(rect, 4.0, egui::Color32::from_gray(24));
+                painter.text(
+                    rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    "no unit",
+                    egui::FontId::proportional(12.0),
+                    egui::Color32::from_gray(120),
+                );
+            }
+        }
+    });
 }
 
 /// A left-click in the world selects the nearest elk's herd and opens the Herds
-/// tab on it. Clicks over the egui panel are ignored. The cursor is unprojected
-/// through the world camera, so it respects the viewport clip above the dock.
-fn pick_herd(
+/// tab on it. Clicks over the egui panel are ignored, as is the click that closed
+/// a box-select drag. The cursor is unprojected through the world camera, so it
+/// respects the viewport clip above the dock. Acts on release so the box-select
+/// gesture (which decides on release) can claim a drag first.
+pub(crate) fn pick_herd(
     mouse: Res<ButtonInput<MouseButton>>,
     mut contexts: EguiContexts,
     window: Single<&Window>,
@@ -903,9 +928,13 @@ fn pick_herd(
     grid: Res<Grid>,
     elk: Query<(Entity, &Elk)>,
     mut state: ResMut<UiState>,
+    sel: Res<UnitSelectState>,
 ) -> Result {
-    if !mouse.just_pressed(MouseButton::Left) {
+    if !mouse.just_released(MouseButton::Left) {
         return Ok(());
+    }
+    if sel.drag_was_box {
+        return Ok(()); // the release closed a box drag, not a single pick
     }
     if contexts.ctx_mut()?.wants_pointer_input() {
         return Ok(()); // the click landed on the UI
@@ -931,9 +960,8 @@ fn pick_herd(
             best = Some((entity, elk.code, d2));
         }
     }
-    if let Some((entity, code, _)) = best {
+    if let Some((_entity, code, _)) = best {
         state.selected = Some(code);
-        state.selected_elk = Some(entity);
         state.tab = Tab::Herds;
     }
     Ok(())
@@ -964,22 +992,23 @@ fn world_viewport(min: Vec2, size: Vec2, scale: f32, target: UVec2) -> Option<Vi
     })
 }
 
-/// Confine the *world* camera to the rect egui leaves above the dock. The egui
-/// camera is separate and full-window, so clipping here never touches the UI.
+/// Confine the *world* camera to `WorldViewRect` — the strip below the top bar
+/// that runs to the window's bottom, ignoring the dock. Because the dock isn't
+/// subtracted, resizing it leaves the viewport (and so the map) untouched; the
+/// dock, drawn by the separate full-window egui camera, simply slides over the
+/// fixed world. Clipping here never touches the UI.
 fn set_camera_viewport(
-    mut contexts: EguiContexts,
+    view_rect: Res<WorldViewRect>,
     window: Single<&Window>,
     camera: Single<&mut Camera, With<WorldCamera>>,
-) -> Result {
-    let avail = contexts.ctx_mut()?.available_rect(); // free area above the panel
+) {
     let target = UVec2::new(window.physical_width(), window.physical_height());
     camera.into_inner().viewport = world_viewport(
-        Vec2::new(avail.min.x, avail.min.y),
-        Vec2::new(avail.width(), avail.height()),
+        view_rect.min,
+        view_rect.size,
         window.scale_factor(),
         target,
     );
-    Ok(())
 }
 
 /// Most virtual time `FixedUpdate` is allowed to advance in a single rendered
@@ -1138,28 +1167,13 @@ fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
     ]
 }
 
-fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32, drive_samples: &DriveSamples, score: &Score) {
-    render_drive_mix_bar(ui, drive_mix(drive_samples));
-    ui.separator();
+fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32) {
     ui.label("drive weights");
     slider(ui, &mut p.separation, 0.0..=3.0, "separation");
     slider(ui, &mut p.cohesion, 0.0..=3.0, "cohesion");
     slider(ui, &mut p.grass, 0.0..=3.0, "grass-seeking");
     slider(ui, &mut p.social, 0.0..=3.0, "social foraging");
     slider(ui, cross_ratio, 0.0..=2.0, "migration ÷ crossing cost");
-    {
-        let pct = score.pull_share * 100.0;
-        let color = difficulty_color(score.pull_share);
-        ui.label(
-            egui::RichText::new(format!("magic pull  {pct:.0}%"))
-                .size(11.0)
-                .color(color),
-        )
-        .on_hover_text(
-            "Relying on the migration pull caps your score — the pull penalty discounts \
-             crossings bought this way. A high reading means you're leaving points on the table.",
-        );
-    }
     slider(ui, &mut p.quiet, 0.05..=3.0, "migration crossover (quiet)");
     slider(ui, &mut p.cross, 0.0..=4.0, "water crossing (× hunger)");
     ui.separator();
@@ -1214,36 +1228,6 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     slider(ui, &mut p.leave_boost, 0.0..=4.0, "migration boost when leaving");
 }
 
-/// Herd-mean normalised drive mix, in contributions() order: [sep, coh, grass, social,
-/// migration]. Averages each component's magnitude over slots with count > 0, then
-/// normalises to sum 1. All-zero (idle herd) returns [0; 5].
-pub fn drive_mix(samples: &DriveSamples) -> [f32; 5] {
-    let mut totals = [0.0f32; 5];
-    let mut active = 0u32;
-    for ds in &samples.per_slot {
-        if ds.count == 0 {
-            continue;
-        }
-        totals[0] += ds.sep;
-        totals[1] += ds.coh;
-        totals[2] += ds.grass;
-        totals[3] += ds.social;
-        totals[4] += ds.migration;
-        active += 1;
-    }
-    if active == 0 {
-        return [0.0; 5];
-    }
-    for t in &mut totals {
-        *t /= active as f32;
-    }
-    let sum: f32 = totals.iter().sum();
-    if sum < 1e-6 {
-        return [0.0; 5];
-    }
-    totals.map(|v| v / sum)
-}
-
 /// Direction of change for a time series.
 pub enum Trend {
     Up,
@@ -1275,64 +1259,6 @@ pub fn trend_arrow(t: Trend) -> &'static str {
         Trend::Up => "^",
         Trend::Down => "v",
         Trend::Flat => "-",
-    }
-}
-
-/// Compact horizontal stacked bar showing the herd drive mix at the top of
-/// `behaviour_tab`. Proportional segments coloured by `DRIVE_COLORS`; hover shows
-/// percentages for all five drives.
-fn render_drive_mix_bar(ui: &mut egui::Ui, mix: [f32; 5]) {
-    let sum: f32 = mix.iter().sum();
-    ui.label(egui::RichText::new("drive mix (live)").size(11.0).weak());
-    if sum < 1e-6 {
-        ui.weak("—  idle herd");
-        return;
-    }
-    let bar_w = ui.available_width().min(280.0);
-    let bar_h = 14.0;
-    let (resp, painter) =
-        ui.allocate_painter(egui::vec2(bar_w, bar_h), egui::Sense::hover());
-    let r = resp.rect;
-    let mut x = r.left();
-    for i in 0..5 {
-        let w = mix[i] * bar_w;
-        let seg = egui::Rect::from_min_max(
-            egui::pos2(x, r.top()),
-            egui::pos2((x + w).min(r.right()), r.bottom()),
-        );
-        painter.rect_filled(seg, 0.0, DRIVE_COLORS[i]);
-        x += w;
-    }
-    let hover = (0..5)
-        .map(|i| format!("{}: {:.0}%", DRIVE_LABELS[i], mix[i] * 100.0))
-        .collect::<Vec<_>>()
-        .join("  ");
-    resp.on_hover_text(hover);
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        for i in 0..5 {
-            if mix[i] > 0.04 {
-                ui.label(
-                    egui::RichText::new(format!("{:.0}%", mix[i] * 100.0))
-                        .size(10.0)
-                        .color(DRIVE_COLORS[i]),
-                );
-            }
-        }
-    });
-}
-
-fn view_tab(ui: &mut egui::Ui, cam: &mut CameraSettings) {
-    ui.add(
-        egui::Slider::new(&mut cam.zoom, 0.1..=10.0)
-            .logarithmic(true)
-            .text("zoom"),
-    );
-    slider(ui, &mut cam.pan.x, -2000.0..=2000.0, "pan x");
-    slider(ui, &mut cam.pan.y, -2000.0..=2000.0, "pan y");
-    if ui.button("reset view").clicked() {
-        cam.zoom = 1.0;
-        cam.pan = Vec2::ZERO;
     }
 }
 
@@ -1420,76 +1346,6 @@ mod tests {
     #[test]
     fn collapsed_area_yields_none() {
         assert!(world_viewport(Vec2::new(0.0, 960.0), Vec2::ZERO, 1.0, UVec2::new(1280, 960)).is_none());
-    }
-
-    // ── drive_mix ─────────────────────────────────────────────────────────────
-
-    fn make_samples(slot_data: &[(f32, f32, f32, f32, f32, u32)]) -> crate::elk::DriveSamples {
-        use crate::elk::DriveSample;
-        crate::elk::DriveSamples {
-            per_slot: slot_data
-                .iter()
-                .map(|&(sep, coh, grass, social, migration, count)| DriveSample {
-                    sep,
-                    coh,
-                    grass,
-                    social,
-                    migration,
-                    count,
-                })
-                .collect(),
-        }
-    }
-
-    #[test]
-    fn drive_mix_all_zero_returns_zero_array() {
-        let s = make_samples(&[(0.0, 0.0, 0.0, 0.0, 0.0, 0)]);
-        assert_eq!(drive_mix(&s), [0.0; 5]);
-    }
-
-    #[test]
-    fn drive_mix_idle_herd_empty_slots_returns_zero() {
-        let s = make_samples(&[
-            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
-            (0.0, 0.0, 0.0, 0.0, 0.0, 0),
-        ]);
-        assert_eq!(drive_mix(&s), [0.0; 5]);
-    }
-
-    #[test]
-    fn drive_mix_sums_to_one_when_nonzero() {
-        let s = make_samples(&[(1.0, 2.0, 3.0, 0.5, 1.5, 10)]);
-        let mix = drive_mix(&s);
-        let sum: f32 = mix.iter().sum();
-        assert!((sum - 1.0).abs() < 1e-5, "sum was {sum}");
-    }
-
-    #[test]
-    fn drive_mix_grass_only_concentrates_at_index_2() {
-        let s = make_samples(&[(0.0, 0.0, 5.0, 0.0, 0.0, 10)]);
-        let mix = drive_mix(&s);
-        assert!((mix[2] - 1.0).abs() < 1e-5, "grass index should be 1.0, got {}", mix[2]);
-        assert!(mix[0] < 1e-6);
-        assert!(mix[1] < 1e-6);
-        assert!(mix[3] < 1e-6);
-        assert!(mix[4] < 1e-6);
-    }
-
-    #[test]
-    fn drive_mix_averages_across_active_slots() {
-        // Two slots: first has grass=1, second has migration=1; average → 0.5 each.
-        let s = make_samples(&[(0.0, 0.0, 1.0, 0.0, 0.0, 5), (0.0, 0.0, 0.0, 0.0, 1.0, 5)]);
-        let mix = drive_mix(&s);
-        assert!((mix[2] - 0.5).abs() < 1e-5, "grass should be 0.5, got {}", mix[2]);
-        assert!((mix[4] - 0.5).abs() < 1e-5, "migration should be 0.5, got {}", mix[4]);
-    }
-
-    #[test]
-    fn drive_mix_ignores_empty_slots() {
-        // One active slot, one empty (count=0) — result should be identical to one slot.
-        let s_one = make_samples(&[(1.0, 0.0, 0.0, 0.0, 0.0, 3)]);
-        let s_two = make_samples(&[(1.0, 0.0, 0.0, 0.0, 0.0, 3), (0.0, 0.0, 5.0, 0.0, 0.0, 0)]);
-        assert_eq!(drive_mix(&s_one), drive_mix(&s_two));
     }
 
     // ── trend ─────────────────────────────────────────────────────────────────

@@ -90,7 +90,8 @@ pub const PRESETS: [Preset; 3] = [
         description: "Stock weights, no pull, plenty of food — with no eastward drive the \
                       herd mills and overcrowds the first segment, never crossing (stage 1, broken).",
         ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.175, cross_ratio: 0.0 },
-        green_wave: GreenWave { strength: 0.5, speed: 0.010, wavelength: 85.0 },
+        // Green wave unplugged (strength 0) to match GreenWave::default() — see grid.rs.
+        green_wave: GreenWave { strength: 0.0, speed: 0.010, wavelength: 85.0 },
         apply_params: default_params,
     },
     Preset {

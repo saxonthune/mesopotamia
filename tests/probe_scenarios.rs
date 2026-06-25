@@ -39,20 +39,22 @@ fn crossing_probe_ablation_cohesion_does_not_gate() {
     );
 }
 
-/// The grass gradient is the primary drive that pulls the elk toward the far-bank
-/// forage and guides it to the ford. Zeroing it must delay the crossing relative
-/// to the baseline — pinning which drive gates the ford traverse.
+/// Forage *perception* is what carries the elk across: the grass-gradient signal
+/// reaches over `grass_radius` cells to sense the far-bank forage, pulling the elk
+/// into Travel toward the ford. Collapsing that radius to a single cell blinds the
+/// elk to the far bank, so it never commits to the crossing — pinning perception,
+/// not any drive weight, as the gate under the herding model.
 #[test]
-fn crossing_probe_grass_drive_gates_crossing() {
+fn crossing_probe_forage_perception_gates_crossing() {
     let ticks_full = probe_ablation(ElkParams::default(), |_| {}, 500);
-    let ticks_no_grass = probe_ablation(ElkParams::default(), |p| p.grass = 0.0, 500);
+    let ticks_blind = probe_ablation(ElkParams::default(), |p| p.grass_radius = 1.0, 500);
 
     assert!(
         ticks_full < 500,
         "baseline crossing probe failed: elk did not cross in 500 ticks"
     );
     assert!(
-        ticks_full < ticks_no_grass,
-        "zeroing grass drive must delay crossing: baseline={ticks_full}, no_grass={ticks_no_grass}"
+        ticks_full < ticks_blind,
+        "blinding forage perception must delay crossing: baseline={ticks_full}, blind={ticks_blind}"
     );
 }
