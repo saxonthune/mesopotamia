@@ -80,8 +80,8 @@ Orphaned attachments (non-md files with no corresponding root .md) are reported 
 | doc03.01.05 | `01-grazers/05-herd-and-flocking-research.md` | Research session — boids' separation/alignment/cohesion adapted from velocity-steering to per-neighbor move-scoring on a lattice; social foraging (local enhancement) as a two-radius forage sense; a time-growing migration drive; pack affiliation as a partition over bodies; and the two-phase snapshot-then-move ECS pattern that scales to hundreds of bodies | research, exploration, herd, flocking, boids, foraging, migration, ecs, scale | doc03.01.01, doc03.01.04 | doc03.01.09 | — |
 | doc03.01.06 | `01-grazers/06-procgen-river-research.md` | Research session — procedural generation as a function from seed and a declarative spec to content; the noise-plus-pathfinding river built generate-and-test over constructive carving; value noise via box-blur smoothing as a cost field; directed least-cost (Dijkstra) carving as a geodesic in an anisotropic metric, with heading, drift, and bendiness; several rivers from one shared cost field spaced by a period; rasterizing a centerline to width with a falloff; and a multi-source BFS turning water distance into a grass carrying-capacity field | research, exploration, procgen, noise, pathfinding, dijkstra, bfs, river, field | doc03.01.01, doc03.01.04 | doc01.03, doc01.04, doc02.02 | — |
 | doc03.01.07 | `01-grazers/07-ecs-for-dummies.md` | A ground-up primer on the ECS the grazers slice runs on — entity/component/system/resource, the table/column/archetype storage, structure-of-arrays vs array-of-structs, how lookups and iteration work, and why the layout pays off | ecs, storage, architecture, primer, soa, archetype | doc03.01.02, doc03.01.04 | doc03.01.08 | — |
-| doc03.01.08 | `01-grazers/08-elk-decision-model.md` | The conceptual model under an elk's per-tick choice — a flat palette of candidate next-states each scored by one energy-grounded value function, picked by a Boltzmann softmax. Unifies spatial movement drives and the eat/rest decision as gradients of a single potential, and names the terminology the code uses. | ecs, modeling, decision, energy, boids, softmax, dialectics | doc03.01.01, doc03.01.07 | doc02.03, doc03.01.09 | — |
-| doc03.01.09 | `01-grazers/09-movement-redesign-research.md` | Why the per-tick drive accumulator buzzes, and the plan-then-steer architecture the movement-ecology and game-AI literatures converge on as its successor — a small per-elk state machine driving steering behaviours (Arrive), with dead-band hysteresis against decision-propagation jitter and an emergent, leaderless follow-chain for the column. | herd, movement, steering, decision, fsm, boids, flocking, buzzing, research | doc03.01.05, doc03.01.08 | — | — |
+| doc03.01.08 | `01-grazers/08-elk-decision-model.md` | The conceptual model under an elk's movement — a small per-elk state machine (graze / travel / cross) driving steering behaviours that descend a forage value field. Migration is a directed goal each elk weights by its own confidence (leaderless leadership), polarised into a column by forward-biased cohesion, never a hard-coded compass; the river is a bounded bet; energy is the common currency; direction is always a property of the forage field, so it emerges and would change if the world did. | ecs, modeling, decision, energy, boids, steering, fsm, flocking, migration, dialectics | doc03.01.01, doc03.01.07, doc03.01.09 | doc02.03, doc03.01.09 | — |
+| doc03.01.09 | `01-grazers/09-movement-redesign-research.md` | Why the per-tick drive accumulator buzzes, and the plan-then-steer architecture the movement-ecology and game-AI literatures converge on as its successor — a small per-elk state machine driving steering behaviours (Arrive), with dead-band hysteresis against decision-propagation jitter and an emergent, leaderless follow-chain for the column. | herd, movement, steering, decision, fsm, boids, flocking, buzzing, research | doc03.01.05, doc03.01.08 | doc03.01.08 | — |
 
 ### Hotspot
 
@@ -159,9 +159,9 @@ Quick lookup for file-path→doc mapping:
 | `eulerian` | doc03.01.04 |
 | `exploration` | doc03.01.03, doc03.01.04, doc03.01.05, doc03.01.06 |
 | `field` | doc03.01.06 |
-| `flocking` | doc03.01.05, doc03.01.09 |
+| `flocking` | doc03.01.05, doc03.01.08, doc03.01.09 |
 | `foraging` | doc03.01.05 |
-| `fsm` | doc03.01.09 |
+| `fsm` | doc03.01.08, doc03.01.09 |
 | `game` | doc02.00, doc02.03 |
 | `generation` | doc01.03, doc01.04, doc02.02 |
 | `goals` | doc02.00 |
@@ -185,7 +185,7 @@ Quick lookup for file-path→doc mapping:
 | `meta` | doc00.00, doc00.01 |
 | `methodology` | doc01.04, doc04.02 |
 | `metrics` | doc02.01, doc04.00, doc04.01 |
-| `migration` | doc03.01.05, doc04.01 |
+| `migration` | doc03.01.05, doc03.01.08, doc04.01 |
 | `milestone` | doc03.00, doc03.01.00, doc03.01.01, doc03.02.00, doc03.02.01, doc03.03.00, doc03.03.01 |
 | `modeling` | doc03.01.08, doc04.00, doc04.02 |
 | `modules` | doc05.01 |
@@ -224,10 +224,9 @@ Quick lookup for file-path→doc mapping:
 | `silver` | doc01.02.01.01, doc01.02.01.05 |
 | `simulation` | doc01.01, doc03.01.00, doc03.01.01 |
 | `soa` | doc03.01.07 |
-| `softmax` | doc03.01.08 |
 | `spatial` | doc03.01.03, doc03.01.04 |
 | `spec` | doc04.01 |
-| `steering` | doc03.01.09 |
+| `steering` | doc03.01.08, doc03.01.09 |
 | `storage` | doc03.01.03, doc03.01.07 |
 | `structure` | doc03.01.02 |
 | `testing` | doc05.01 |

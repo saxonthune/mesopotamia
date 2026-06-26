@@ -38,11 +38,11 @@ pub(super) fn graze(
         // availability, so this only *permits* feeding; it never forces an empty bite.
         if herd.permits_feeding() {
             if grid.shrubs(elk.cell) > 0.05 {
-                // Shrubs first: a big, concentrated bite that strips the shrub and
-                // pays more energy than grass — the reward for crossing dry ground.
-                grid.eat_shrubs(elk.cell, params.shrub_bite);
+                // Shrubs first: concentrated forage, the reward for crossing dry ground.
+                let bitten = params.shrub_bite.min(grid.shrubs(elk.cell));
+                grid.eat_shrubs(elk.cell, bitten);
                 let before = elk.energy;
-                elk.energy = (elk.energy + params.shrub_energy).min(1.0);
+                elk.energy = (elk.energy + bitten * params.shrub_yield).min(1.0);
                 flows.intake += elk.energy - before;
                 elk.grazing = true;
             } else if let Some(bitten) = worthwhile_bite(&grid, elk.cell, &params) {

@@ -1198,8 +1198,8 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     });
     ui.separator();
     ui.label("shrubs & crossing");
-    slider(ui, &mut p.shrub_energy, 0.0..=0.1, "energy / shrub bite");
-    slider(ui, &mut p.shrub_bite, 0.0..=1.0, "shrubs / bite");
+    slider(ui, &mut p.shrub_yield, 0.0..=0.3, "energy / shrub unit");
+    slider(ui, &mut p.shrub_bite, 0.0..=0.3, "shrubs / bite");
     slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
     slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");

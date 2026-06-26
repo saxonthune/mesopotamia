@@ -138,6 +138,11 @@ pub struct HerdParams {
     /// separation > cohesion > alignment ordering). Scaled by neighbour coherence, so a
     /// scattered herd feels little pull and a coherent one locks into a column.
     pub alignment: f32,
+    /// Forward bias on cohesion — how much more an elk weights herd-mates ahead of its
+    /// heading than behind (anisotropic perception). 0 ⇒ plain centroid cohesion (a
+    /// blob); positive ⇒ the herd polarises into a marching column. Acts only while
+    /// moving — a settled grazer has no heading, so its cohesion is unbiased.
+    pub forward_bias: f32,
     pub sep_radius: f32,
     pub coh_radius: f32,
     /// Forage-signal magnitude at which an elk fully trusts its own goal (confidence 0.5).
@@ -146,6 +151,9 @@ pub struct HerdParams {
     pub scan_radius: f32,
     /// Graze→Travel: leave a patch once its grass falls below this fraction of capacity.
     pub leave_frac: f32,
+    /// Minimum ticks an elk holds in Graze before it may relocate — the rest floor
+    /// that stops the herd travelling forever up a continuous gradient.
+    pub graze_min_dwell: u32,
     /// A scanned patch must beat underfoot by this attractiveness to be worth travelling to.
     pub travel_margin: f32,
     /// Abandon a travel goal that has not been reached within this many ticks.
@@ -164,13 +172,15 @@ impl Default for HerdParams {
             slow_radius: 4.0,
             arrive_radius: 0.6,
             separation: 0.5,
-            cohesion: 0.2,
+            cohesion: 0.5,
             alignment: 0.3,
+            forward_bias: 0.5,
             sep_radius: 1.5,
             coh_radius: 8.0,
             confidence_ref: 0.5,
             scan_radius: 8.0,
             leave_frac: 0.4,
+            graze_min_dwell: 30,
             travel_margin: 0.05,
             goal_timeout: 200,
             deadband: 0.15,
@@ -210,30 +220,43 @@ pub fn separation(pos: Vec2, others: &[Vec2], radius: f32) -> Vec2 {
     acc
 }
 
-/// The cohesion target for an elk: the centroid of same-slot herd-mates within
-/// `coh_radius`, or — when none are in range — the single *nearest* herd-mate at any
-/// distance. The fallback is what reels a lost tail back in: gating cohesion purely on
-/// `coh_radius` leaves a straggler that has slipped past it with no neighbours, hence
-/// no restoring pull, so it diffuses away for good. Steering a detached elk toward its
-/// closest kin always gives it a heading home. Returns `None` only for a lone elk with
-/// no kin at all. `kin` are same-slot neighbour positions excluding the elk itself.
-pub fn cohesion_target(pos: Vec2, kin: &[Vec2], coh_radius: f32) -> Option<Vec2> {
+/// The cohesion target for an elk: a **forward-biased** centroid of same-slot herd-mates
+/// within `coh_radius`, or — when none are in range — the single *nearest* herd-mate at
+/// any distance.
+///
+/// `fwd_bias` weights each in-range kin by `1 + fwd_bias · cos θ`, where θ is the angle
+/// between the elk's `heading` and the direction to that kin: neighbours *ahead* count
+/// more, those *behind* less. This is the anisotropic perception (Couzin et al. 2002)
+/// that tips a moving herd from a churning blob into a polarised column — a pioneer is
+/// drawn to the front rather than reeled back to the rear centroid. With zero `heading`
+/// (a settled elk) or `fwd_bias = 0` the weights are all 1 and this is the plain
+/// centroid, so cohesion at rest is unchanged.
+///
+/// The nearest-kin fallback reels a detached tail back in: gating cohesion purely on
+/// `coh_radius` leaves a straggler past it with no neighbours, hence no restoring pull,
+/// so it diffuses away for good. Returns `None` only for a lone elk with no kin at all.
+/// `kin` are same-slot neighbour positions excluding the elk itself.
+pub fn cohesion_target(pos: Vec2, kin: &[Vec2], heading: Vec2, coh_radius: f32, fwd_bias: f32) -> Option<Vec2> {
     let r2 = coh_radius * coh_radius;
-    let mut sum = Vec2::ZERO;
-    let mut n = 0.0_f32;
+    let h = heading.normalize_or_zero();
+    let mut wsum = Vec2::ZERO;
+    let mut w = 0.0_f32;
     let mut nearest: Option<(f32, Vec2)> = None;
     for &k in kin {
-        let d2 = (k - pos).length_squared();
+        let off = k - pos;
+        let d2 = off.length_squared();
         if d2 <= r2 {
-            sum += k;
-            n += 1.0;
+            let cos = if d2 > 1e-6 && h != Vec2::ZERO { off.normalize().dot(h) } else { 0.0 };
+            let weight = (1.0 + fwd_bias * cos).max(0.0);
+            wsum += k * weight;
+            w += weight;
         }
         if nearest.is_none_or(|(bd, _)| d2 < bd) {
             nearest = Some((d2, k));
         }
     }
-    if n > 0.0 {
-        Some(sum / n)
+    if w > 0.0 {
+        Some(wsum / w)
     } else {
         nearest.map(|(_, p)| p)
     }
@@ -278,6 +301,21 @@ pub fn quantize_step(desired: Vec2, deadband: f32) -> Option<(isize, isize)> {
 /// exists instead of dashing off thin ground.
 pub fn should_leave_patch(here_frac: f32, best_frac: f32, leave_frac: f32, margin: f32) -> bool {
     here_frac < leave_frac && best_frac > here_frac + margin
+}
+
+/// Whether a grazing elk may relocate now: it has rested at least `min_dwell` ticks
+/// *and* its patch is drawn down with somewhere better in reach. The dwell floor is
+/// the rest hysteresis — without it a herd on a gradient leaves the instant a
+/// marginally richer cell appears up-slope and so travels forever, never grazing.
+pub fn should_leave_graze(
+    dwell: u32,
+    min_dwell: u32,
+    here_frac: f32,
+    best_frac: f32,
+    leave_frac: f32,
+    margin: f32,
+) -> bool {
+    dwell >= min_dwell && should_leave_patch(here_frac, best_frac, leave_frac, margin)
 }
 
 // ── Grid position helpers ────────────────────────────────────────────────────────
@@ -376,7 +414,7 @@ pub(super) fn herd_step(
         .collect();
 
     for (i, (mut elk, mut herd)) in elk_q.iter_mut().enumerate() {
-        let (pos, _vel, slot) = snapshot[i];
+        let (pos, vel, slot) = snapshot[i];
 
         // Neighbour drives from the snapshot: separation from all, cohesion to the
         // same-slot centroid (with a nearest-kin fallback for stragglers), alignment to
@@ -411,7 +449,7 @@ pub(super) fn herd_step(
             Vec2::ZERO
         };
         let sep = separation(pos, &others, hp.sep_radius) * hp.separation + stack_kick;
-        let coh_center = cohesion_target(pos, &kin, hp.coh_radius).unwrap_or(pos);
+        let coh_center = cohesion_target(pos, &kin, vel, hp.coh_radius, hp.forward_bias).unwrap_or(pos);
         let coh_dir = (coh_center - pos).normalize_or_zero();
         // Mean neighbour heading, scaled by coherence: `align_sum/align_n` is an average of
         // unit headings, so its length is ~1 when the herd moves as one and ~0 when
@@ -461,7 +499,7 @@ pub(super) fn herd_step(
                 let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
                 desired = sep + restore + align;
                 let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
-                if should_leave_patch(here_frac, best_frac, hp.leave_frac, hp.travel_margin) {
+                if should_leave_graze(herd.dwell, hp.graze_min_dwell, here_frac, best_frac, hp.leave_frac, hp.travel_margin) {
                     let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
                     if cell != here && val > attract(here, &grid, &ep) + hp.travel_margin {
                         herd.state = HerdState::Travel;
@@ -476,10 +514,14 @@ pub(super) fn herd_step(
                     _ => here,
                 };
                 let target = cell_center(target_cell, &grid);
-                let arrive_v = arrive(pos, target, hp.slow_radius, hp.arrive_radius, hp.max_speed);
-                // Blend: trust own arrive by confidence, fall back to the herd as it drops.
+                // Steer along the forage-field gradient — a smooth field neighbours
+                // agree on — rather than toward this elk's own argmax cell, so the herd
+                // travels as a coherent column instead of a dispersing spray of private
+                // goals. Confidence weights own-goal vs follow-the-herd (leaderless
+                // leadership): a steep local gradient leads, a flat one follows.
+                let goal_dir = signal.normalize_or_zero() * hp.max_speed;
                 let follow = coh_dir * (hp.max_speed * hp.cohesion * (1.0 - conf));
-                desired = arrive_v * conf + follow + align + sep;
+                desired = goal_dir * conf + follow + align + sep;
 
                 // Settle on arrival, on a stale goal, or when nothing better remains.
                 let arrived = (target - pos).length() < hp.arrive_radius;
@@ -600,11 +642,11 @@ mod tests {
 
     // ── cohesion_target ───────────────────────────────────────────────────────────
 
-    // With kin in range the target is their centroid (the ordinary cohesion pull).
+    // With no heading the target is the plain centroid (the ordinary cohesion pull).
     #[test]
     fn cohesion_target_is_centroid_of_in_range_kin() {
         let kin = [Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
-        let c = cohesion_target(Vec2::ZERO, &kin, 8.0).unwrap();
+        let c = cohesion_target(Vec2::ZERO, &kin, Vec2::ZERO, 8.0, 0.0).unwrap();
         assert!((c - Vec2::new(1.0, 1.0)).length() < 1e-6, "centroid expected, got {c:?}");
     }
 
@@ -615,7 +657,7 @@ mod tests {
     fn cohesion_target_falls_back_to_nearest_when_none_in_range() {
         let far = Vec2::new(20.0, 0.0);
         let farther = Vec2::new(40.0, 0.0);
-        let c = cohesion_target(Vec2::ZERO, &[farther, far], 8.0).unwrap();
+        let c = cohesion_target(Vec2::ZERO, &[farther, far], Vec2::ZERO, 8.0, 0.0).unwrap();
         assert_eq!(c, far, "should steer toward the nearer of two out-of-range kin");
     }
 
@@ -624,14 +666,34 @@ mod tests {
     #[test]
     fn cohesion_target_prefers_in_range_over_fallback() {
         let kin = [Vec2::new(1.0, 0.0), Vec2::new(50.0, 0.0)];
-        let c = cohesion_target(Vec2::ZERO, &kin, 8.0).unwrap();
+        let c = cohesion_target(Vec2::ZERO, &kin, Vec2::ZERO, 8.0, 0.0).unwrap();
         assert_eq!(c, Vec2::new(1.0, 0.0), "only the in-range kin counts toward the centroid");
     }
 
     // A lone elk with no kin has no cohesion target.
     #[test]
     fn cohesion_target_none_without_kin() {
-        assert_eq!(cohesion_target(Vec2::ZERO, &[], 8.0), None);
+        assert_eq!(cohesion_target(Vec2::ZERO, &[], Vec2::ZERO, 8.0, 0.0), None);
+    }
+
+    // Forward bias shifts the target toward the kin ahead of the heading: one mate ahead
+    // (+x) and one behind, moving +x, must pull the target forward of the plain midpoint.
+    #[test]
+    fn cohesion_target_forward_bias_pulls_toward_kin_ahead() {
+        let ahead = Vec2::new(4.0, 0.0);
+        let behind = Vec2::new(-4.0, 0.0);
+        let plain = cohesion_target(Vec2::ZERO, &[ahead, behind], Vec2::X, 8.0, 0.0).unwrap();
+        let biased = cohesion_target(Vec2::ZERO, &[ahead, behind], Vec2::X, 8.0, 1.0).unwrap();
+        assert!((plain.x).abs() < 1e-6, "unbiased centroid of symmetric kin is the origin");
+        assert!(biased.x > 0.0, "forward bias must shift the target ahead (+x): {biased:?}");
+    }
+
+    // With zero heading the bias has no axis, so even a high fwd_bias gives the plain centroid.
+    #[test]
+    fn cohesion_target_no_bias_without_heading() {
+        let kin = [Vec2::new(4.0, 0.0), Vec2::new(-4.0, 0.0)];
+        let c = cohesion_target(Vec2::ZERO, &kin, Vec2::ZERO, 8.0, 1.0).unwrap();
+        assert!(c.length() < 1e-6, "no heading ⇒ unbiased centroid, got {c:?}");
     }
 
     // ── confidence ────────────────────────────────────────────────────────────────
@@ -736,5 +798,22 @@ mod tests {
         assert!(!should_leave_patch(0.2, 0.22, 0.4, 0.05));
         // Rich underfoot → stay even if something richer exists.
         assert!(!should_leave_patch(0.8, 0.95, 0.4, 0.05));
+    }
+
+    // ── should_leave_graze ─────────────────────────────────────────────────────────
+
+    // Below the dwell floor the elk stays put even on depleted ground with somewhere
+    // better in reach — this is the rest that stops the perpetual-travel mill.
+    #[test]
+    fn graze_holds_until_dwell_floor() {
+        assert!(!should_leave_graze(10, 30, 0.2, 0.7, 0.4, 0.05));
+        // Same patch state, past the floor → now free to relocate.
+        assert!(should_leave_graze(30, 30, 0.2, 0.7, 0.4, 0.05));
+    }
+
+    // The dwell floor never *forces* a move: a rested elk on rich ground still stays.
+    #[test]
+    fn graze_dwell_floor_does_not_force_a_move() {
+        assert!(!should_leave_graze(100, 30, 0.8, 0.95, 0.4, 0.05));
     }
 }

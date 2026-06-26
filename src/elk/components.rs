@@ -121,8 +121,8 @@ pub struct ElkParams {
     pub water_cost: f32,     // step penalty for entering water — fording is costly
     pub ford_discount: f32,  // fraction of water_cost paid on a ford (0 → free, 1 → full cost)
     pub swim_drain: f32,     // energy drained when entering deep non-ford water
-    pub shrub_bite: f32,    // shrubs stripped per graze — a big bite
-    pub shrub_energy: f32,  // energy from a shrub bite — concentrated forage
+    pub shrub_bite: f32,    // shrubs stripped per graze tick — small, so a shrub depletes over many ticks
+    pub shrub_yield: f32,   // energy per unit of shrub actually consumed (proportional, like graze_yield)
     /// Weight of the per-cell freshness signal in the grass-gradient attractiveness.
     /// 0.0 (default) ⇒ the drive climbs raw forage — today's biomass gradient.
     /// Positive ⇒ fresher cells (recent regrowth) are pulled stronger; the herd
@@ -177,8 +177,10 @@ impl Default for ElkParams {
             water_cost: 2.0,
             ford_discount: 0.1,
             swim_drain: 0.01,
-            shrub_bite: 0.34,
-            shrub_energy: 0.015,
+            // Small bite so a shrub (seeded at full cap ~0.3–1.0) depletes over many
+            // ticks; the elk dwells to strip it instead of eating it whole and running.
+            shrub_bite: 0.05,
+            shrub_yield: 0.1,
             freshness_weight: 0.0,
             sightline_range: 0.0,
             sightline_weight: 0.0,

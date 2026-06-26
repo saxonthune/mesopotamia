@@ -1,4 +1,5 @@
 use bevy::app::ScheduleRunnerPlugin;
+use bevy::ecs::schedule::ExecutorKind;
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
@@ -19,6 +20,16 @@ const PERIOD: Duration = Duration::from_millis(100);
 const WORLDGEN_PROBE_SEED: u64 = 0x_E1C_0DE_5EED;
 const SPAWN_PROBE_SEED: u64 = 0x_5A1A_D_5EED;
 
+/// Pin FixedUpdate to a single-threaded executor so a headless run replays
+/// identically. The multi-threaded executor leaves Grid-conflicting systems
+/// (graze, growth, fertilize) in a thread-timing-dependent order; in a chaotic
+/// flocking sim one early flip cascades, so even a seeded run can diverge.
+fn pin_schedule_order(app: &mut App) {
+    app.edit_schedule(FixedUpdate, |s| {
+        s.set_executor_kind(ExecutorKind::SingleThreaded);
+    });
+}
+
 /// Build a headless app without a renderer or window.
 pub fn make_app() -> App {
     let mut app = App::new();
@@ -27,6 +38,7 @@ pub fn make_app() -> App {
         .insert_resource(TimeUpdateStrategy::ManualDuration(PERIOD))
         .add_plugins(StatesPlugin)
         .add_plugins((GridPlugin, DroppingsPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin));
+    pin_schedule_order(&mut app);
     app
 }
 
@@ -577,6 +589,7 @@ pub fn make_probe_app(grid: Grid, elk_starts: &[(usize, u8)]) -> App {
         .insert_resource(grid)
         // Freeze the spawner so spawn_waves never fires (cooldown stays maxed).
         .insert_resource(Spawner { cooldown: u32::MAX / 2, ..Default::default() });
+    pin_schedule_order(&mut app);
 
     // Request transition to Running. SimStatePlugin starts in Sim::Generating;
     // run one warm-up update so StateTransition processes the transition before
