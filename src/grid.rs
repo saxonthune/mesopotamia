@@ -85,11 +85,14 @@ pub struct GrowthRate {
     pub intrinsic: f32,
     /// Extra growth per unit of neighbouring cover — recolonisation from the edge.
     pub spread: f32,
+    /// Shrub regrowth fraction per tick — shrubs regenerate in place toward their
+    /// dry-ground capacity, set by the shrub slider via `apply_ratios`.
+    pub shrub: f32,
 }
 
 impl Default for GrowthRate {
     fn default() -> Self {
-        Self { intrinsic: 0.02, spread: 0.08 }
+        Self { intrinsic: 0.02, spread: 0.08, shrub: 0.0025 }
     }
 }
 
@@ -407,10 +410,6 @@ impl Grid {
 
 pub struct GridPlugin;
 
-// Shrubs (dry-ground) regrow slowly in place toward the capacity the
-// world-gen vegetation layer authored — a long lifecycle.
-const SHRUB_REGROW: f32 = 0.0025;
-
 impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
@@ -481,13 +480,13 @@ fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>, wave: Res<GreenWave>, t
 /// Shrubs grow slowly toward their dry-ground capacity with a pure logistic step
 /// (`spread = 0` → no colonisation; shrubs regenerate in place). Capacity is
 /// authored by the world-gen vegetation layer before the sim runs.
-fn grow_shrubs(mut grid: ResMut<Grid>) {
+fn grow_shrubs(mut grid: ResMut<Grid>, rate: Res<GrowthRate>) {
     grid.shrubs = field::spread_grow(
         &grid.shrubs,
         &grid.shrub_cap,
         grid.width(),
         grid.height(),
-        SHRUB_REGROW,
+        rate.shrub,
         0.0,
     );
 }

@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use bevy::prelude::*;
 
 use crate::elk::abundance::{self, AbundanceParams};
-use crate::elk::{Elk, ElkParams};
+use crate::elk::{Elk, ENERGY_DRAIN};
 use crate::grid::{Grid, GrowthRate};
 
 const WINDOW: usize = 6000;
@@ -29,7 +29,6 @@ pub fn sample_history(
     elk: Query<&Elk>,
     grid: Res<Grid>,
     growth: Res<GrowthRate>,
-    params: Res<ElkParams>,
     ab_params: Res<AbundanceParams>,
     mut history: ResMut<History>,
 ) {
@@ -85,7 +84,7 @@ pub fn sample_history(
             abundance::local_abundance(grass_nearby, energy_by_slot[s], ab_params.energy_weight);
         ab_sum += abundance::per_capita(abundance, count);
         let regrowth_pe = abundance::per_capita(regrowth_nearby, count);
-        ratio_sum += abundance::regrowth_drain_ratio(regrowth_pe, params.energy_drain);
+        ratio_sum += abundance::regrowth_drain_ratio(regrowth_pe, ENERGY_DRAIN);
         herds += 1;
     }
     let (ab_mean, ratio_mean) = if herds > 0 {

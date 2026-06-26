@@ -10,7 +10,7 @@ pub mod abundance;
 pub mod presets;
 pub mod ratios;
 
-pub use components::{Cohort, Elk, ElkParams, Herds, Spawner};
+pub use components::{Cohort, Elk, ElkParams, Herds, Spawner, CHEW_TICKS, ENERGY_DRAIN};
 pub use ratios::RatioControls;
 pub use score::Score;
 #[allow(unused_imports)]

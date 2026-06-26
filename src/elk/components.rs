@@ -106,23 +106,35 @@ pub struct Herds {
     pub order: Vec<u32>,
 }
 
-/// Every tunable that shapes how elk feed and perceive forage. The movement steer
-/// itself is tuned by [`HerdParams`](super::herding::HerdParams); what remains here
-/// is the metabolic economy (bite/yield/drain), the perception lengths the forage
-/// scorers read, and the crossing costs. Radii are absolute perception lengths (an
-/// elk's senses do not scale with the map).
+/// Food stripped from a cell per feeding tick — grass or shrub alike, since both are
+/// food. A fixed mechanic, not a slider: the elk slider tunes energy-per-food, the
+/// forage sliders tune regrowth, and this stays constant so neither knob moves it.
+pub const BITE: f32 = 0.05;
+/// Giving-up density: grass below this fraction of a cell's capacity isn't worth
+/// biting, so a grazed-down patch is abandoned rather than camped.
+pub const GRAZE_FLOOR: f32 = 0.3;
+/// Energy lost per tick just being alive — the metabolic clock. Fixed; the elk
+/// slider (`feed_ratio`) tunes intake-per-bite against it, not the drain itself.
+pub const ENERGY_DRAIN: f32 = 0.002;
+/// Ticks an elk is locked chewing after a bite — it takes one mouthful, then stands
+/// still digesting for this many ticks before the next. Pins a grazer in place so
+/// the herd visibly stops to feed; also paces intake to one bite per `CHEW_TICKS + 1`.
+pub const CHEW_TICKS: u32 = 4;
+
+/// Every tunable that shapes how elk perceive forage and weigh a crossing. The
+/// metabolic economy is not here — it is three decoupled sliders ([`feed_ratio`],
+/// [`grass_regrow`], [`shrub_regrow`] in [`RatioControls`](super::ratios::RatioControls))
+/// plus the fixed mechanics [`BITE`]/[`GRAZE_FLOOR`]/[`ENERGY_DRAIN`]; only the derived
+/// shared `graze_yield` lands back here. The movement steer is tuned by
+/// [`HerdParams`](super::herding::HerdParams). Radii are absolute perception lengths
+/// (an elk's senses do not scale with the map).
 #[derive(Resource, Clone)]
 pub struct ElkParams {
     pub grass_radius: f32,
-    pub bite: f32,        // max grass eaten per graze (capped by what sits above the floor)
-    pub graze_yield: f32, // energy per unit of grass actually consumed (proportional intake)
-    pub graze_floor: f32, // giving-up density as a fraction of capacity; grass below isn't worth biting
-    pub energy_drain: f32, // energy lost per tick; reaching 0 starves the elk
+    pub graze_yield: f32, // energy per unit of food eaten — shared by grass and shrub; derived from feed_ratio
     pub water_cost: f32,     // step penalty for entering water — fording is costly
     pub ford_discount: f32,  // fraction of water_cost paid on a ford (0 → free, 1 → full cost)
     pub swim_drain: f32,     // energy drained when entering deep non-ford water
-    pub shrub_bite: f32,    // shrubs stripped per graze tick — small, so a shrub depletes over many ticks
-    pub shrub_yield: f32,   // energy per unit of shrub actually consumed (proportional, like graze_yield)
     /// Weight of the per-cell freshness signal in the grass-gradient attractiveness.
     /// 0.0 (default) ⇒ the drive climbs raw forage — today's biomass gradient.
     /// Positive ⇒ fresher cells (recent regrowth) are pulled stronger; the herd
@@ -155,32 +167,12 @@ impl Default for ElkParams {
     fn default() -> Self {
         Self {
             grass_radius: 5.0,
-            // Slow chewing is the standard: a small bite means a patch depletes over
-            // many ticks, so the grazing front advances slowly and the grass behind it
-            // regrows into the gap — the herd rolls as a sticky glob and survives the
-            // long march to the river instead of outrunning its own food. `bite_ratio`
-            // (held at its default) and `graze_yield` adjust together so chew *rate*
-            // changes but the per-bite economy does not.
-            bite: 0.012,
-            // Placeholder only: `apply_ratios` overwrites this each tick from
-            // `bite_ratio · energy_drain / bite`, so a full bite pays `bite_ratio`× drain.
-            graze_yield: 0.035,
-            // Giving-up density: leave 30% of each cell's capacity uneaten. Grass
-            // below graze_floor · capacity isn't worth biting, which seeds regrowth
-            // and makes thin patches not worth the elk's time.
-            graze_floor: 0.3,
-            // Lowered to lengthen the metabolic timescale: an elk lives long enough to
-            // ford the river and reach the far edge under the green wave, so survival is
-            // the norm and `regrow_ratio` (scarcity) is what threatens it. Paired with
-            // slow chewing above as the fixed standard physiology, not a player lever.
-            energy_drain: 0.002,
+            // Placeholder: `apply_ratios` overwrites this each tick from
+            // `feed_ratio · ENERGY_DRAIN / BITE`, so a bite pays `feed_ratio`× drain.
+            graze_yield: 0.32,
             water_cost: 2.0,
             ford_discount: 0.1,
             swim_drain: 0.01,
-            // Small bite so a shrub (seeded at full cap ~0.3–1.0) depletes over many
-            // ticks; the elk dwells to strip it instead of eating it whole and running.
-            shrub_bite: 0.05,
-            shrub_yield: 0.1,
             freshness_weight: 0.0,
             sightline_range: 0.0,
             sightline_weight: 0.0,

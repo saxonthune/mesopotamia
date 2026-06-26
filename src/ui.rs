@@ -8,7 +8,7 @@ use crate::elk::abundance::AbundanceParams;
 use crate::elk::{Elk, ElkParams, Herding, Herds, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
-use crate::grid::{GreenWave, Grid, GrowthRate};
+use crate::grid::{GreenWave, Grid};
 use crate::history::History;
 use crate::render::{cell_world_pos, WorldCamera};
 use crate::unit_select::{draw_elk_silhouette, herd_color32, SelectionParams, UnitSelectState};
@@ -540,7 +540,6 @@ fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldTunables<'w> {
     green_wave: ResMut<'w, GreenWave>,
-    growth: ResMut<'w, GrowthRate>,
     fertility: Option<ResMut<'w, Fertility>>,
     ab_params: ResMut<'w, AbundanceParams>,
 }
@@ -640,13 +639,14 @@ fn control_panel(
                     });
                     ui.separator();
                     let rc = ratio_controls.as_mut();
-                    let regrow_ratio = &mut rc.regrow_ratio;
-                    let bite_ratio = &mut rc.bite_ratio;
+                    let grass_regrow = &mut rc.grass_regrow;
+                    let shrub_regrow = &mut rc.shrub_regrow;
+                    let feed_ratio = &mut rc.feed_ratio;
                     let cross_ratio = &mut rc.cross_ratio;
                     panel_flow(ui, vec![
-                        Panel::new("Grass", grass_items(world.growth.as_mut(), world.fertility.as_mut().map(|f| f.as_mut()), regrow_ratio)),
+                        Panel::new("Forage", grass_items(world.fertility.as_mut().map(|f| f.as_mut()), grass_regrow, shrub_regrow)),
                         // Behaviour carries the most rows, so give it a wider column.
-                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), bite_ratio, cross_ratio)))]).width(300.0),
+                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), feed_ratio, cross_ratio)))]).width(300.0),
                         Panel::new("Abundance (measure)", abundance_items(world.ab_params.as_mut())),
                     ])
                 }
@@ -1105,6 +1105,10 @@ fn keyboard_speed(
 const SPEED_PRESETS: [(&str, f32); 5] =
     [("1x", 1.0), ("2x", 2.0), ("3x", 3.0), ("4x", 4.0), (">>", 64.0)];
 
+/// Base simulation rate — mirrors the `Time::<Fixed>::from_hz(10.0)` the binaries
+/// install. Ticks-per-second shown to the player is this times the play speed.
+const FIXED_HZ: f32 = 10.0;
+
 fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     let current = time.relative_speed();
     // Phosphor play/pause glyph: show the action the click performs.
@@ -1136,12 +1140,15 @@ fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     {
         set_sim_speed(time, custom);
     }
+    let tps = if time.is_paused() { 0.0 } else { FIXED_HZ * current };
+    ui.separator();
+    ui.label(format!("{tps:.0} ticks/s")).on_hover_text("simulation ticks per second (10 Hz × speed)");
 }
 
-fn grass_items<'a>(growth: &'a mut GrowthRate, fertility: Option<&'a mut Fertility>, regrow_ratio: &'a mut f32) -> Vec<Item<'a>> {
+fn grass_items<'a>(fertility: Option<&'a mut Fertility>, grass_regrow: &'a mut f32, shrub_regrow: &'a mut f32) -> Vec<Item<'a>> {
     let mut items = vec![
-        Item::Slider { value: regrow_ratio, range: 0.0..=1.0, label: "regrowth ÷ drain" },
-        Item::Slider { value: &mut growth.spread, range: 0.0..=0.3, label: "spread from neighbours" },
+        Item::Slider { value: grass_regrow, range: 0.0..=0.05, label: "grass regrowth / tick" },
+        Item::Slider { value: shrub_regrow, range: 0.0..=0.02, label: "shrub regrowth / tick" },
     ];
     // The Fertility section only appears when the droppings cycle is enabled —
     // its resource is absent when `DroppingsPlugin` is omitted from the binary.
@@ -1167,7 +1174,7 @@ fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
     ]
 }
 
-fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cross_ratio: &mut f32) {
+fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, feed_ratio: &mut f32, cross_ratio: &mut f32) {
     ui.label("forage perception");
     slider(ui, &mut p.grass_radius, 1.0..=12.0, "grass radius (cells)");
     slider(ui, &mut p.freshness_weight, 0.0..=6.0, "freshness weight (green-up front)");
@@ -1175,31 +1182,21 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, bite_ratio: &mut f32, cro
     slider(ui, &mut p.sightline_weight, 0.0..=5.0, "sightline weight (leapfrog)");
     ui.separator();
     ui.label("metabolism");
-    slider(ui, &mut p.bite, 0.0..=1.0, "bite / graze (max)");
-    slider(ui, bite_ratio, 0.1..=20.0, "intake ÷ drain (bite ratio)");
-    // Giving-up density: grass below this fraction of a cell's capacity isn't
-    // worth biting, so a grazed-down patch can't sustain an elk.
-    slider(ui, &mut p.graze_floor, 0.0..=0.9, "giving-up density (× capacity)");
-    slider(ui, &mut p.energy_drain, 0.0..=0.02, "energy drain / tick");
-    // The balance made legible: on a full bite, net energy/tick = graze_yield·bite·g
-    // − energy_drain, so an elk lives only if it grazes (on full bites) at least
-    // drain/(graze_yield·bite) of the time. As a patch thins toward the floor the
-    // bite shrinks, so the real duty cycle a grazed-down cell demands is worse.
-    let full_bite = p.graze_yield * p.bite;
-    ui.label(if full_bite <= 0.0 {
-        "break-even grazing: impossible (no energy/bite)".to_string()
+    slider(ui, feed_ratio, 0.5..=16.0, "ticks of life per bite (feed ratio)");
+    // A bite buys `feed_ratio` ticks of drain but lands only once per CHEW_TICKS+1
+    // ticks, so the herd holds even by grazing (CHEW_TICKS+1)/feed_ratio of the time.
+    let pct = if *feed_ratio > 0.0 {
+        100.0 * (crate::elk::CHEW_TICKS + 1) as f32 / *feed_ratio
     } else {
-        let pct = p.energy_drain / full_bite * 100.0;
-        if pct > 100.0 {
-            format!("break-even grazing: {pct:.0}% — herds starve")
-        } else {
-            format!("break-even grazing: {pct:.0}% of ticks (on full bites)")
-        }
+        f32::INFINITY
+    };
+    ui.label(if pct > 100.0 {
+        "break-even grazing: impossible — herds starve".to_string()
+    } else {
+        format!("break-even grazing: {pct:.0}% of ticks")
     });
     ui.separator();
-    ui.label("shrubs & crossing");
-    slider(ui, &mut p.shrub_yield, 0.0..=0.3, "energy / shrub unit");
-    slider(ui, &mut p.shrub_bite, 0.0..=0.3, "shrubs / bite");
+    ui.label("crossing");
     slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
     slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");

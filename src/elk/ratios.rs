@@ -1,77 +1,61 @@
 use bevy::prelude::*;
 
-use crate::grid::{GrowthRate, MAX_GRASS};
-use super::ElkParams;
+use crate::grid::GrowthRate;
+use super::components::{ElkParams, BITE, ENERGY_DRAIN};
 
-/// Dimensionless ratio sliders. Each ratio governs one behavioural regime;
-/// the corresponding absolute parameter is derived each tick.
-///
-/// Defaults are the exact inverses of the documented default magnitudes so
-/// `apply_ratios` reproduces them at startup without any behavioural change.
+/// The three economy sliders, plus the orthogonal scoring knob. Each of the three
+/// governs exactly one regime and cannot disturb the others:
+///   - `feed_ratio` (elk) sets how much energy a bite of food yields;
+///   - `grass_regrow` (grass) sets grass abundance;
+///   - `shrub_regrow` (shrub) sets shrub abundance.
+/// `apply_ratios` writes each onto the live resource it drives. The shared mechanics
+/// they ride against — `BITE`, `GRAZE_FLOOR`, `ENERGY_DRAIN` — are fixed constants,
+/// so turning one slider moves only its own regime.
 #[derive(Resource, Clone, Copy)]
 pub struct RatioControls {
-    /// intake-per-bite ÷ drain: `bite * graze_yield / energy_drain`.
-    /// Default 4.375 → graze_yield = 0.035.
-    pub bite_ratio: f32,
-    /// regrowth ÷ drain: `intrinsic * MAX_GRASS * graze_yield / energy_drain`.
-    /// Default 0.175 → GrowthRate.intrinsic = 0.02.
-    pub regrow_ratio: f32,
-    /// The crossing-pull crutch, in [0, 1]. The herding model fords on the natural
-    /// forage drives, so this no longer steers movement; it survives only as the
-    /// opt-in score *penalty* knob (`score::pull_factor`) — cranking it to lean on a
-    /// forced crossing costs points. Default 0.0 → no penalty.
+    /// Elk slider: energy a bite yields ÷ drain per tick — equivalently, ticks of
+    /// life one bite buys. Sets the shared `graze_yield` (grass and shrub alike).
+    pub feed_ratio: f32,
+    /// Grass slider: grass regrowth per tick (the logistic `intrinsic`).
+    pub grass_regrow: f32,
+    /// Shrub slider: shrub regrowth per tick.
+    pub shrub_regrow: f32,
+    /// Scoring penalty knob, in [0, 1] — orthogonal to food. The herd fords on the
+    /// natural drives, so this no longer steers; it survives only as the score
+    /// penalty (`score::pull_factor`). Default 0.0 → no penalty.
     pub cross_ratio: f32,
 }
 
 impl Default for RatioControls {
     fn default() -> Self {
-        // Computed from documented defaults:
-        //   bite=0.5, graze_yield=0.035, energy_drain=0.004 → 0.5*0.035/0.004 = 4.375
-        //   intrinsic=0.02, MAX_GRASS=1.0, graze_yield=0.035, energy_drain=0.004 → 0.175
-        //   pull off → cross_ratio 0 (migration force 0); the player opts into it.
         Self {
-            // Tightened from 4.375 (which left elk overfed — break-even at 23% of
-            // ticks, so a full herd just coasts and sprints past grass). At 2.5 the
-            // break-even is ~40%: the herd settles mid-fed (energy ~0.55), hungry
-            // enough to keep grazing rather than coast, yet able to sustain itself
-            // when it forages — the stakes that make the tuning puzzle real.
-            bite_ratio: 2.5,
-            regrow_ratio: 0.175,
-            // Pull off by default: the stock herd has no eastward drive and mills
-            // (stage 1, broken). The pull is the opt-in crutch the player may crank.
+            // 8 ticks of life per bite, one bite per CHEW_TICKS+1 ticks → break-even
+            // when grazing ~62% of ticks: mid-fed, hungry enough to keep grazing but
+            // with slack to travel, never the overfed coast of the old 2.5.
+            feed_ratio: 8.0,
+            grass_regrow: 0.02,
+            shrub_regrow: 0.0025,
             cross_ratio: 0.0,
         }
     }
 }
 
-/// `bite_ratio = bite * graze_yield / energy_drain`
-/// ⇒ `graze_yield = bite_ratio * energy_drain / bite`
-pub fn graze_yield_from(bite_ratio: f32, bite: f32, energy_drain: f32) -> f32 {
-    bite_ratio * energy_drain / bite
+/// `feed_ratio = bite_energy / drain = BITE · graze_yield / ENERGY_DRAIN`
+/// ⇒ `graze_yield = feed_ratio · ENERGY_DRAIN / BITE`
+pub fn graze_yield_from(feed_ratio: f32) -> f32 {
+    feed_ratio * ENERGY_DRAIN / BITE
 }
 
-/// `regrow_ratio = intrinsic * cap_ref * graze_yield / energy_drain`
-/// ⇒ `intrinsic = regrow_ratio * energy_drain / (cap_ref * graze_yield)`
-pub fn intrinsic_from(regrow_ratio: f32, energy_drain: f32, graze_yield: f32, cap_ref: f32) -> f32 {
-    regrow_ratio * energy_drain / (cap_ref * graze_yield)
-}
-
-/// Bevy system: reads `RatioControls` and anchor params, writes the two derived
-/// economy values into `ElkParams` and `GrowthRate`. Derive in dependency order:
-/// graze_yield first (needed by the regrowth ratio), then intrinsic. `cross_ratio`
-/// derives nothing — it feeds only the score penalty.
+/// Bevy system: pushes the economy sliders onto the live resources each tick — the
+/// shared `graze_yield` onto `ElkParams`, and grass/shrub regrowth onto `GrowthRate`.
 pub fn apply_ratios(
     controls: Res<RatioControls>,
     mut elk: ResMut<ElkParams>,
     mut growth: ResMut<GrowthRate>,
 ) {
-    if elk.bite > 0.0 {
-        elk.graze_yield = graze_yield_from(controls.bite_ratio, elk.bite, elk.energy_drain);
-    }
-    let gy = elk.graze_yield;
-    if gy > 0.0 {
-        growth.intrinsic = intrinsic_from(controls.regrow_ratio, elk.energy_drain, gy, MAX_GRASS);
-    }
+    elk.graze_yield = graze_yield_from(controls.feed_ratio);
+    growth.intrinsic = controls.grass_regrow;
+    growth.shrub = controls.shrub_regrow;
 }
 
 #[cfg(test)]
@@ -79,40 +63,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_derive_expected_magnitudes() {
-        let rc = RatioControls::default();
-        let bite = 0.5_f32;
-        let energy_drain = 0.004_f32;
-
-        // bite_ratio 2.5, bite 0.5, drain 0.004 → 2.5*0.004/0.5 = 0.02.
-        let graze_yield = graze_yield_from(rc.bite_ratio, bite, energy_drain);
-        assert!((graze_yield - 0.02).abs() < 1e-6, "graze_yield {graze_yield}");
-
-        // regrow_ratio 0.175 holds regrowth at 0.175× drain regardless of yield:
-        // 0.175*0.004/(1.0*0.02) = 0.035.
-        let intrinsic = intrinsic_from(rc.regrow_ratio, energy_drain, graze_yield, MAX_GRASS);
-        assert!((intrinsic - 0.035).abs() < 1e-6, "intrinsic {intrinsic}");
+    fn feed_ratio_sets_yield() {
+        // feed_ratio 2.5 → 2.5 · 0.002 / 0.05 = 0.1 energy per food unit.
+        assert!((graze_yield_from(2.5) - 0.1).abs() < 1e-6);
     }
 
+    // The elk slider is the inverse break-even duty cycle: a bite buys `feed_ratio`
+    // ticks of drain, so the herd must graze 1/feed_ratio of the time to hold even.
     #[test]
-    fn bite_ratio_round_trips() {
-        let bite = 0.5_f32;
-        let energy_drain = 0.004_f32;
-        for r in [1.0_f32, 4.375, 8.0] {
-            let gy = graze_yield_from(r, bite, energy_drain);
-            let back = gy * bite / energy_drain;
-            assert!((back - r).abs() < 1e-5, "round-trip {r} → {back}");
-        }
-    }
-
-    #[test]
-    fn regrow_ratio_round_trips() {
-        let energy_drain = 0.004_f32;
-        let graze_yield = 0.035_f32;
-        for r in [0.1_f32, 0.175, 0.5] {
-            let intr = intrinsic_from(r, energy_drain, graze_yield, MAX_GRASS);
-            let back = intr * MAX_GRASS * graze_yield / energy_drain;
-            assert!((back - r).abs() < 1e-5, "round-trip {r} → {back}");
+    fn feed_ratio_is_ticks_of_life_per_bite() {
+        for r in [1.0_f32, 2.5, 5.0] {
+            let yield_ = graze_yield_from(r);
+            let bite_energy = yield_ * BITE;
+            assert!((bite_energy / ENERGY_DRAIN - r).abs() < 1e-5, "feed_ratio {r}");
         }
     }
 }

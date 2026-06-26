@@ -58,11 +58,15 @@ pub struct Herding {
     /// Ticks the current state has been held. Drives the give-up timeout so a stale
     /// travel goal can never strand an elk forever.
     pub dwell: u32,
+    /// Ticks left chewing the last mouthful — set by `graze` on a bite, counted down
+    /// each tick. While it is nonzero a grazing elk is pinned in place (see the Graze
+    /// steer), so feeding physically halts the herd instead of grazing-on-the-drift.
+    pub chew: u32,
 }
 
 impl Default for Herding {
     fn default() -> Self {
-        Herding { state: HerdState::Graze, goal: Goal::None, dwell: 0 }
+        Herding { state: HerdState::Graze, goal: Goal::None, dwell: 0, chew: 0 }
     }
 }
 
@@ -156,6 +160,12 @@ pub struct HerdParams {
     pub graze_min_dwell: u32,
     /// A scanned patch must beat underfoot by this attractiveness to be worth travelling to.
     pub travel_margin: f32,
+    /// The stronger margin that launches travel even from a *full* patch: a reachable
+    /// cell this much more attractive than underfoot is pursued regardless of local
+    /// fullness — the green-up crest a fed herd follows. Above `travel_margin` so a
+    /// flat field (tiny gains) never triggers it and an idle herd holds; only a real
+    /// directional pull does. This is what lets a well-fed herd migrate.
+    pub pursue_margin: f32,
     /// Abandon a travel goal that has not been reached within this many ticks.
     pub goal_timeout: u32,
     /// Minimum desired-heading magnitude that commits a step. A pull below this leaves
@@ -182,6 +192,7 @@ impl Default for HerdParams {
             leave_frac: 0.4,
             graze_min_dwell: 30,
             travel_margin: 0.05,
+            pursue_margin: 0.15,
             goal_timeout: 200,
             deadband: 0.15,
         }
@@ -489,19 +500,35 @@ pub(super) fn herd_step(
         let desired;
         match herd.state {
             HerdState::Graze => {
-                // Hold and feed. Separation owns the short range (a minimum spacing,
-                // anti-stack); cohesion owns the long range — an Arrive toward the herd
-                // centroid with a dead zone (`GRAZE_COH_DEAD`), so an elk drifted off the
-                // group steps back while a well-placed grazer sits still. The earlier
-                // `coh_dir * graze_speed` was mute: its magnitude sat below the dead-band,
-                // so Graze had repulsion but no restoring pull and the herd froze into a
-                // spaced crystal.
-                let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
-                desired = sep + restore + align;
-                let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
-                if should_leave_graze(herd.dwell, hp.graze_min_dwell, here_frac, best_frac, hp.leave_frac, hp.travel_margin) {
+                // The steer pins while feeding and only gently restores otherwise.
+                // Pinning the *steer* (not the whole state) is what kills the
+                // sep-vs-cohesion orbit a continuously-steering grazer falls into,
+                // without freezing the herd: the leave/cross transitions below still
+                // run every tick, so a feeding herd holds yet can still launch travel
+                // when its patch thins. `grazing` is true across the whole bite→chew
+                // cycle, so the hold covers every feeding tick, not 4 of every 5.
+                if elk.grazing {
+                    desired = Vec2::ZERO;
+                } else {
+                    // Separation owns the short range (anti-stack); cohesion the long
+                    // range — an Arrive toward the centroid with a dead zone, so a
+                    // strayed elk steps back while a well-placed one sits still.
+                    let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
+                    desired = sep + restore + align;
+                }
+                // Two tiers of leaving, both paced by the dwell floor. Depleted: the
+                // patch underfoot has thinned and somewhere marginally better is near.
+                // Pursue: a *much* richer/fresher cell is reachable — the green-up
+                // crest — worth chasing even off full ground. A flat field offers
+                // neither (no cell beats here), so an idle herd holds and never circles.
+                if herd.dwell >= hp.graze_min_dwell {
+                    let here_attract = attract(here, &grid, &ep);
+                    let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
+                    let depleted = should_leave_patch(here_frac, best_frac, hp.leave_frac, hp.travel_margin);
                     let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
-                    if cell != here && val > attract(here, &grid, &ep) + hp.travel_margin {
+                    let gain = val - here_attract;
+                    let leave = (depleted && gain > hp.travel_margin) || gain > hp.pursue_margin;
+                    if cell != here && leave {
                         herd.state = HerdState::Travel;
                         herd.goal = Goal::Patch(cell);
                         herd.dwell = 0;

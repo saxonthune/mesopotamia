@@ -31,9 +31,9 @@ const DIFFICULTY_ALPHA: f32 = 0.03;
 /// EWMA weight on each despawn payout — the current score's rolling-per-elk feel,
 /// responsive over the last several elk to leave the world.
 const RATING_ALPHA: f32 = 0.12;
-/// Regrowth-ratio at and above which the world comfortably sustains a herd — the
+/// Grass regrowth at and above which the world comfortably sustains a herd — the
 /// zero-difficulty reference. Below it, difficulty climbs toward 1 at total famine.
-const REGROW_EASY: f32 = 0.2;
+const REGROW_EASY: f32 = 0.023;
 /// Indexes a per-despawn payout (forage progress in [0, 1] × difficulty) into a
 /// current score that peaks in the hundreds under strong play at high difficulty.
 const POINT_SCALE: f32 = 500.0;
@@ -57,11 +57,11 @@ const CROSS_REF: f32 = 2.0;
 const STARVE_PENALTY: f32 = 0.5;
 
 /// Difficulty in `[0, 1]` from the scarcity the player has dialed in: how far the
-/// regrowth rate (`regrow_ratio` — forage refill ÷ drain) sits below a comfortably
-/// sustainable reference. At the default regrowth it is near zero (easy); as the
-/// player starves the world it climbs toward 1 at famine.
-pub fn difficulty(regrow_ratio: f32) -> f32 {
-    ((REGROW_EASY - regrow_ratio) / REGROW_EASY).clamp(0.0, 1.0)
+/// grass regrowth rate sits below a comfortably sustainable reference. At the default
+/// regrowth it is near zero (easy); as the player starves the world it climbs toward
+/// 1 at famine.
+pub fn difficulty(grass_regrow: f32) -> f32 {
+    ((REGROW_EASY - grass_regrow) / REGROW_EASY).clamp(0.0, 1.0)
 }
 
 /// Points one despawn pays into the rolling current score. A crossing (`departed`)
@@ -114,7 +114,7 @@ pub(super) fn update_score(
     events: Res<EventLog>,
     controls: Res<RatioControls>,
 ) {
-    let d = difficulty(controls.regrow_ratio);
+    let d = difficulty(controls.grass_regrow);
     score.difficulty = ewma(score.difficulty, d, DIFFICULTY_ALPHA);
 
     // Normalised dialed pull in [0, 1] — the penalty argument for the score multiplier.

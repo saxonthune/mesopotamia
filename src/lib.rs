@@ -18,4 +18,5 @@ pub mod unit_select;
 pub mod river;
 pub mod worldgen;
 pub mod sim_harness;
+pub mod behaviors;
 pub mod history;

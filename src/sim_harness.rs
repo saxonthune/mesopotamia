@@ -373,6 +373,24 @@ pub fn open_plain(width: usize, height: usize, grass_frac: f32) -> Grid {
     grid
 }
 
+/// An open plain whose grass ramps from `lo_frac` of capacity in the west to
+/// `hi_frac` in the east — a directional forage cause with no green wave. The
+/// gradient points east everywhere, so a herd that climbs forage should drift east;
+/// the controlled substrate for the *move in a direction* behaviour.
+pub fn ramp_plain(width: usize, height: usize, lo_frac: f32, hi_frac: f32) -> Grid {
+    let mut grid = Grid::new(width, height);
+    let span = (width.max(2) - 1) as f32;
+    for row in 0..height {
+        for col in 0..width {
+            let t = col as f32 / span;
+            let frac = lo_frac + (hi_frac - lo_frac) * t;
+            let i = row * width + col;
+            grid.set_grass(i, frac * grid.capacity(i));
+        }
+    }
+    grid
+}
+
 /// A uniform open plain split by one vertical river at `river_col`, with a single
 /// ford at `ford_row`. The dry-land analogue of `open_plain` plus a crossable
 /// barrier — the smallest fixed feature that exercises the Travel→Cross handoff
@@ -528,6 +546,108 @@ pub fn run_migration(
         deaths: c.deaths,
         departures: c.departures,
     }
+}
+
+// ── Behaviour probes (preset-driven, single-source) ───────────────────────────
+
+/// A per-tick centroid track plus the final headcount, the raw material the
+/// `behaviors` metric kernels reduce. Built by `run_behavior`, which runs a named
+/// `Preset` — so a behaviour test and the demo's preset button share one source.
+pub struct BehaviorTrace {
+    pub centroid_col: Vec<f32>,
+    pub centroid_row: Vec<f32>,
+    pub mean_energy: Vec<f32>,
+    /// Each surviving elk's final column — the crossing readout (`crossed_past`).
+    pub final_cols: Vec<usize>,
+    /// Elk that walked off the east edge and despawned — counted as crossers, since
+    /// the far edge sits east of any river the map places.
+    pub departures: u32,
+    pub start_pop: usize,
+}
+
+impl BehaviorTrace {
+    /// Fraction of the herd that ended east of `col` — survivors past it plus those
+    /// that forded and walked off the east edge. Denominator is the starting
+    /// headcount, so elk that died short of it count against the fraction.
+    pub fn crossed_past(&self, col: usize) -> f32 {
+        if self.start_pop == 0 {
+            return 0.0;
+        }
+        let survivors_east = self.final_cols.iter().filter(|&&c| c > col).count() as u32;
+        (survivors_east + self.departures) as f32 / self.start_pop as f32
+    }
+
+    pub fn final_energy(&self) -> f32 {
+        *self.mean_energy.last().unwrap_or(&0.0)
+    }
+}
+
+/// Run a named `Preset` over a hand-built map and trace the herd centroid. The
+/// preset is the single source the demo's buttons also apply: its `ratios` drive the
+/// economy (via `apply_ratios`), its `green_wave` the direction, its `apply_params`
+/// the forage perception. `HerdParams` stays at default (the demo exposes no preset
+/// for it). Feed the returned track to the `behaviors` kernels to assert a behaviour.
+pub fn run_behavior(
+    preset: &crate::elk::presets::Preset,
+    grid: Grid,
+    starts: &[(usize, u8)],
+    start_energy: f32,
+    ticks: u32,
+) -> BehaviorTrace {
+    let width = grid.width();
+    let start_pop = starts.len();
+    let mut app = make_probe_app(grid, starts);
+
+    let mut params = ElkParams::default();
+    (preset.apply_params)(&mut params);
+    app.insert_resource(params);
+    app.insert_resource(preset.ratios);
+    app.insert_resource(preset.green_wave);
+    {
+        let world = app.world_mut();
+        // Register the probe herd as one cohort so `cull` tallies departures
+        // (off-the-east-edge crossers), which are otherwise lost to despawn.
+        world
+            .get_resource_mut::<Herds>()
+            .unwrap()
+            .cohorts
+            .insert(0, Cohort { spawned: start_pop as u32, ..Default::default() });
+        let mut q = world.query::<&mut Elk>();
+        for mut elk in q.iter_mut(world) {
+            elk.energy = start_energy;
+        }
+    }
+
+    let mut centroid_col = Vec::with_capacity(ticks as usize);
+    let mut centroid_row = Vec::with_capacity(ticks as usize);
+    let mut mean_energy = Vec::with_capacity(ticks as usize);
+    for _ in 0..ticks {
+        app.update();
+        let world = app.world_mut();
+        let elk = elk_snapshot(world);
+        let cells: Vec<usize> = elk.iter().map(|(c, _, _)| *c).collect();
+        let (col, row) = crate::diagnostics::centroid(&cells, width);
+        centroid_col.push(col);
+        centroid_row.push(row);
+        let pop = elk.len();
+        mean_energy.push(if pop > 0 {
+            elk.iter().map(|(_, e, _)| *e).sum::<f32>() / pop as f32
+        } else {
+            0.0
+        });
+    }
+
+    let world = app.world_mut();
+    let mut q = world.query::<&Elk>();
+    let final_cols: Vec<usize> = q.iter(world).map(|e| e.cell % width).collect();
+    let departures = world
+        .get_resource::<Herds>()
+        .unwrap()
+        .cohorts
+        .get(&0)
+        .map_or(0, |c| c.departures);
+
+    BehaviorTrace { centroid_col, centroid_row, mean_energy, final_cols, departures, start_pop }
 }
 
 // ── Probe-world infrastructure (doc02.03, rung 6) ─────────────────────────────

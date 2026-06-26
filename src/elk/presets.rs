@@ -84,7 +84,7 @@ pub const PRESETS: [Preset; 3] = [
         name: "Default",
         description: "Stock weights, no pull, plenty of food — with no eastward drive the \
                       herd mills and overcrowds the first segment, never crossing (stage 1, broken).",
-        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.175, cross_ratio: 0.0 },
+        ratios: RatioControls { feed_ratio: 8.0, grass_regrow: 0.02, shrub_regrow: 0.0025, cross_ratio: 0.0 },
         // Green wave unplugged (strength 0) to match GreenWave::default() — see grid.rs.
         green_wave: GreenWave { strength: 0.0, speed: 0.010, wavelength: 85.0 },
         apply_params: default_params,
@@ -93,7 +93,7 @@ pub const PRESETS: [Preset; 3] = [
         name: "Can cross",
         description: "Forage-sticky: follows the green-up front, rolls as a glob, and \
                       fords the river on the natural drives at zero pull — easy economy.",
-        ratios: RatioControls { bite_ratio: 4.0, regrow_ratio: 0.25, cross_ratio: 0.0 },
+        ratios: RatioControls { feed_ratio: 10.0, grass_regrow: 0.029, shrub_regrow: 0.0025, cross_ratio: 0.0 },
         green_wave: GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
         apply_params: can_cross_params,
     },
@@ -101,7 +101,7 @@ pub const PRESETS: [Preset; 3] = [
         name: "Optimized",
         description: "The same natural-drive crossing under leaner scarcity — a stage-3 \
                       score target where the model must hold together as food thins.",
-        ratios: RatioControls { bite_ratio: 2.5, regrow_ratio: 0.12, cross_ratio: 0.0 },
+        ratios: RatioControls { feed_ratio: 6.0, grass_regrow: 0.014, shrub_regrow: 0.0025, cross_ratio: 0.0 },
         green_wave: GreenWave { strength: 0.4, speed: 0.004, wavelength: 70.0 },
         apply_params: optimized_params,
     },
@@ -145,7 +145,7 @@ mod tests {
     // true "reset to stock", so its table rows must track the Default impls.
     #[test]
     fn default_preset_reproduces_resource_defaults() {
-        let mut ratios = RatioControls { bite_ratio: 0.0, regrow_ratio: 0.0, cross_ratio: 0.0 };
+        let mut ratios = RatioControls { feed_ratio: 0.0, grass_regrow: 0.0, shrub_regrow: 0.0, cross_ratio: 0.0 };
         let mut wave = GreenWave { strength: -1.0, speed: -1.0, wavelength: -1.0 };
         let mut params = ElkParams::default();
         params.grass_radius = 999.0; // dirty it to prove apply() resets
@@ -153,8 +153,9 @@ mod tests {
         apply(&PRESETS[0], &mut ratios, &mut wave, &mut params);
 
         let rd = RatioControls::default();
-        assert_eq!(ratios.bite_ratio, rd.bite_ratio);
-        assert_eq!(ratios.regrow_ratio, rd.regrow_ratio);
+        assert_eq!(ratios.feed_ratio, rd.feed_ratio);
+        assert_eq!(ratios.grass_regrow, rd.grass_regrow);
+        assert_eq!(ratios.shrub_regrow, rd.shrub_regrow);
         assert_eq!(ratios.cross_ratio, rd.cross_ratio);
         let wd = GreenWave::default();
         assert_eq!(wave.strength, wd.strength);
@@ -174,7 +175,7 @@ mod tests {
         apply(can_cross, &mut ratios, &mut wave, &mut params);
 
         assert_eq!(ratios.cross_ratio, 0.0, "can-cross fords on natural drives, not the pull");
-        assert_eq!(ratios.regrow_ratio, 0.25);
+        assert_eq!(ratios.grass_regrow, 0.029);
         assert_eq!(wave.strength, 0.4);
         assert_eq!(params.grass_radius, 8.0, "can-cross widens forage perception");
         assert_eq!(params.freshness_weight, 4.0, "can-cross follows the green-up front");
