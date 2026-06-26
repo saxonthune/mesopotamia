@@ -1,28 +1,5 @@
-//! Procedural shrub-tile raster: a curvy, space-filling vine network grown by
-//! **open-space branch growth** (a tile-local space-colonization, doc02.02). The tile
-//! is filled solid with the shrub's main tone, then the vine network is drawn over it
-//! in the *complement* tone, so the two shrub tones (riparian green / steppe olive)
-//! serve as each other's pattern and the silhouette stays a box.
-//!
-//! The mark is built up in four moves. A **trunk** runs corner-to-corner, inset from
-//! the edge: a Catmull-Rom spline through a random number of side-kicking extrema, each
-//! at a jittered position with a jittered amplitude and alternating side (Alexander
-//! roughness — irregular and adapted, never a clean sine wave; at least two extrema, so
-//! it bends both ways). **Branches** are then grown, not subdivided: the trunk's signed
-//! curvature is read, one branch is forced at the strongest bend of each turn direction
-//! so both sides always get one, and each branch leaves its base along the parent's
-//! tangent (keeping the centre line's momentum) before sweeping a round arc toward the
-//! most *open* direction it can probe — looping backward when the space behind it fills
-//! better. A bounded number of **recursion** generations branch off the curves the
-//! previous pass drew, each reaching less so the tangle nests. Finally a **void-fill**
-//! pass measures the remaining empty space with a multi-source distance transform,
-//! finds the emptiest pocket, and routes a curve from the nearest existing curve toward
-//! it — repeating until no void is large enough. Every stroke is truncated against an
-//! occupancy mask the moment it would overlap *foreign* ink, so curves never cross.
-//!
-//! The trunk leans up-and-right or up-and-left depending on the tone, so the two sides
-//! of the divide read as mirror grains. Pure and seeded so the look is pinned by tests
-//! and reproducible per cell.
+//! Procedural shrub-tile raster: open-space branch growth (doc02.02). Solid fill box with
+//! a vine network in the complement tone; `lean_left` sets the trunk diagonal for mirror grains.
 
 use std::collections::VecDeque;
 
@@ -32,80 +9,34 @@ use rand::rngs::StdRng;
 
 /// Tunables for one shrub tile.
 pub struct ShrubTileParams {
-    // — Tile —
-    /// Square tile resolution, in pixels.
     pub canvas: usize,
-    /// Keep the trunk endpoints this far from the tile edge, px.
     pub margin: f32,
-    /// Trunk lean: `false` runs bottom-left→top-right (up and to the right, tone A);
-    /// `true` runs bottom-right→top-left (up and to the left, tone B).
+    /// `false` = bottom-left→top-right (tone A); `true` = bottom-right→top-left (tone B, mirror grain).
     pub lean_left: bool,
-    /// How many growth moves to run; the shipped tile runs them all (default 4 =
-    /// trunk + branches + recursion + void fill). Lower values stop earlier.
+    /// Growth moves: 1=trunk, 2=+branches, 3=+recursion, 4=+void-fill.
     pub stage: usize,
-
-    // — Trunk roughness —
-    /// Upper bound on the trunk's extrema; the actual count is random in `2..=this`.
     pub max_extrema: usize,
-    /// Base perpendicular kick of each extremum off the chord, px.
     pub wave_amp: f32,
-    /// ± fractional jitter on each extremum's amplitude (0.4 = ±40%).
     pub amp_jitter: f32,
-    /// ± fractional jitter on each extremum's position along the chord.
     pub pos_jitter: f32,
-
-    // — Branch growth —
-    /// Arc-length between branch candidates along a curve, px.
     pub branch_spacing: f32,
-    /// Curvature (turn per px) at which a candidate is all-but-certain to branch;
-    /// the branch probability is `|curvature| / this`, clamped to 1.
     pub branch_curve_ref: f32,
-    /// Base branch reach (destination distance), px.
     pub branch_len: f32,
-    /// How much branch reach grows with curvature (0 = flat, 1 = up to double).
     pub branch_curve_gain: f32,
-    /// Tangent-handle length as a fraction of the branch chord — how long the branch
-    /// shoots straight off its parent before curving (the momentum).
     pub branch_momentum: f32,
-    /// Mid-curve bulge as a fraction of the chord — the roundness of the sweep.
     pub branch_round: f32,
-    /// ± jitter on a branch's aim, radians.
     pub branch_jitter: f32,
-    /// How wide a fan of aim directions to probe for open space, radians — swept from
-    /// just off the tangent around toward backward, on the curve's open side. Wider
-    /// lets a branch loop further back when that fills the space better.
     pub branch_fan: f32,
-    /// Arc-length near a branch's base over which parent ink is forgiven, px; past it
-    /// even the parent truncates, so a loop-back that meets anything stops cleanly.
+    /// Arc-length near the root over which parent ink is forgiven; past it even the parent truncates.
     pub branch_attach: f32,
-    /// Minimum arc-length gap between two branch roots, px — keeps branches from
-    /// piling up at one spot.
     pub branch_min_gap: f32,
-
-    // — Recursion —
-    /// Reach multiplier per recursion generation — each pass branches off the last,
-    /// shrinking so the tangle stays nested rather than blowing up.
     pub branch_shrink: f32,
-    /// Stop a branch (and so recursion down it) once its reach falls below this, px.
     pub branch_min_reach: f32,
-    /// Cap on recursion generations before the void-fill step takes over.
     pub max_recursion: usize,
-
-    // — Void fill —
-    /// Void-fill budget: how many gap-filling curves the final step may add.
     pub void_max_fills: usize,
-    /// Only fill a void whose centre is at least this far from any ink, px — small
-    /// gaps are left as breathing room.
     pub void_min_dist: f32,
-
-    // — Stroke —
-    /// Vine half-thickness (the stamped disc radius), px.
     pub thickness: f32,
-    /// How far the hairline colour sits from the base tone toward the complement,
-    /// 0..=1 — 0 is the base tone, 1 the full complement. 0.4 reads as a muted vine
-    /// 40% of the way across, so it stays related to the ground rather than stark.
     pub mark_blend: f32,
-    /// ± value jitter on the solid fill, so the box isn't a dead flat colour.
     pub fill_jitter: i32,
 }
 
@@ -142,15 +73,13 @@ impl Default for ShrubTileParams {
     }
 }
 
-/// Linearly interpolate between two RGB tones: `t = 0` is `a`, `t = 1` is `b`.
 fn blend(a: [u8; 3], b: [u8; 3], t: f32) -> [u8; 3] {
     let t = t.clamp(0.0, 1.0);
     let mix = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round().clamp(0.0, 255.0) as u8;
     [mix(a[0], b[0]), mix(a[1], b[1]), mix(a[2], b[2])]
 }
 
-/// Stamp a filled disc of radius `r` centred on `(cx, cy)` in `col`, marking each
-/// touched pixel in the occupancy `mask`.
+/// Stamp a filled disc; marks touched pixels in the occupancy `mask` for branch collision.
 fn stamp_disc(buf: &mut [u8], n: usize, mask: &mut [bool], cx: f32, cy: f32, r: f32, col: [u8; 3]) {
     let r = r.max(0.5);
     let r2 = r * r;
@@ -178,7 +107,6 @@ fn stamp_disc(buf: &mut [u8], n: usize, mask: &mut [bool], cx: f32, cy: f32, r: 
     }
 }
 
-/// Would a disc of radius `r` at `(cx, cy)` touch an already-occupied pixel?
 fn disc_hits(mask: &[bool], n: usize, cx: f32, cy: f32, r: f32) -> bool {
     let r = r.max(0.5);
     let r2 = r * r;
@@ -201,17 +129,14 @@ fn disc_hits(mask: &[bool], n: usize, cx: f32, cy: f32, r: f32) -> bool {
     false
 }
 
-/// Distance from `pt` to the nearest vertex of `poly` (the curve is sampled densely
-/// enough that vertex distance approximates distance-to-curve).
+/// Vertex distance approximates curve distance because curves are sampled densely.
 fn dist_to_poly(pt: (f32, f32), poly: &[(f32, f32)]) -> f32 {
     poly.iter()
         .map(|q| (q.0 - pt.0).hypot(q.1 - pt.1))
         .fold(f32::INFINITY, f32::min)
 }
 
-/// Like [`disc_hits`], but ink within `parent_clear` of `parent` doesn't count — it
-/// is the branch's own parent, not a foreign curve. So this reports collisions with
-/// *everything except the parent the branch grows from*.
+/// Like `disc_hits` but forgives ink within `parent_clear` of `parent` — only reports foreign collisions.
 fn disc_collides(mask: &[bool], n: usize, cx: f32, cy: f32, r: f32, parent: &[(f32, f32)], parent_clear: f32) -> bool {
     let r = r.max(0.5);
     let r2 = r * r;
@@ -237,9 +162,7 @@ fn disc_collides(mask: &[bool], n: usize, cx: f32, cy: f32, r: f32, parent: &[(f
     false
 }
 
-/// March a ray from `from` in unit direction `dir`, returning how far it runs (up to
-/// `maxlen`) before it leaves the inset tile or meets foreign ink. Used to aim a
-/// branch where the open space actually is.
+/// How far a ray runs before hitting the margin or foreign ink — used to find the most open aim direction.
 #[allow(clippy::too_many_arguments)]
 fn open_run(mask: &[bool], n: usize, from: (f32, f32), dir: (f32, f32), maxlen: f32, r: f32, parent: &[(f32, f32)], parent_clear: f32, margin: f32) -> f32 {
     let lo = margin;
@@ -256,8 +179,6 @@ fn open_run(mask: &[bool], n: usize, from: (f32, f32), dir: (f32, f32), maxlen: 
     maxlen
 }
 
-/// One point on the Catmull-Rom segment through `p1 → p2`, with `p0`/`p3` as the
-/// flanking points that set the incoming/outgoing tangents.
 fn catmull_rom(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), t: f32) -> (f32, f32) {
     let t2 = t * t;
     let t3 = t2 * t;
@@ -270,8 +191,6 @@ fn catmull_rom(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), t
     (f(p0.0, p1.0, p2.0, p3.0), f(p0.1, p1.1, p2.1, p3.1))
 }
 
-/// Smooth a waypoint list into a dense polyline with a Catmull-Rom spline (the
-/// endpoints are duplicated so the curve starts and ends exactly on them).
 fn spline_samples(way: &[(f32, f32)], steps_per_seg: usize) -> Vec<(f32, f32)> {
     if way.len() < 2 {
         return way.to_vec();
@@ -290,7 +209,6 @@ fn spline_samples(way: &[(f32, f32)], steps_per_seg: usize) -> Vec<(f32, f32)> {
     out
 }
 
-/// A point on the cubic Bézier `p0 → c1 → c2 → p3` at parameter `t`.
 fn cubic_bezier(p0: (f32, f32), c1: (f32, f32), c2: (f32, f32), p3: (f32, f32), t: f32) -> (f32, f32) {
     let u = 1.0 - t;
     let (a, b, c, d) = (u * u * u, 3.0 * u * u * t, 3.0 * u * t * t, t * t * t);
@@ -300,9 +218,7 @@ fn cubic_bezier(p0: (f32, f32), c1: (f32, f32), c2: (f32, f32), p3: (f32, f32), 
     )
 }
 
-/// Per-vertex differential of a polyline: the unit tangent and the *signed* curvature
-/// (turn per unit length; sign gives the turn direction). Uses a small neighbour
-/// window so the estimate is smooth rather than per-segment noise.
+/// Unit tangent and signed curvature per vertex; neighbour window smooths the estimate.
 fn differentials(pts: &[(f32, f32)]) -> Vec<((f32, f32), (f32, f32), f32)> {
     let n = pts.len();
     let w = 3;
@@ -327,11 +243,7 @@ fn differentials(pts: &[(f32, f32)]) -> Vec<((f32, f32), (f32, f32), f32)> {
         .collect()
 }
 
-/// Stroke a single round arc from `base` to `dest`: handle 1 continues the parent
-/// tangent `tang` (momentum), the mid bulges to `side` for a round sweep. The arc is
-/// **truncated** at the first point that would overlap any *foreign* ink (so curves
-/// never cross); the `parent` it grows from is forgiven only in the momentum-hug zone
-/// near the base. Returns the polyline actually drawn.
+/// Stroke a round arc from `base` to `dest`, truncating at the first foreign-ink collision.
 #[allow(clippy::too_many_arguments)]
 fn sweep_to(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], parent: &[(f32, f32)], p: &ShrubTileParams, base: (f32, f32), tang: (f32, f32), dest: (f32, f32), side: f32) -> Vec<(f32, f32)> {
     let parent_clear = p.thickness + 1.5;
@@ -350,11 +262,7 @@ fn sweep_to(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], parent
         })
         .collect();
 
-    // Truncate at the first collision. Foreign ink always counts — that is what
-    // guarantees no crossings. The parent is forgiven only within the attach zone
-    // (the momentum hug); past it, even meeting the parent stops the curve cleanly.
-    // Checking against `mask` (which does not yet hold this curve) means it never
-    // truncates on its own pixels.
+    // `mask` doesn't yet hold this curve's pixels, so the check never self-truncates.
     let mut cut = pts.len();
     let mut s = 0.0f32;
     for i in 0..pts.len() {
@@ -379,25 +287,18 @@ fn sweep_to(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], parent
     drawn
 }
 
-/// Draw one branch: leave `base` along `tang` (the parent's momentum), then sweep a
-/// round arc toward the **most open** direction on the curve's convex side (set by
-/// the sign of `kappa`) — which may loop the branch backward when the space behind it
-/// fills better.
+/// Draw one branch toward the most open direction on the curve's convex side, probing a fan.
 #[allow(clippy::too_many_arguments)]
 fn draw_branch(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], parent: &[(f32, f32)], rng: &mut StdRng, p: &ShrubTileParams, base: (f32, f32), tang: (f32, f32), kappa: f32, depth: usize) -> Vec<(f32, f32)> {
-    // Convex (outer) side of the bend is opposite the turn direction.
+    // Convex side is opposite the turn direction.
     let side = if kappa >= 0.0 { -1.0 } else { 1.0 };
     let curv_w = (kappa.abs() / p.branch_curve_ref).min(1.0);
-    // Each recursion generation reaches less, so the tangle nests rather than fills.
     let reach = p.branch_len * (1.0 + p.branch_curve_gain * curv_w) * p.branch_shrink.powi(depth as i32);
     if reach < p.branch_min_reach {
         return Vec::new();
     }
     let parent_clear = p.thickness + 1.5;
 
-    // Probe a fan of aim directions on the open side — from just off the tangent round
-    // toward backward — and pick the one with the most open space ahead, so a branch
-    // loops back when that fills its space better.
     let cand = 9usize;
     let a_min = 0.25f32;
     let a_max = p.branch_fan.max(a_min + 0.1);
@@ -418,8 +319,6 @@ fn draw_branch(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], par
         return Vec::new();
     }
 
-    // Jitter the aim a touch, then place the destination just shy of where the open
-    // run ran out so the branch lands in space rather than into a wall.
     let jit = rng.random_range(-p.branch_jitter..=p.branch_jitter);
     let (cj, sj) = (jit.cos(), jit.sin());
     let dir = (best_dir.0 * cj - best_dir.1 * sj, best_dir.0 * sj + best_dir.1 * cj);
@@ -434,12 +333,7 @@ fn draw_branch(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], par
     sweep_to(buf, n, detail, mask, parent, p, base, tang, dest, side)
 }
 
-/// One branching pass over a `parent` curve: read its curvature and sprout branches
-/// where it bends most, returning the child curves actually drawn (so the next pass
-/// can branch off them). On the first pass (`depth == 0`, the trunk) one branch is
-/// **forced** at the strongest bend of each turn direction, so both sides of the
-/// trunk always get a branch; the rest are sprinkled in proportion to local
-/// curvature, spaced apart.
+/// Branch pass over a parent curve; at depth 0 (trunk) forces one branch on each sign of curvature.
 fn branches_off(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rng: &mut StdRng, p: &ShrubTileParams, parent: &[(f32, f32)], depth: usize) -> Vec<Vec<(f32, f32)>> {
     let mut children = Vec::new();
     if parent.len() < 2 || p.branch_spacing <= 0.0 {
@@ -447,7 +341,6 @@ fn branches_off(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rn
     }
     let diff = differentials(parent);
 
-    // Arc length at each vertex, and the interior window we allow branches in.
     let mut arclen = vec![0.0f32; parent.len()];
     for i in 1..parent.len() {
         arclen[i] = arclen[i - 1] + (parent[i].0 - parent[i - 1].0).hypot(parent[i].1 - parent[i - 1].1);
@@ -458,7 +351,7 @@ fn branches_off(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rn
 
     let mut placed: Vec<f32> = Vec::new();
 
-    // Forced both-sign branches — only on the trunk pass.
+    // Forced both-sign: ensures both sides of the trunk always get a branch.
     if depth == 0 {
         let mut best_pos: Option<usize> = None;
         let mut best_neg: Option<usize> = None;
@@ -484,7 +377,6 @@ fn branches_off(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rn
         }
     }
 
-    // Probabilistic sprinkle, gated by curvature and a minimum gap from placed roots.
     let mut next = p.branch_spacing;
     for i in 1..parent.len() {
         if arclen[i] < next {
@@ -509,14 +401,11 @@ fn branches_off(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rn
     children
 }
 
-/// Build the trunk waypoints: start corner, a random number of side-kicking extrema
-/// down the diagonal, then the end corner. Each extremum's position and amplitude
-/// carry roughness jitter, and the sides alternate.
 fn trunk_waypoints(p: &ShrubTileParams, rng: &mut StdRng, start: (f32, f32), end: (f32, f32)) -> Vec<(f32, f32)> {
     let (dx, dy) = (end.0 - start.0, end.1 - start.1);
     let len = (dx * dx + dy * dy).sqrt().max(1e-3);
     let (perpx, perpy) = (-dy / len, dx / len);
-    // At least two extrema, so the trunk bends both ways and each side can branch.
+    // Minimum 2 extrema so the trunk bends both ways and each side can branch.
     let k = rng.random_range(2..=p.max_extrema.max(2));
 
     let mut way = vec![start];
@@ -534,12 +423,10 @@ fn trunk_waypoints(p: &ShrubTileParams, rng: &mut StdRng, start: (f32, f32), end
     way
 }
 
-/// Draw the trunk into `buf` in the `detail` tone, returning its sampled polyline so
-/// later steps can read its tangent and curvature.
 fn draw_trunk(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rng: &mut StdRng, p: &ShrubTileParams) -> Vec<(f32, f32)> {
     let lo = p.margin;
     let hi = (n as f32 - p.margin).max(lo);
-    // Bottom is high y (screen down), so "up" is toward low y.
+    // y increases downward, so "bottom" is high y and "top" is low y.
     let (start, end) = if p.lean_left {
         ((hi, hi), (lo, lo)) // bottom-right → top-left (up and to the left)
     } else {
@@ -555,8 +442,7 @@ fn draw_trunk(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], rng:
     pts
 }
 
-/// Multi-source BFS distance (8-connected, in steps) from every inked pixel. Empty
-/// pixels far from ink score high — the centres of the voids.
+/// Multi-source BFS distance from every inked pixel; high scores mark void centres.
 fn distance_to_ink(mask: &[bool], n: usize) -> Vec<i32> {
     let mut dist = vec![i32::MAX; n * n];
     let mut q: VecDeque<usize> = VecDeque::new();
@@ -588,7 +474,6 @@ fn distance_to_ink(mask: &[bool], n: usize) -> Vec<i32> {
     dist
 }
 
-/// The curve and vertex index nearest `target` across all drawn `curves`.
 fn nearest_curve_point(curves: &[Vec<(f32, f32)>], target: (f32, f32)) -> Option<(usize, usize)> {
     let mut best = f32::INFINITY;
     let mut res = None;
@@ -604,7 +489,6 @@ fn nearest_curve_point(curves: &[Vec<(f32, f32)>], target: (f32, f32)) -> Option
     res
 }
 
-/// The point and unit tangent at vertex `i` of `poly` (neighbour-window tangent).
 fn point_and_tangent(poly: &[(f32, f32)], i: usize) -> ((f32, f32), (f32, f32)) {
     let w = 3;
     let a = poly[i.saturating_sub(w)];
@@ -615,11 +499,7 @@ fn point_and_tangent(poly: &[(f32, f32)], i: usize) -> ((f32, f32), (f32, f32)) 
     (b, (tx / tl, ty / tl))
 }
 
-/// Void fill. Rather than recurse blindly, measure the remaining empty space and route
-/// a curve into it: repeatedly find the emptiest interior pocket, go back up to the
-/// nearest existing curve (any level), and sweep a branch from it toward the pocket.
-/// Newly drawn curves join the pool so later fills route around them. Stops when no
-/// void is large enough, the budget runs out, or a fill makes no progress.
+/// Fill remaining voids: find the emptiest pocket, route from the nearest curve toward it; repeat.
 fn fill_voids(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], p: &ShrubTileParams, curves: &mut Vec<Vec<(f32, f32)>>) {
     let parent_clear = p.thickness + 1.5;
     let lo = p.margin;
@@ -627,7 +507,6 @@ fn fill_voids(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], p: &
     for _ in 0..p.void_max_fills {
         let dist = distance_to_ink(mask, n);
 
-        // The emptiest interior pixel — the centre of the biggest void.
         let mut best = -1;
         let mut target = (0.0f32, 0.0f32);
         for y in 0..n {
@@ -644,17 +523,15 @@ fn fill_voids(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], p: &
             }
         }
         if (best as f32) < p.void_min_dist {
-            break; // no void worth filling
+            break;
         }
 
-        // Go back up to the nearest existing curve and sweep toward the void.
         let Some((ci, pi)) = nearest_curve_point(curves, target) else {
             break;
         };
         let parent = curves[ci].clone();
         let (base, tang) = point_and_tangent(&parent, pi);
 
-        // Reach toward the void along the open space; bulge to whichever side it's on.
         let raw = (target.0 - base.0, target.1 - base.1);
         let rl = (raw.0 * raw.0 + raw.1 * raw.1).sqrt().max(1e-3);
         let dir = (raw.0 / rl, raw.1 / rl);
@@ -669,16 +546,14 @@ fn fill_voids(buf: &mut [u8], n: usize, detail: [u8; 3], mask: &mut [bool], p: &
 
         let drawn = sweep_to(buf, n, detail, mask, &parent, p, base, tang, dest, side);
         if drawn.len() < 2 {
-            break; // couldn't make progress on the biggest void; stop
+            break;
         }
         curves.push(drawn);
     }
 }
 
-/// Rasterize a shrub tile into RGBA8 bytes: `canvas*canvas*4`, row-major and fully
-/// opaque (the clump fills its tile as a box). `fill` is the shrub's main tone;
-/// `detail` is the complement tone the vines are drawn in. Runs `stage` growth moves
-/// (the shipped tile runs all four). Deterministic in `seed`.
+/// Rasterize a shrub tile: `canvas*canvas*4` RGBA8, fully opaque. `fill` = ground tone;
+/// `detail` = complement tone for vines. Deterministic in `seed`.
 pub fn rasterize_shrub(p: &ShrubTileParams, fill: [u8; 3], detail: [u8; 3], seed: u64) -> Vec<u8> {
     let n = p.canvas;
     let mut buf = vec![0u8; n * n * 4];
@@ -686,9 +561,8 @@ pub fn rasterize_shrub(p: &ShrubTileParams, fill: [u8; 3], detail: [u8; 3], seed
         return buf;
     }
     let mut rng = StdRng::seed_from_u64(seed);
-    let mut mask = vec![false; n * n]; // detail-ink occupancy, for branch collision
+    let mut mask = vec![false; n * n]; // detail-ink occupancy
 
-    // Solid fill box, with a faint per-pixel value jitter for life.
     for px in buf.chunks_exact_mut(4) {
         let j = rng.random_range(-p.fill_jitter..=p.fill_jitter);
         px[0] = (fill[0] as i32 + j).clamp(0, 255) as u8;
@@ -697,16 +571,11 @@ pub fn rasterize_shrub(p: &ShrubTileParams, fill: [u8; 3], detail: [u8; 3], seed
         px[3] = 255;
     }
 
-    // The hairline isn't the stark complement: it's blended a fraction of the way
-    // from the base tone toward it, so the vines stay related to the ground.
     let mark = blend(fill, detail, p.mark_blend);
 
-    // The trunk.
     if p.stage >= 1 {
         let trunk = draw_trunk(&mut buf, n, mark, &mut mask, &mut rng, p);
 
-        // Branches: each pass branches off the curves the previous pass drew (capped
-        // at `max_recursion` generations). Every curve is kept for the void-fill step.
         let mut all_curves = vec![trunk.clone()];
         let mut parents = vec![trunk];
         let recursion = p.stage.saturating_sub(1).min(p.max_recursion);
@@ -720,7 +589,6 @@ pub fn rasterize_shrub(p: &ShrubTileParams, fill: [u8; 3], detail: [u8; 3], seed
             parents = next_parents;
         }
 
-        // Void fill: measure the empty space and route curves into it.
         if p.stage > p.max_recursion + 1 {
             fill_voids(&mut buf, n, mark, &mut mask, p, &mut all_curves);
         }
@@ -733,7 +601,6 @@ pub fn rasterize_shrub(p: &ShrubTileParams, fill: [u8; 3], detail: [u8; 3], seed
 mod tests {
     use super::*;
 
-    /// Squared distance between two RGB colours.
     fn d2(a: [u8; 3], b: [u8; 3]) -> i32 {
         let dr = a[0] as i32 - b[0] as i32;
         let dg = a[1] as i32 - b[1] as i32;
@@ -741,8 +608,6 @@ mod tests {
         dr * dr + dg * dg + db * db
     }
 
-    /// Count pixels closer to the `mark` tone than to the `fill` ground — i.e. how
-    /// much vine ink is laid down.
     fn mark_count(buf: &[u8], fill: [u8; 3], mark: [u8; 3]) -> usize {
         buf.chunks_exact(4)
             .filter(|px| {
@@ -764,8 +629,6 @@ mod tests {
 
     #[test]
     fn grows_vines_over_a_fill_ground() {
-        // Both tones present: the vine network in the detail tone over a ground that
-        // is still mostly the fill tone.
         let p = ShrubTileParams::default();
         let fill = [30, 80, 25];
         let detail = [200, 200, 40];
@@ -788,8 +651,6 @@ mod tests {
 
     #[test]
     fn branches_always_appear() {
-        // The forced both-sign branches mean the branch pass lays down strictly more
-        // detail ink than the bare trunk for *every* seed, never just the trunk.
         let one = ShrubTileParams { stage: 1, ..ShrubTileParams::default() };
         let two = ShrubTileParams { stage: 2, ..ShrubTileParams::default() };
         let (fill, detail) = ([30, 80, 25], [200, 200, 40]);
@@ -803,8 +664,6 @@ mod tests {
 
     #[test]
     fn deeper_passes_add_more_recursion() {
-        // Each extra pass branches off the last, so deeper stages lay down at least
-        // as much detail ink as the shallower one.
         let (fill, detail) = ([30, 80, 25], [200, 200, 40]);
         let mark = blend(fill, detail, ShrubTileParams::default().mark_blend);
         for seed in 0..20 {
@@ -818,7 +677,6 @@ mod tests {
 
     #[test]
     fn void_fill_never_removes_ink() {
-        // The void-fill stage never lays down less ink than the recursion stage below.
         let (fill, detail) = ([30, 80, 25], [200, 200, 40]);
         let mark = blend(fill, detail, ShrubTileParams::default().mark_blend);
         let s3 = ShrubTileParams { stage: 3, ..ShrubTileParams::default() };
@@ -832,8 +690,6 @@ mod tests {
 
     #[test]
     fn lean_mirrors_the_trunk() {
-        // Tone A (up-right) and tone B (up-left) are mirror grains, so the tiles
-        // differ even with the same tones and seed.
         let right = ShrubTileParams { lean_left: false, ..ShrubTileParams::default() };
         let left = ShrubTileParams { lean_left: true, ..ShrubTileParams::default() };
         let (fill, detail) = ([30, 80, 25], [90, 100, 25]);
@@ -865,8 +721,6 @@ mod tests {
         let detail = [90, 100, 25];
         assert_eq!(blend(fill, detail, 0.0), fill, "t=0 is the base tone");
         assert_eq!(blend(fill, detail, 1.0), detail, "t=1 is the complement");
-        // Below the midpoint the mark stays nearer the base tone than the complement,
-        // so the vine reads as related to the ground rather than stark.
         let mark = blend(fill, detail, 0.4);
         assert!(d2(mark, fill) < d2(mark, detail), "0.4 sits closer to the base tone");
     }

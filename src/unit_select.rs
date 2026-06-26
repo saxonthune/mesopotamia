@@ -1,14 +1,5 @@
-//! Box-select unit inspector: a StarCraft-style group selection over the map
-//! view. Left-drag rubber-bands a rectangle, capturing the individual elk inside
-//! it into a roster; the roster, a per-unit stats readout, and a tinted portrait
-//! render in an auto-shown "Selection" tab of the bottom dock (drawn by `ui`).
-//!
-//! This is a second, independent selection axis from `pick_herd`'s single-click
-//! herd pick — it operates on individual elk entities and is *read-only* over elk
-//! components, so it never collides with the simulation. The module owns the
-//! input gesture, the rubber-band overlay, the selection state, and the shared
-//! silhouette art; the three-column tab view lives in `ui` beside the egui
-//! helpers it reuses.
+//! Box-select: left-drag to capture elk into a roster shown in the Selection tab (drawn by `ui`).
+//! Independent of `pick_herd` — read-only over elk components, never collides with the simulation.
 
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
@@ -16,41 +7,31 @@ use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 use crate::elk::{elk_color, Elk, Herding};
 use crate::render::{cell_world_pos, WorldCamera};
 
-/// Pointer travel (in logical points) past which a left-press becomes a box drag
-/// rather than a click. Below it the gesture falls through to `pick_herd`.
+/// Below this, a left-press falls through to `pick_herd` as a click.
 const DRAG_THRESHOLD: f32 = 4.0;
 
-/// Cap on how many elk a single box captures. A box over a dense field keeps the
-/// first `MAX_UNITS` in query order (no sort) and reports the true total; this
-/// bounds the thumbnail grid so the roster stays scannable.
+/// Box captures the first N in iteration order (no sort); true total still reported.
 const MAX_UNITS: usize = 96;
 
-/// The live box-selection. Read by `ui`'s Selection tab and by `pick_herd`
-/// (which skips the click that ended a drag). All fields default empty/idle.
+/// Live box-selection state. `pick_herd` reads `drag_was_box` to skip the click that ended a drag.
 #[derive(Resource, Default)]
 pub struct UnitSelectState {
-    /// Box-captured elk, in capture (query) order, length ≤ `MAX_UNITS`.
+    /// In capture order, length ≤ `MAX_UNITS`.
     pub units: Vec<Entity>,
-    /// The thumbnail clicked into the stats + portrait columns.
     pub focused: Option<Entity>,
-    /// Total elk the last box actually contained, before the `MAX_UNITS` cap —
-    /// drives the "96 of N" roster header.
+    /// True total from the last box, before the `MAX_UNITS` cap — drives the "96 of N" header.
     pub captured_total: usize,
-    /// Edge flag: a non-empty capture happened this frame. `ui` consumes it to
-    /// auto-open the Selection tab, then clears it.
+    /// Edge flag: `ui` consumes this to auto-open the Selection tab, then clears it.
     pub just_selected: bool,
-    /// Screen-space press anchor while the left button is held over the world;
-    /// `None` when idle or when the press landed on the UI.
+    /// Press anchor in screen-space; `None` when idle or press landed on UI.
     anchor: Option<Vec2>,
-    /// The current gesture has crossed `DRAG_THRESHOLD` — it is a box, not a click.
     is_box: bool,
     /// The gesture that released *this frame* was a box. `pick_herd` reads this to
     /// avoid picking a herd on the click that closed a drag.
     pub drag_was_box: bool,
 }
 
-/// The selection resource plus the elk query, bundled so `control_panel` can take
-/// the whole feature as one system param and stay under Bevy's arity limit.
+/// Bundled so `control_panel` stays under Bevy's system-param arity limit.
 #[derive(bevy::ecs::system::SystemParam)]
 pub struct SelectionParams<'w, 's> {
     pub state: ResMut<'w, UnitSelectState>,
@@ -68,10 +49,7 @@ impl Plugin for UnitSelectPlugin {
     }
 }
 
-/// Collect up to `cap` ids whose position lies within the inclusive rect
-/// `[min, max]`, in iteration order. Returns the kept ids and the *total* number
-/// in the rect (which may exceed `cap`). Pure over its inputs so the capture and
-/// truncation rule is unit-tested without a world.
+/// Pure fn: keeps up to `cap` items in iteration order; also returns the true total (may exceed `cap`).
 pub fn capture_in_rect<T>(
     items: impl IntoIterator<Item = (T, Vec2)>,
     min: Vec2,
@@ -91,9 +69,6 @@ pub fn capture_in_rect<T>(
     (kept, total)
 }
 
-/// Drive the box-select gesture: arm on a world press, become a box once the
-/// pointer travels past the threshold, and on release either capture the enclosed
-/// elk (a drag) or dismiss the current group (a plain click). Escape clears too.
 pub fn box_select(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -120,7 +95,6 @@ pub fn box_select(
         sel.is_box = false;
     }
 
-    // Promote to a box once the pointer has travelled far enough from the anchor.
     if mouse.pressed(MouseButton::Left) {
         if let (Some(anchor), Some(cur)) = (sel.anchor, cursor) {
             if (cur - anchor).length() > DRAG_THRESHOLD {
@@ -135,8 +109,7 @@ pub fn box_select(
             sel.drag_was_box = true;
             let (cam, cam_tf) = *camera;
             if let (Some(anchor), Some(release)) = (sel.anchor, cursor) {
-                // Unproject both corners through the world camera so the rect
-                // respects the viewport clip above the dock (as pick_herd does).
+                // Unproject both corners through the world camera to respect the viewport clip above the dock.
                 if let (Ok(a), Ok(b)) = (
                     cam.viewport_to_world_2d(cam_tf, anchor),
                     cam.viewport_to_world_2d(cam_tf, release),
@@ -156,8 +129,7 @@ pub fn box_select(
                 }
             }
         } else if sel.anchor.is_some() {
-            // A plain click on the world dismisses the current group, the way a
-            // StarCraft left-click deselects. The herd pick is pick_herd's job.
+            // Plain click on world dismisses the group; herd pick is pick_herd's job.
             sel.units.clear();
             sel.focused = None;
         }
@@ -167,8 +139,6 @@ pub fn box_select(
     Ok(())
 }
 
-/// Paint the rubber-band rectangle while a box drag is in progress. Drawn on a
-/// foreground egui layer so it floats over the world without claiming layout.
 fn draw_selection_box(
     mut contexts: EguiContexts,
     window: Single<&Window>,
@@ -199,7 +169,7 @@ fn draw_selection_box(
     Ok(())
 }
 
-/// The herd tint as an egui colour, matching the map sprite (`sync_elk_color`).
+/// Matches the map sprite tint from `sync_elk_color`.
 pub fn herd_color32(slot: u8) -> egui::Color32 {
     let c = elk_color(slot as usize, false).to_srgba();
     egui::Color32::from_rgb(
@@ -209,18 +179,13 @@ pub fn herd_color32(slot: u8) -> egui::Color32 {
     )
 }
 
-/// The shared programmer-art elk silhouette, tinted by herd colour, filling
-/// `rect`. One drawing reused at thumbnail and portrait scale — the "single
-/// image" placeholder. Swap real art in here when it lands; callers are unchanged.
 pub fn draw_elk_silhouette(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
     painter.rect_filled(rect, 4.0, egui::Color32::from_gray(28));
     let c = rect.center();
     let s = rect.width().min(rect.height());
-    // Body and head.
     painter.circle_filled(c + egui::vec2(-s * 0.04, s * 0.06), s * 0.26, color);
     let head = c + egui::vec2(s * 0.22, -s * 0.16);
     painter.circle_filled(head, s * 0.12, color);
-    // Antlers — a couple of forking strokes off the head.
     let antler = egui::Stroke::new((s * 0.03).max(1.0), color);
     painter.line_segment([head, head + egui::vec2(s * 0.10, -s * 0.22)], antler);
     painter.line_segment([head, head + egui::vec2(-s * 0.02, -s * 0.26)], antler);
@@ -228,7 +193,6 @@ pub fn draw_elk_silhouette(painter: &egui::Painter, rect: egui::Rect, color: egu
         [head + egui::vec2(s * 0.04, -s * 0.13), head + egui::vec2(s * 0.16, -s * 0.17)],
         antler,
     );
-    // Legs.
     let leg = egui::Stroke::new((s * 0.045).max(1.0), color);
     for dx in [-0.14_f32, -0.02, 0.10] {
         let x = c.x + dx * s;
@@ -251,7 +215,7 @@ mod tests {
     fn captures_points_inside_inclusive_rect() {
         let items = vec![(0u32, at(0.0, 0.0)), (1, at(5.0, 5.0)), (2, at(10.0, 10.0))];
         let (kept, total) = capture_in_rect(items, at(0.0, 0.0), at(10.0, 10.0), 64);
-        assert_eq!(kept, vec![0, 1, 2]); // boundary points included
+        assert_eq!(kept, vec![0, 1, 2]);
         assert_eq!(total, 3);
     }
 

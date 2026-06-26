@@ -1,9 +1,5 @@
-//! Milestone 1 demo binary — the grazing/river simulation, packaged for the web.
-//!
-//! This shares the same simulation modules as `main.rs` via `#[path]` includes,
-//! so logic tweaks land here too. What it owns separately is the entry point:
-//! a window configured to bind to an HTML `<canvas>` so the same build runs both
-//! natively (`cargo run --bin demo1`) and in the browser (wasm32 target).
+//! Demo 1 binary: shares sim modules with `main.rs` via `#[path]` re-includes;
+//! entry point binds to the page's `<canvas>` for web (`wasm32`) or runs natively.
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
@@ -62,9 +58,7 @@ use crate::ui::UiPlugin;
 use crate::unit_select::UnitSelectPlugin;
 use render::RenderPlugin;
 
-/// CSS selector of the canvas the browser page provides. The per-demo HTML in
-/// `web/` declares `<canvas id="game-canvas">`; Bevy renders into it.
-const CANVAS_ID: &str = "#game-canvas";
+const CANVAS_ID: &str = "#game-canvas"; // matches <canvas id="game-canvas"> in web/
 
 fn main() {
     let settings = UserSettings::load();
@@ -74,27 +68,20 @@ fn main() {
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "Mesopotamia — Demo 1".into(),
-                // Bind to the page's canvas on web; ignored on native.
                 canvas: Some(CANVAS_ID.into()),
-                // Track the canvas's CSS box so the sim fills whatever the page
-                // sizes it to, instead of a fixed pixel resolution.
                 fit_canvas_to_parent: true,
-                // Let the browser keep its own keyboard shortcuts (F5, etc.).
                 prevent_default_event_handling: false,
-                // Native restore/initial size; ignored on web (canvas governs).
-                resolution: WindowResolution::new(settings.window.width, settings.window.height),
+                resolution: WindowResolution::new(settings.window.width, settings.window.height), // ignored on web
+
                 ..default()
             }),
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        // The droppings nutrient cycle (poop → grass) is built and tested but
-        // intentionally disabled in the shipped demo. To re-enable, add
-        // `droppings::DroppingsPlugin` to this tuple.
+        // DroppingsPlugin intentionally omitted; add it here to re-enable the nutrient cycle.
         .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin))
         .insert_resource(settings);
 
-    // Maximizing is native-only; the canvas sizes the window on the web.
     #[cfg(not(target_arch = "wasm32"))]
     app.add_systems(Startup, settings::maximize_window);
 

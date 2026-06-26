@@ -24,8 +24,6 @@ impl Plugin for OverlayPlugin {
     }
 }
 
-/// Draw one arrow per sampled cell pointing along the grass-gradient direction.
-/// Coarsened to every `STEP` cells so the arrow field stays legible at default zoom.
 fn draw_grass_gradient_overlay(
     mut gizmos: Gizmos,
     grid: Res<Grid>,
@@ -45,7 +43,6 @@ fn draw_grass_gradient_overlay(
             let dir = g / len;
             let origin = cell_world_pos(&grid, cell);
             let tip = origin + dir * ARROW_LEN;
-            // Arrow body
             gizmos.line_2d(origin, tip, Color::srgba(0.2, 0.9, 0.2, 0.75));
             // Arrowhead: two short lines at ~45° back from the tip
             let head_len = ARROW_LEN * 0.3;
@@ -57,7 +54,6 @@ fn draw_grass_gradient_overlay(
     }
 }
 
-/// Draw a wireframe rect over each water cell, coloured by penalty intensity.
 fn draw_water_penalty_overlay(
     mut gizmos: Gizmos,
     grid: Res<Grid>,
@@ -74,7 +70,6 @@ fn draw_water_penalty_overlay(
         let color = Color::srgba(0.9, 0.15, 0.15, alpha);
         let pos = cell_world_pos(&grid, index);
         let half = TILE_SIZE * 0.5;
-        // Wireframe box: four edges
         let tl = pos + Vec2::new(-half,  half);
         let tr = pos + Vec2::new( half,  half);
         let bl = pos + Vec2::new(-half, -half);
@@ -86,8 +81,6 @@ fn draw_water_penalty_overlay(
     }
 }
 
-/// Draw an X marker at each recent starvation event's cell.
-/// Older events fade toward transparent so the most recent deaths read brightest.
 fn draw_death_sites_overlay(
     mut gizmos: Gizmos,
     grid: Res<Grid>,

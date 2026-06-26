@@ -1,10 +1,5 @@
-//! Procedural watershed generation. The pipeline composes the submodules: a
-//! shared smoothed cost field and least-cost carve (`cost`), water stamped onto
-//! the grid plus ford bands (`raster`), features layered on top (`features`:
-//! oxbows, tributaries), metaball lakes at blue-noise positions (`lake`), and finally
-//! the water-proximity capacity field
-//! (`prox`). Every knob lives in `RiverSpec` (`spec`), seed included; the whole
-//! water field is a pure function of that spec.
+//! Procedural watershed generation. Submodules: `cost` (least-cost carve), `raster` (stamp + fords),
+//! `features` (oxbows, tribs), `lake` (metaball lakes), `prox` (bank capacity). Seed-deterministic.
 
 mod cost;
 mod features;
@@ -25,19 +20,11 @@ use cost::{carve, cost_field, lerp};
 use raster::{stamp_main_channel, tag_shallows_as_fords};
 use spec::{PEN_HIGH, PEN_LOW};
 
-/// Generate the full water field from `spec` — the world-gen *water layer*. Stamps
-/// rivers, tributaries, lakes, and ford bands onto the grid and computes the
-/// water-proximity capacity field. Returns `(mains, tribs)`: the carved centerline
-/// paths for the main rivers and tributary feeders, which tests use to assert
-/// structural invariants; the orchestrator discards the return value.
+// Returns (mains, tribs) centerline paths; tests use them, orchestrator discards.
 pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
     let mut rng = StdRng::seed_from_u64(spec.seed);
 
-    // Smoothing passes from global bendiness — shared cost field for all channels.
-    // Per-river directional penalty is derived inside the loop from a child RNG.
     let passes = lerp(8.0, 2.0, spec.bendiness).round() as usize;
-
-    // One shared cost field for all channels — they belong to the same landscape.
     let cost = cost_field(grid, &mut rng, passes, spec.warp_amp, spec.warp_passes);
 
     let width = grid.width();
@@ -45,15 +32,8 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
 
     let mut mains: Vec<Vec<usize>> = Vec::new();
     for i in 0..spec.count {
-        // Distribute entry columns evenly across the interior, scale-free: the
-        // i-th of `count` rivers enters at width*(i+1)/(count+1), so the spacing
-        // tracks the grid width rather than a fixed column period and never
-        // lands on the very edge.
         let entry_col = (width * (i + 1) / (spec.count + 1)).clamp(1, width - 2);
-        let entry = entry_col; // row 0 → index = 0 * width + col = col
-
-        // Per-river jitter via a child RNG seeded from the spec seed + index.
-        // Using a separate RNG keeps oxbow/tributary placement stable.
+        let entry = entry_col; // row 0 → index = col
         let mut rrng = StdRng::seed_from_u64(spec.seed ^ (i as u64 + 1));
         let drift_i = (spec.drift
             * (1.0 + rrng.random_range(-spec.drift_spread..spec.drift_spread)))
@@ -63,15 +43,13 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         .clamp(0.0, 1.0);
         let penalty_i = lerp(PEN_HIGH as f32, PEN_LOW as f32, bendiness_i) as u32;
 
-        // Determine the carve goal: confluence cell on parent, or normal bottom exit.
+        // Goal: confluence cell on parent centerline, or normal bottom-edge exit.
         let parent_idx = spec.confluence_pairs.iter().find_map(|&(child, parent)| {
             if child == i { Some(parent) } else { None }
         });
 
         let goal = if let Some(parent) = parent_idx {
-            // Child river: goal is a cell on the already-carved parent centerline
-            // in the lower portion of the map (row > 60% of height), mirroring
-            // the tributary confluence selection in features.rs.
+            // Goal = lower 40% of parent centerline (mirrors trib confluence selection).
             let parent_cl = &mains[parent];
             let lower_cutoff = height * 60 / 100;
             let lower_cells: Vec<usize> = parent_cl
@@ -80,7 +58,7 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
                 .filter(|&c| c / width > lower_cutoff)
                 .collect();
             if lower_cells.is_empty() {
-                // Fallback: any cell on the parent centerline
+                // Fallback: any cell on the parent centerline.
                 let idx = rrng.random_range(0..parent_cl.len());
                 parent_cl[idx]
             } else {
@@ -88,7 +66,6 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
                 lower_cells[idx]
             }
         } else {
-            // Normal river: exit at bottom edge with rightward drift.
             let exit_col = ((entry_col as f32 + drift_i * height as f32).round() as isize)
                 .clamp(0, width as isize - 1) as usize;
             (height - 1) * width + exit_col
@@ -101,9 +78,6 @@ pub fn generate_water(grid: &mut Grid, spec: &RiverSpec) -> (Vec<Vec<usize>>, Ve
         mains.push(cl);
     }
 
-    // Features layered on the main channels, in order: oxbows, then lakes (placed
-    // at blue-noise positions with metaball footprints, drawing from a dedicated
-    // lake RNG so the oxbow/tributary streams stay unchanged), then tributaries.
     features::place_oxbows(grid, &cost, &mut rng, spec);
     lake::generate_lakes(grid, &cost, spec);
     let tribs = features::carve_tributaries(grid, &cost, &mut rng, spec, &mains);
@@ -169,9 +143,6 @@ mod tests {
         assert!(has_shallow, "expected shallow tributary/ford cells");
     }
 
-    /// Assert each main channel runs top→bottom with rightward drift.
-    /// Child mains (in confluence_pairs) are exempt from the bottom-edge exit
-    /// assertion — they terminate on the parent centerline instead.
     #[test]
     fn rivers_flow_top_to_bottom() {
         let spec = RiverSpec::default();
@@ -185,7 +156,7 @@ mod tests {
         for (i, cl) in mains.iter().enumerate() {
             assert!(!cl.is_empty(), "main centerline {i} is empty");
 
-            // carve() builds the path goal→start: cl[0] = exit (bottom), cl.last() = entry (top).
+            // carve() path: cl[0] = goal/exit, cl.last() = start/entry.
             let entry_idx = *cl.last().unwrap();
             let exit_idx = cl[0];
 
@@ -219,8 +190,6 @@ mod tests {
 
                 let entry_col = entry_idx % width;
                 let exit_col = exit_idx % width;
-
-                // Default drift = 0.25 * 96 = 24 columns rightward.
                 assert!(
                     exit_col > entry_col,
                     "main {i} should drift rightward: entry_col={entry_col}, exit_col={exit_col}"
@@ -229,7 +198,6 @@ mod tests {
         }
     }
 
-    /// Assert that each child main's exit cell lies on the declared parent's centerline.
     #[test]
     fn confluence_child_joins_parent() {
         let spec = RiverSpec::default();
@@ -242,8 +210,7 @@ mod tests {
             let child_cl = &mains[child];
             assert!(!child_cl.is_empty(), "child {child} centerline is empty");
 
-            // cl[0] is the carve goal = confluence cell on the parent centerline.
-            let confluence = child_cl[0];
+            let confluence = child_cl[0]; // cl[0] = carve goal = confluence on parent
             let parent_cells: std::collections::HashSet<usize> =
                 mains[parent].iter().copied().collect();
             assert!(
@@ -251,7 +218,6 @@ mod tests {
                 "child {child} exit cell {confluence} is not on parent {parent} centerline"
             );
 
-            // Confluence must be in the lower portion of the map (row > 60% of height).
             let row = confluence / width;
             let lower_cutoff = height * 60 / 100;
             assert!(
@@ -261,11 +227,6 @@ mod tests {
         }
     }
 
-    /// Assert each tributary's confluence cell (its Dijkstra goal) lies on a main
-    /// channel centerline — the feeder reaches the main river by construction.
-    /// We check centerline membership rather than water level because ford stamping
-    /// unconditionally overwrites water to ford_depth on crossing cells, which can
-    /// include a confluence that happens to fall under a ford band.
     #[test]
     fn tributaries_join_a_main_channel() {
         let spec = RiverSpec::default();
@@ -274,7 +235,6 @@ mod tests {
 
         assert!(!tribs.is_empty(), "expected at least one tributary to be carved");
 
-        // Build a flat set of all main-centerline cells for O(1) lookup.
         let main_cells: std::collections::HashSet<usize> =
             mains.iter().flatten().copied().collect();
 
@@ -282,8 +242,7 @@ mod tests {
         for (i, tcl) in tribs.iter().enumerate() {
             assert!(!tcl.is_empty(), "tributary {i} centerline is empty");
 
-            // carve() path[0] = goal = confluence cell (sampled from a main centerline).
-            let confluence = tcl[0];
+            let confluence = tcl[0]; // cl[0] = carve goal = confluence on main
             assert!(
                 main_cells.contains(&confluence),
                 "tributary {i} confluence cell {confluence} is not on any main centerline"
@@ -297,8 +256,6 @@ mod tests {
         }
     }
 
-    /// Assert that per-river child RNGs produce different drift parameters,
-    /// resulting in measurably different exit-column drift ratios across rivers.
     #[test]
     fn per_river_params_differ() {
         let spec = RiverSpec {
@@ -330,10 +287,9 @@ mod tests {
         );
     }
 
-    /// Assert that lakes add full-depth standing water beyond what channels alone produce.
     #[test]
     fn lakes_are_seeded() {
-        let spec_with = RiverSpec::default(); // big_lake_count = 3, minor_lake_count = 3
+        let spec_with = RiverSpec::default();
         let spec_none = RiverSpec {
             big_lake_count: 0,
             minor_lake_count: 0,

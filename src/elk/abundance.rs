@@ -1,27 +1,13 @@
-//! Herd-level resource-abundance metrics.
-//!
-//! These quantify whether a herd's local patch supplies more than it consumes —
-//! the mechanism behind elk that camp and graze instead of migrating. A herd whose
-//! nearby forage regrows faster than it is eaten has no depletion gradient pushing
-//! it onward, so it stays put. Measuring that surplus is how we prove the herd has
-//! no reason to migrate.
-//!
-//! Measured at the herd (centroid + radius) rather than per elk, so the cost is a
-//! handful of grid scans per tick instead of one per animal. Pure view state:
-//! nothing in the simulation reads these, so changing the tunables never perturbs
-//! behaviour.
+//! Herd-level resource-abundance metrics (view state only — nothing in the sim reads these).
 
 use bevy::prelude::*;
 
 use crate::grid::{Grid, GrowthRate};
 
-/// Tunables for the abundance measurement.
 #[derive(Resource)]
 pub struct AbundanceParams {
-    /// Sampling radius (in cells) around a herd's centroid for "nearby" forage.
     pub radius: f32,
-    /// Blend weight for the composite abundance: `w·grass + (1-w)·energy`.
-    /// 1.0 = pure nearby grass, 0.0 = pure herd energy.
+    /// Blend: `w·grass + (1-w)·energy`; 1.0 = pure grass, 0.0 = pure energy.
     pub energy_weight: f32,
 }
 
@@ -31,35 +17,26 @@ impl Default for AbundanceParams {
     }
 }
 
-/// Composite local abundance: a slider-weighted blend of nearby grass and the
-/// herd's stored energy. `weight` is clamped to [0, 1]; 1 weights grass fully.
 pub fn local_abundance(grass: f32, energy: f32, weight: f32) -> f32 {
     let w = weight.clamp(0.0, 1.0);
     w * grass + (1.0 - w) * energy
 }
 
-/// Split a herd total across its members. An empty herd has no per-capita value.
 pub fn per_capita(total: f32, count: u32) -> f32 {
     if count == 0 { 0.0 } else { total / count as f32 }
 }
 
-/// Ratio of per-elk forage regrowth to per-elk metabolic drain. Above 1 the local
-/// patch refills faster than the herd strips it, so the herd can camp indefinitely
-/// — the quantitative signature of "grass too plentiful / regrows too fast".
+/// Above 1: patch refills faster than the herd strips it — herd has no reason to move.
 pub fn regrowth_drain_ratio(regrowth_per_elk: f32, drain: f32) -> f32 {
     if drain <= 0.0 { 0.0 } else { regrowth_per_elk / drain }
 }
 
-/// Sum of standing grass over every cell within `radius` of `(col, row)`.
-/// Pure over the grid; the scan box is clamped to the grid bounds and uses a
-/// circular (Euclidean) cutoff so "nearby" is isotropic.
+/// Sum of standing grass within Euclidean `radius` of `(col, row)`.
 pub fn grass_in_radius(grid: &Grid, col: usize, row: usize, radius: f32) -> f32 {
     sum_in_radius(grid, col, row, radius, |g, i| g.grass(i))
 }
 
-/// Sum of intrinsic regrowth `intrinsic·(capacity − grass)` over every cell within
-/// `radius` — the forage the patch adds next tick from bare growth alone (the
-/// `spread` term needs neighbour cover and is omitted as a lower bound).
+/// Sum of `intrinsic·(capacity − grass)` within `radius` — bare regrowth, no spread term.
 pub fn regrowth_in_radius(
     grid: &Grid,
     growth: &GrowthRate,
@@ -72,8 +49,6 @@ pub fn regrowth_in_radius(
     })
 }
 
-/// Accumulate `f` over the cells within a circular `radius` of `(col, row)`,
-/// clamped to the grid. Shared by the grass and regrowth scans.
 fn sum_in_radius(
     grid: &Grid,
     col: usize,
@@ -126,9 +101,7 @@ mod tests {
 
     #[test]
     fn ratio_above_one_means_surplus() {
-        // Regrowth out-paces drain: the patch refills faster than it's eaten.
         assert!(regrowth_drain_ratio(0.008, 0.004) > 1.0);
-        // Regrowth lags drain: the herd would have to move.
         assert!(regrowth_drain_ratio(0.002, 0.004) < 1.0);
     }
 
@@ -148,8 +121,7 @@ mod tests {
     #[test]
     fn grass_in_radius_one_includes_orthogonal_neighbours() {
         let mut grid = Grid::new(5, 5);
-        // Center + its four orthogonal neighbours are within Euclidean radius 1;
-        // the diagonals (dist √2) are not.
+        // Orthogonal neighbours are within radius 1; diagonals (dist √2) are not.
         for &cell in &[2 * 5 + 2, 2 * 5 + 1, 2 * 5 + 3, 1 * 5 + 2, 3 * 5 + 2] {
             grid.set_grass(cell, 0.2);
         }

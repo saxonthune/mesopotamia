@@ -27,14 +27,10 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        // The droppings nutrient cycle (poop → grass) is built and tested but
-        // intentionally disabled in the shipped sim. To re-enable, add
-        // `mesopotamia::droppings::DroppingsPlugin` to this tuple (and import it).
+        // DroppingsPlugin intentionally omitted; import and add it here to re-enable.
         .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin))
         .insert_resource(settings);
 
-    // Maximizing is a runtime request and only meaningful natively; on the web
-    // the canvas governs size.
     #[cfg(not(target_arch = "wasm32"))]
     app.add_systems(Startup, settings::maximize_window);
 

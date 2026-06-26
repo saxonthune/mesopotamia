@@ -19,8 +19,7 @@ pub use ledger::{energy_expected_delta, energy_ledger_closes, population_balance
 pub use movement::{cell_water_penalty, cross_desire, forage_across, forage_sightline, grass_gradient, step_water_penalty, swim_cost};
 #[allow(unused_imports)]
 pub use herding::{HerdParams, HerdState, Herding, Goal};
-// Lifecycle constants the macro-sim harness asserts against — exported so the
-// tests read the single source of truth instead of mirroring magic numbers.
+// Exported so harness tests read the single source of truth, not mirror magic numbers.
 #[allow(unused_imports)]
 pub use spawn::{EDGE_COL, TARGET_POPULATION};
 pub(crate) use color::elk_color;

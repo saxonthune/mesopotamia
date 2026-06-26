@@ -1,15 +1,12 @@
 use mesopotamia::elk::ElkParams;
 use mesopotamia::sim_harness::{journey_natural, run_metrics};
 
-/// Short horizon: fast enough for CI while still seeing survival settle.
 const TICKS: u32 = 300;
 
-// doc02.02 — thresholds start loose; tighten only when a real regression motivates it.
-// At 300 ticks elk reach ~col 20+ on the forage drives alone.
-const S_FLOOR: f32 = 0.1;    // 10% minimum survival
-const EDGE_BAND: usize = 10; // elk must move at least 10 cols on the forage drives alone
+// doc02.02
+const S_FLOOR: f32 = 0.1;
+const EDGE_BAND: usize = 10;
 
-/// Assert the default `ElkParams` sit inside the loose balanced envelope from doc02.02.
 #[test]
 fn default_params_inside_balanced_envelope() {
     let params = ElkParams::default();

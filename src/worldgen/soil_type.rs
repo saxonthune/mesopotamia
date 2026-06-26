@@ -1,13 +1,10 @@
-//! Soil-type layer: derives a riparian/steppe gradient from the water-proximity
-//! field the water layer already authored. Near-water cells trend toward 1
-//! (riparian — dark, moist), far cells stay at 0 (steppe — pale, dry).
+//! Soil-type layer: riparian/steppe gradient (0 = steppe, 1 = riparian) from water proximity.
 
 use crate::grid::Grid;
 
 const LO: f32 = 0.2;
 const HI: f32 = 0.7;
 
-/// Derive `soil_type` for every cell from the water-proximity gradient.
 /// Must run after `generate_water` and before `seed_shrub_cap`.
 pub(super) fn seed_soil_type(grid: &mut Grid) {
     for i in 0..grid.len() {
@@ -24,7 +21,6 @@ mod tests {
     #[test]
     fn riparian_hugs_water() {
         let mut grid = Grid::new(4, 4);
-        // High water_prox on cells 0,1 (near water) and low on cells 2,3.
         grid.set_water_prox(0, 0.9);
         grid.set_water_prox(1, 0.8);
         grid.set_water_prox(2, 0.1);

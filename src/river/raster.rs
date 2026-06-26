@@ -4,9 +4,7 @@ use crate::grid::Grid;
 use super::spec::RiverSpec;
 use super::cost::lerp;
 
-/// Stamp water values around each centerline cell. `max_depth` scales the level:
-/// 1.0 gives a full-depth main channel; lower values produce shallow streams/pools.
-/// Uses max-merge so overlapping channels keep the deeper value.
+/// Max-merge so overlapping channels keep the deeper value.
 pub(super) fn rasterize(
     grid: &mut Grid,
     centerline: &[usize],
@@ -33,8 +31,7 @@ pub(super) fn rasterize(
     }
 }
 
-/// Stamp a main channel with varying depth and width driven by a riffle/pool `profile`.
-/// `profile[t]` in [0,1]: 0 = full riffle (shallow + wide), 1 = full pool (deep + narrow).
+/// `profile[t]` in [0,1]: 0 = riffle (shallow+wide), 1 = pool (deep+narrow).
 pub(super) fn stamp_main_channel(
     grid: &mut Grid,
     centerline: &[usize],
@@ -49,7 +46,6 @@ pub(super) fn stamp_main_channel(
     }
 }
 
-/// Tag every water cell at or below `threshold` as a fordable crossing.
 pub(super) fn tag_shallows_as_fords(grid: &mut Grid, threshold: f32) {
     for i in 0..grid.len() {
         let w = grid.water(i);

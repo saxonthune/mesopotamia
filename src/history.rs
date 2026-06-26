@@ -37,8 +37,6 @@ pub fn sample_history(
     let energy_extract = crate::metrics::ELK_METRICS[0].extract;
     let mut total: u32 = 0;
     let mut energy_sum: f32 = 0.0;
-    // Per-slot accumulators for the herd-level abundance metrics: centroid (col,
-    // row sums), stored energy, and headcount.
     let mut sum_col = vec![0.0_f32; n_slots];
     let mut sum_row = vec![0.0_f32; n_slots];
     let mut energy_by_slot = vec![0.0_f32; n_slots];
@@ -63,10 +61,7 @@ pub fn sample_history(
     push_capped(&mut history.grass_mass, grid.total_grass());
     push_capped(&mut history.shrub_mass, grid.total_shrubs());
 
-    // Herd-level abundance: sample forage and regrowth around each live herd's
-    // centroid, then average the per-capita values across herds. The
-    // regrowth-÷-drain ratio is the proof metric — a herd-mean above 1 means the
-    // patches refill faster than the herds eat, so migration never wins.
+    // regrowth_drain_ratio > 1 means patches refill faster than herds eat — migration never wins.
     let mut ab_sum = 0.0_f32;
     let mut ratio_sum = 0.0_f32;
     let mut herds = 0_u32;

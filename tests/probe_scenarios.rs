@@ -8,10 +8,7 @@ fn probe_start_cell() -> usize {
     PROBE_FORD_ROW * PROBE_W + PROBE_START_COL
 }
 
-// ── Crossing probe ─────────────────────────────────────────────────────────────
-
-/// A hungry elk on the near bank must cross the ford and reach the far-bank
-/// forage within 200 ticks. The RNG is seeded (ProbeSeed) so this is deterministic.
+// RNG is seeded (ProbeSeed) so this is deterministic
 #[test]
 fn crossing_probe_elk_reaches_far_bank() {
     let mut app = make_probe_app(probe_grid(), &[(probe_start_cell(), 0)]);
@@ -25,13 +22,7 @@ fn crossing_probe_elk_reaches_far_bank() {
     );
 }
 
-// ── Ablation probes ───────────────────────────────────────────────────────────
-
-/// Forage *perception* is what carries the elk across: the grass-gradient signal
-/// reaches over `grass_radius` cells to sense the far-bank forage, pulling the elk
-/// into Travel toward the ford. Collapsing that radius to a single cell blinds the
-/// elk to the far bank, so it never commits to the crossing — pinning perception,
-/// not any drive weight, as the gate under the herding model.
+// perception radius (not drive weight) gates crossing: blinding it delays/prevents the ford
 #[test]
 fn crossing_probe_forage_perception_gates_crossing() {
     let ticks_full = probe_ablation(ElkParams::default(), |_| {}, 500);

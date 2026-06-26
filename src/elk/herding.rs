@@ -1,22 +1,5 @@
-//! The herding movement model — a plan-then-steer successor to the per-tick drive
-//! accumulator (`movement::herd_move`, doc03.01.09).
-//!
-//! Each elk runs a small state machine (graze / travel / cross). Each state drives
-//! **steering behaviours** — arrive, separation, cohesion — that produce a desired
-//! heading, which is then quantised to one of the eight grid steps and committed as a
-//! whole-cell move. Movement stays grid-locked (an elk only ever sits on a real
-//! cell), and the renderer slides the sprite `prev_cell → cell` so the motion is
-//! smooth even though the logic is discrete. Committing to a whole step — rather than
-//! re-rolling a heading every tick — is what removes the buzzing. Leadership is not a
-//! state: it is the confidence weight that blends an elk's own goal against cohesion
-//! with the herd, so the column emerges with no designated leader and direction stays
-//! a property of the forage field, not a hard-coded compass.
-//!
-//! The forage and crossing *scorers* are reused unchanged from `movement` — this
-//! module replaces only how a destination becomes motion. Feeding is decoupled: the
-//! grazing system reads each elk's `Herding` state directly and feeds whenever food
-//! sits underfoot and the elk is not mid-crossing, so the movement model can never
-//! starve a herd standing on food.
+//! Herding movement model (doc03.01.09): plan-then-steer over grid-locked whole-cell steps.
+//! Feeding is decoupled — the grazer reads `Herding` state directly and is never blocked by movement.
 
 use bevy::prelude::*;
 
@@ -26,41 +9,25 @@ use super::components::{Elk, ElkParams};
 use super::ledger::EnergyFlows;
 use super::movement::{cross_desire, forage_across, forage_sightline, grass_gradient, swim_cost};
 
-/// A water level at or above this makes a cell count as water for crossing.
 const WATER_EPS: f32 = 0.01;
 
-/// Graze-cohesion dead radius (cells): inside this distance of the herd centroid an
-/// elk feels no restoring pull, so a well-placed grazer sits still. Separation owns
-/// the range below it (anti-stack), cohesion the range above (anti-diffuse); the gap
-/// between is the loose-clump the herd settles into.
+// Separation owns below this range, cohesion above — the gap is the loose clump.
 const GRAZE_COH_DEAD: f32 = 0.8;
 
-/// Graze-cohesion slow radius (cells): the restoring pull is at full strength beyond
-/// this and ramps to zero at the dead radius. Kept small (a few cells) so cohesion is
-/// firm — a large value makes the pull too gradual near the centre and the herd
-/// settles into a loose, hollow ring instead of a tight clump.
+// Full cohesion pull beyond this, ramping to zero at GRAZE_COH_DEAD; kept small or the herd settles into a hollow ring.
 const GRAZE_COH_SLOW: f32 = 2.5;
 
-/// Golden angle (radians). Stacked elk sit at zero distance, where `separation`'s
-/// inverse-square term skips them (the `d² > 0` guard) — so they could never split.
-/// Each gets a distinct escape direction `i · GOLDEN_ANGLE`; the golden angle spreads
-/// successive indices as far apart as possible, so coincident elk fan out rather than
-/// all picking the same step and re-stacking.
+// Stacked elk have d²=0 (skips inverse-square); each gets escape direction i·GOLDEN_ANGLE to fan out maximally.
 const GOLDEN_ANGLE: f32 = 2.399_963_2;
 
-/// One elk's committed movement state: which behaviour it runs and the goal that
-/// behaviour steers toward. Overwritten in place each tick (never inserted or
-/// removed) so the archetype never churns — same discipline as `LastDecision`.
+/// Elk movement state — overwritten each tick, never inserted/removed (no archetype churn).
 #[derive(Component)]
 pub struct Herding {
     pub state: HerdState,
     pub goal: Goal,
-    /// Ticks the current state has been held. Drives the give-up timeout so a stale
-    /// travel goal can never strand an elk forever.
+    /// Ticks held in current state; drives the give-up timeout for stale travel goals.
     pub dwell: u32,
-    /// Ticks left chewing the last mouthful — set by `graze` on a bite, counted down
-    /// each tick. While it is nonzero a grazing elk is pinned in place (see the Graze
-    /// steer), so feeding physically halts the herd instead of grazing-on-the-drift.
+    /// Ticks left chewing — while nonzero the Graze steer is pinned to zero, physically halting the herd.
     pub chew: u32,
 }
 
@@ -71,23 +38,16 @@ impl Default for Herding {
 }
 
 impl Herding {
-    /// Whether the elk is on the move rather than holding its patch — true in any
-    /// state but `Graze`. The single source of truth other systems read instead of
-    /// a mirrored flag, so movement state can never drift out of sync.
     pub fn is_traveling(&self) -> bool {
         self.state != HerdState::Graze
     }
 
-    /// Whether the elk may feed this tick. Feeding is suppressed only mid-crossing
-    /// — an elk in deep water cannot graze. Metabolism depends on this contract, not
-    /// on the `HerdState` variants, so new states can set their own feeding policy
-    /// here without metabolism reaching into the enum.
+    /// Metabolism reads this contract; new states set their own feeding policy here.
     pub fn permits_feeding(&self) -> bool {
         self.state != HerdState::Cross
     }
 }
 
-/// The three live states. `Flee` (predator response) is left for a later milestone.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum HerdState {
     /// Area-restricted search: hold roughly in place and feed.
@@ -98,79 +58,41 @@ pub enum HerdState {
     Cross,
 }
 
-/// The committed destination — the thing deliberately *not* re-rolled each tick.
-/// Following the herd is not here: it is emergent per-tick cohesion steering scaled
-/// by `1 - confidence`, so there is no stored follow-target to dangle.
+/// Committed destination — not re-rolled each tick. Herd following is emergent per-tick cohesion, not a stored target.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Goal {
     /// No destination (Graze): the steer is a gentle local pull.
     None,
-    /// A grid cell to Arrive at — a richer patch picked by the forage scorers.
     Patch(usize),
-    /// The dry cell on the far side of a committed crossing.
     FarBank(usize),
 }
 
-/// Every tunable that shapes the herding steer. Speeds are the **slide rate** in grid
-/// cells per tick — the fraction of a cell-step animated per tick — so a `max_speed`
-/// below 1 makes a step take several ticks and the herd glide forward slower than a
-/// cell per tick.
+/// Every tunable for herding. Speeds are slide rates (cells/tick); below 1 makes a step take multiple ticks.
 #[derive(Resource, Clone)]
 pub struct HerdParams {
-    /// Travel slide rate (cells/tick): how fast a committed step animates. Small ⇒ a
-    /// slow, graceful roll; a step at 0.5 takes two ticks.
     pub max_speed: f32,
-    /// Graze slide rate — far below `max_speed`, so the occasional spacing step a
-    /// feeding elk takes drifts in slowly.
     pub graze_speed: f32,
-    /// Begin decelerating inside this distance of the goal (cells).
     pub slow_radius: f32,
-    /// Within this distance the elk has arrived and settles (cells).
     pub arrive_radius: f32,
-    /// Weight on the separation push — kept low so it only nudges a crowded elk one
-    /// cell aside, never a continuous repulsion field that stalls the herd.
     pub separation: f32,
-    /// Weight on cohesion — the "follow the herd" pull, amplified as confidence falls.
-    /// Kept low: too strong and it reels a leading elk back to the lagging centroid, so
-    /// the herd can never stretch into a travelling column (and, because the herd pulses
-    /// graze↔travel constantly, a firm pull also re-clumps and stalls it each pulse).
     pub cohesion: f32,
-    /// Weight on alignment — steer toward the average heading of moving neighbours
-    /// (velocity matching, Millington §3.3.6). This is the third flocking rule: without
-    /// it cohesion alone collapses the herd to a blob, while alignment is what lets the
-    /// group translate *together* as a rolling column. Kept below cohesion (the book's
-    /// separation > cohesion > alignment ordering). Scaled by neighbour coherence, so a
-    /// scattered herd feels little pull and a coherent one locks into a column.
+    /// Velocity matching (Millington §3.3.6); kept below cohesion (separation > cohesion > alignment ordering).
     pub alignment: f32,
-    /// Forward bias on cohesion — how much more an elk weights herd-mates ahead of its
-    /// heading than behind (anisotropic perception). 0 ⇒ plain centroid cohesion (a
-    /// blob); positive ⇒ the herd polarises into a marching column. Acts only while
-    /// moving — a settled grazer has no heading, so its cohesion is unbiased.
+    /// Anisotropic perception (Couzin 2002): biases cohesion toward kin ahead, polarising a moving herd into a column.
     pub forward_bias: f32,
     pub sep_radius: f32,
     pub coh_radius: f32,
-    /// Forage-signal magnitude at which an elk fully trusts its own goal (confidence 0.5).
+    /// Forage-signal magnitude at which confidence is exactly 0.5.
     pub confidence_ref: f32,
-    /// How far an elk scans for a travel destination (cells).
     pub scan_radius: f32,
-    /// Graze→Travel: leave a patch once its grass falls below this fraction of capacity.
     pub leave_frac: f32,
-    /// Minimum ticks an elk holds in Graze before it may relocate — the rest floor
-    /// that stops the herd travelling forever up a continuous gradient.
+    /// Rest floor: ticks an elk must graze before relocating — stops perpetual travel up a gradient.
     pub graze_min_dwell: u32,
-    /// A scanned patch must beat underfoot by this attractiveness to be worth travelling to.
     pub travel_margin: f32,
-    /// The stronger margin that launches travel even from a *full* patch: a reachable
-    /// cell this much more attractive than underfoot is pursued regardless of local
-    /// fullness — the green-up crest a fed herd follows. Above `travel_margin` so a
-    /// flat field (tiny gains) never triggers it and an idle herd holds; only a real
-    /// directional pull does. This is what lets a well-fed herd migrate.
+    /// Gain above underfoot that triggers migration even from a full patch — the green-up crest a fed herd chases.
     pub pursue_margin: f32,
-    /// Abandon a travel goal that has not been reached within this many ticks.
     pub goal_timeout: u32,
-    /// Minimum desired-heading magnitude that commits a step. A pull below this leaves
-    /// the elk settled — the hysteresis dead-band (Millington 13.2.3) that stops an
-    /// elk jittering between cells on a negligible nudge.
+    /// Millington 13.2.3 dead-band: pulls weaker than this leave the elk settled (anti-jitter).
     pub deadband: f32,
 }
 
@@ -199,12 +121,7 @@ impl Default for HerdParams {
     }
 }
 
-// ── Pure kernels ────────────────────────────────────────────────────────────────
-
-/// Desired velocity toward `target` with an arrival slowdown: full `max_speed`
-/// outside `slow_r`, ramping linearly to zero at the target, and exactly zero once
-/// within `arrive_r`. This is the anti-overshoot primitive — a plain seek orbits and
-/// oscillates around a fixed target; arrive settles onto it.
+/// plain seek orbits; arrive settles by ramping speed to zero within slow_r.
 pub fn arrive(pos: Vec2, target: Vec2, slow_r: f32, arrive_r: f32, max_speed: f32) -> Vec2 {
     let to = target - pos;
     let dist = to.length();
@@ -215,9 +132,6 @@ pub fn arrive(pos: Vec2, target: Vec2, slow_r: f32, arrive_r: f32, max_speed: f3
     to / dist * speed
 }
 
-/// Repulsion from neighbours within `radius`, falling off with inverse square so a
-/// near crowd pushes harder than a far one. `others` are neighbour positions; the
-/// elk's own position contributes nothing (zero offset is skipped).
 pub fn separation(pos: Vec2, others: &[Vec2], radius: f32) -> Vec2 {
     let r2 = radius * radius;
     let mut acc = Vec2::ZERO;
@@ -231,22 +145,8 @@ pub fn separation(pos: Vec2, others: &[Vec2], radius: f32) -> Vec2 {
     acc
 }
 
-/// The cohesion target for an elk: a **forward-biased** centroid of same-slot herd-mates
-/// within `coh_radius`, or — when none are in range — the single *nearest* herd-mate at
-/// any distance.
-///
-/// `fwd_bias` weights each in-range kin by `1 + fwd_bias · cos θ`, where θ is the angle
-/// between the elk's `heading` and the direction to that kin: neighbours *ahead* count
-/// more, those *behind* less. This is the anisotropic perception (Couzin et al. 2002)
-/// that tips a moving herd from a churning blob into a polarised column — a pioneer is
-/// drawn to the front rather than reeled back to the rear centroid. With zero `heading`
-/// (a settled elk) or `fwd_bias = 0` the weights are all 1 and this is the plain
-/// centroid, so cohesion at rest is unchanged.
-///
-/// The nearest-kin fallback reels a detached tail back in: gating cohesion purely on
-/// `coh_radius` leaves a straggler past it with no neighbours, hence no restoring pull,
-/// so it diffuses away for good. Returns `None` only for a lone elk with no kin at all.
-/// `kin` are same-slot neighbour positions excluding the elk itself.
+/// Couzin 2002 anisotropic centroid: `fwd_bias` weights kin ahead of `heading` more, polarising a moving herd into a column.
+/// Falls back to nearest kin when none are in range, so stragglers are always reeled in.
 pub fn cohesion_target(pos: Vec2, kin: &[Vec2], heading: Vec2, coh_radius: f32, fwd_bias: f32) -> Option<Vec2> {
     let r2 = coh_radius * coh_radius;
     let h = heading.normalize_or_zero();
@@ -273,20 +173,13 @@ pub fn cohesion_target(pos: Vec2, kin: &[Vec2], heading: Vec2, coh_radius: f32, 
     }
 }
 
-/// An elk's confidence in its own goal, in [0, 1]: `signal / (signal + reference)`.
-/// Zero with no forage signal, half at `reference`, approaching 1 for a steep
-/// gradient. The blend weight that makes a well-informed elk lead and a poorly
-/// informed one follow — the leaderless-leadership knob (Couzin et al. 2005).
+/// Couzin et al. 2005 leaderless leadership: sigmoid of forage signal — high gradient leads, flat field follows.
 pub fn confidence(signal: f32, reference: f32) -> f32 {
     let s = signal.max(0.0);
     s / (s + reference.max(1e-6))
 }
 
-/// Quantise a desired heading to one of the eight grid steps `(dx, dy)`, or `None` to
-/// stay put when the heading is shorter than `deadband`. The angle is binned into 45°
-/// octants centred on each compass direction, so the chosen step is the neighbour cell
-/// nearest the desired heading. This is what keeps movement grid-locked: a continuous
-/// steer becomes one whole-cell move, never a sub-cell drift.
+/// Keeps movement grid-locked: continuous steer → nearest of 8 compass steps, or None under `deadband`.
 pub fn quantize_step(desired: Vec2, deadband: f32) -> Option<(isize, isize)> {
     if desired.length() < deadband {
         return None;
@@ -306,18 +199,12 @@ pub fn quantize_step(desired: Vec2, deadband: f32) -> Option<(isize, isize)> {
     Some(step)
 }
 
-/// Whether to leave the patch underfoot for travel: the grass here is drawn below
-/// `leave_frac` of capacity *and* a reachable patch is at least `margin` richer.
-/// Requiring both is the hysteresis that keeps a herd grazing where nothing better
-/// exists instead of dashing off thin ground.
+/// Both gates required: depleted *and* somewhere better — hysteresis that holds a herd on thin ground when nothing richer is reachable.
 pub fn should_leave_patch(here_frac: f32, best_frac: f32, leave_frac: f32, margin: f32) -> bool {
     here_frac < leave_frac && best_frac > here_frac + margin
 }
 
-/// Whether a grazing elk may relocate now: it has rested at least `min_dwell` ticks
-/// *and* its patch is drawn down with somewhere better in reach. The dwell floor is
-/// the rest hysteresis — without it a herd on a gradient leaves the instant a
-/// marginally richer cell appears up-slope and so travels forever, never grazing.
+/// dwell floor: without it a herd on a gradient leaves for a marginally richer cell every tick and travels forever.
 pub fn should_leave_graze(
     dwell: u32,
     min_dwell: u32,
@@ -329,24 +216,16 @@ pub fn should_leave_graze(
     dwell >= min_dwell && should_leave_patch(here_frac, best_frac, leave_frac, margin)
 }
 
-// ── Grid position helpers ────────────────────────────────────────────────────────
-
-/// The centre point (in cell coordinates) of a grid cell.
 fn cell_center(cell: usize, grid: &Grid) -> Vec2 {
     let (c, r) = grid.col_row(cell);
     Vec2::new(c as f32 + 0.5, r as f32 + 0.5)
 }
 
-/// Forage attractiveness of a cell — standing crop plus the green-up front, the same
-/// measure the gradient and sightline climb.
 fn attract(cell: usize, grid: &Grid, ep: &ElkParams) -> f32 {
     grid.forage(cell) + ep.freshness_weight * grid.freshness(cell)
 }
 
-/// Best food fullness (`food_frac`) over cells within `radius` of `here`, the cell
-/// itself included — the reachability reference the patch-leaving gate steers by.
-/// Reads the food boundary, so depletion of either grass or shrubs registers and a
-/// herd only leaves a patch when somewhere genuinely fuller is in reach.
+// Reads food_frac (grass+shrubs) so a dry-steppe shrub depletion registers — the grass-only metric could never see it.
 fn best_reachable_food_frac(here: usize, grid: &Grid, radius: f32) -> f32 {
     let r = radius.ceil() as isize;
     let mut best = grid.food_frac(here);
@@ -366,10 +245,7 @@ fn best_reachable_food_frac(here: usize, grid: &Grid, radius: f32) -> f32 {
     best
 }
 
-/// Pick the richest reachable cell within `radius` of `here`. Returns the argmax cell
-/// and its attractiveness; the caller decides whether it beats underfoot by the
-/// travel margin. The scan is unbiased in direction — forward motion emerges from
-/// where the forage (and the green-up front) actually is, never a hard-coded axis.
+// Scan is direction-unbiased; forward motion emerges from where the forage actually is, not a hard-coded axis.
 fn richest_within(here: usize, grid: &Grid, ep: &ElkParams, radius: f32) -> (usize, f32) {
     let r = radius.ceil() as isize;
     let mut best_cell = here;
@@ -394,12 +270,6 @@ fn richest_within(here: usize, grid: &Grid, ep: &ElkParams, radius: f32) -> (usi
     (best_cell, best_val)
 }
 
-// ── The system ───────────────────────────────────────────────────────────────────
-
-/// The herding movement system. Two phases: phase 1 snapshots every elk's cell centre
-/// for neighbour reads, phase 2 runs the state machine, blends the steering into a
-/// desired heading, quantises that to a grid step, and commits a whole-cell move
-/// (advancing the render slide). It also applies the swim energy cost.
 pub(super) fn herd_step(
     grid: Res<Grid>,
     hp: Res<HerdParams>,
@@ -407,10 +277,7 @@ pub(super) fn herd_step(
     mut elk_q: Query<(&mut Elk, &mut Herding)>,
     mut flows: ResMut<EnergyFlows>,
 ) {
-    // Phase 1: snapshot (cell centre, heading, slot) for every elk in query order —
-    // movement is grid-locked, so neighbour geometry is read off cell centres. The
-    // heading is the current step direction (only while actually moving — a settled elk
-    // contributes no heading), which alignment matches.
+    // heading is nonzero only while moving — a settled elk contributes nothing to alignment.
     let snapshot: Vec<(Vec2, Vec2, u8)> = elk_q
         .iter()
         .map(|(elk, _)| {
@@ -427,9 +294,6 @@ pub(super) fn herd_step(
     for (i, (mut elk, mut herd)) in elk_q.iter_mut().enumerate() {
         let (pos, vel, slot) = snapshot[i];
 
-        // Neighbour drives from the snapshot: separation from all, cohesion to the
-        // same-slot centroid (with a nearest-kin fallback for stragglers), alignment to
-        // the same-slot mean heading within range. Cell-coord units.
         let mut others = Vec::new();
         let mut kin = Vec::new();
         let mut align_sum = Vec2::ZERO;
@@ -451,9 +315,7 @@ pub(super) fn herd_step(
                 }
             }
         }
-        // Coincident elk get a deterministic escape kick (separation alone can't split
-        // a stack — see GOLDEN_ANGLE). One unit per stacked neighbour, so a deeper pile
-        // pushes out harder; scaled to clear the dead-band and actually commit a step.
+        // separation can't split a zero-distance stack (d²=0 guard); GOLDEN_ANGLE gives each a distinct escape direction.
         let stack_kick = if coincident > 0 {
             Vec2::from_angle(i as f32 * GOLDEN_ANGLE) * hp.separation * coincident as f32
         } else {
@@ -462,29 +324,18 @@ pub(super) fn herd_step(
         let sep = separation(pos, &others, hp.sep_radius) * hp.separation + stack_kick;
         let coh_center = cohesion_target(pos, &kin, vel, hp.coh_radius, hp.forward_bias).unwrap_or(pos);
         let coh_dir = (coh_center - pos).normalize_or_zero();
-        // Mean neighbour heading, scaled by coherence: `align_sum/align_n` is an average of
-        // unit headings, so its length is ~1 when the herd moves as one and ~0 when
-        // scattered — a scattered herd feels no alignment pull, a coherent one locks in.
+        // averaging unit headings: magnitude ≈ 1 when coherent, ≈ 0 when scattered.
         let align = if align_n > 0.0 { (align_sum / align_n) * hp.alignment } else { Vec2::ZERO };
 
-        // Own forage signal: the local gradient plus the long-range sightline. Its
-        // magnitude is the confidence that decides leading vs following.
         let here = elk.cell;
         let signal = grass_gradient(here, &grid, &ep) + forage_sightline(here, &grid, &ep);
         let conf = confidence(signal.length(), hp.confidence_ref);
 
-        // Fullness underfoot through the food boundary (grass + shrubs), so a herd
-        // on the dry steppe reads its shrubs the way a riparian herd reads its grass.
         let here_frac = grid.food_frac(here);
 
         herd.dwell = herd.dwell.saturating_add(1);
 
-        // Crossing is evaluated independent of move state and heading: a ford is worth
-        // taking whenever adjacent water hides far-bank forage that out-scores staying,
-        // even for a content grazer. The old check lived inside Travel and only fired
-        // when the blended heading happened to point into the water — so a herd that
-        // reached a lush near bank settled into Graze and never even considered the
-        // crossing. This commits to the ford on the forage merits alone.
+        // Evaluated independent of move state so a grazing herd beside a river considers the ford on forage merits alone.
         if herd.state != HerdState::Cross {
             if let Some(far) = best_crossing(here, &grid, &ep) {
                 herd.state = HerdState::Cross;
@@ -493,34 +344,17 @@ pub(super) fn herd_step(
             }
         }
 
-        // Run the state machine: produce a desired heading and (maybe) transition.
-        // The desired vector's *direction* picks the grid step and its *magnitude*
-        // gates the dead-band; the state shapes movement only — feeding is decoupled
-        // below so grazing is never suppressed (a travelling elk over food still eats).
+        // desired direction picks the grid step; feeding is decoupled so a travelling elk over food still eats.
         let desired;
         match herd.state {
             HerdState::Graze => {
-                // The steer pins while feeding and only gently restores otherwise.
-                // Pinning the *steer* (not the whole state) is what kills the
-                // sep-vs-cohesion orbit a continuously-steering grazer falls into,
-                // without freezing the herd: the leave/cross transitions below still
-                // run every tick, so a feeding herd holds yet can still launch travel
-                // when its patch thins. `grazing` is true across the whole bite→chew
-                // cycle, so the hold covers every feeding tick, not 4 of every 5.
+                // pins the steer (not state) to break the sep/cohesion orbit; leave/cross transitions still run each tick.
                 if elk.grazing {
                     desired = Vec2::ZERO;
                 } else {
-                    // Separation owns the short range (anti-stack); cohesion the long
-                    // range — an Arrive toward the centroid with a dead zone, so a
-                    // strayed elk steps back while a well-placed one sits still.
                     let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
                     desired = sep + restore + align;
                 }
-                // Two tiers of leaving, both paced by the dwell floor. Depleted: the
-                // patch underfoot has thinned and somewhere marginally better is near.
-                // Pursue: a *much* richer/fresher cell is reachable — the green-up
-                // crest — worth chasing even off full ground. A flat field offers
-                // neither (no cell beats here), so an idle herd holds and never circles.
                 if herd.dwell >= hp.graze_min_dwell {
                     let here_attract = attract(here, &grid, &ep);
                     let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
@@ -541,16 +375,11 @@ pub(super) fn herd_step(
                     _ => here,
                 };
                 let target = cell_center(target_cell, &grid);
-                // Steer along the forage-field gradient — a smooth field neighbours
-                // agree on — rather than toward this elk's own argmax cell, so the herd
-                // travels as a coherent column instead of a dispersing spray of private
-                // goals. Confidence weights own-goal vs follow-the-herd (leaderless
-                // leadership): a steep local gradient leads, a flat one follows.
+                // steer along the shared gradient (not each elk's private argmax) so the herd travels as a column, not a dispersing spray.
                 let goal_dir = signal.normalize_or_zero() * hp.max_speed;
                 let follow = coh_dir * (hp.max_speed * hp.cohesion * (1.0 - conf));
                 desired = goal_dir * conf + follow + align + sep;
 
-                // Settle on arrival, on a stale goal, or when nothing better remains.
                 let arrived = (target - pos).length() < hp.arrive_radius;
                 if arrived || herd.dwell > hp.goal_timeout || target_cell == here {
                     herd.state = HerdState::Graze;
@@ -564,9 +393,8 @@ pub(super) fn herd_step(
                     _ => here,
                 };
                 let target = cell_center(target_cell, &grid);
-                // Committed: arrive hard at the far bank, ignore the herd's backward pull.
+                // arrive hard at the far bank, ignoring the herd's backward cohesion pull.
                 desired = arrive(pos, target, hp.slow_radius, hp.arrive_radius, hp.max_speed) + sep;
-                // Once on dry land, the crossing is done.
                 if grid.water(here) < WATER_EPS && (target - pos).length() < hp.slow_radius {
                     herd.state = HerdState::Graze;
                     herd.goal = Goal::None;
@@ -575,10 +403,7 @@ pub(super) fn herd_step(
             }
         }
 
-        // Grid-locked motion: commit a whole-cell step only when settled, then animate
-        // the slide. Committing the entire step (rather than a sub-cell drift) is the
-        // anti-buzz hysteresis — the elk cannot reverse mid-step — and the renderer
-        // turns the discrete move into smooth motion by lerping prev_cell → cell.
+        // whole-step commit (anti-buzz): elk can't reverse mid-step; renderer lerps prev_cell→cell for smooth motion.
         let rate = match herd.state {
             HerdState::Graze => hp.graze_speed,
             _ => hp.max_speed,
@@ -591,7 +416,6 @@ pub(super) fn herd_step(
                     elk.move_t = 0.0;
                     elk.move_rate = rate;
                 }
-                // No step worth taking: settle flat on the cell (no residual slide).
                 None => elk.move_rate = 0.0,
             }
         }
@@ -599,7 +423,6 @@ pub(super) fn herd_step(
             elk.move_t = (elk.move_t + elk.move_rate).min(1.0);
         }
 
-        // Swim energy cost: crossing deep non-ford water tires the elk.
         let water = grid.water(elk.cell);
         if water > 0.0 && !grid.is_ford(elk.cell) {
             let before = elk.energy;
@@ -609,12 +432,7 @@ pub(super) fn herd_step(
     }
 }
 
-/// The best worthwhile ford from `here`, or `None` if no adjacent water repays the
-/// swim. Over each cardinal neighbour that is water, peek across to the far bank and
-/// score the crossing; return the far-bank cell with the highest *positive*
-/// `cross_desire`. Independent of move state and heading, so a grazer beside a river
-/// that hides richer far-bank forage commits to the ford on the forage merits alone —
-/// the gate is "is the far bank worth the swim", not "am I already heading into it".
+// Independent of move state: a grazing elk beside a river still considers the ford on forage merits alone.
 fn best_crossing(here: usize, grid: &Grid, ep: &ElkParams) -> Option<usize> {
     let here_attract = attract(here, grid, ep);
     let peek = ep.cross_peek.max(1.0) as usize;
@@ -642,9 +460,6 @@ fn best_crossing(here: usize, grid: &Grid, ep: &ElkParams) -> Option<usize> {
 mod tests {
     use super::*;
 
-    // ── arrive ──────────────────────────────────────────────────────────────────
-
-    // Outside the slow radius the elk moves at full speed toward the target.
     #[test]
     fn arrive_full_speed_when_far() {
         let v = arrive(Vec2::ZERO, Vec2::new(10.0, 0.0), 4.0, 0.6, 0.5);
@@ -652,14 +467,12 @@ mod tests {
         assert!(v.x > 0.0 && v.y.abs() < 1e-6, "should aim +x: {v:?}");
     }
 
-    // Within the arrive radius the desired velocity is zero — it settles, not orbits.
     #[test]
     fn arrive_settles_at_target() {
         let v = arrive(Vec2::ZERO, Vec2::new(0.3, 0.0), 4.0, 0.6, 0.5);
         assert_eq!(v, Vec2::ZERO);
     }
 
-    // Inside the slow radius speed scales down with distance (metamorphic: nearer ⇒ slower).
     #[test]
     fn arrive_slows_approaching() {
         let far = arrive(Vec2::ZERO, Vec2::new(3.0, 0.0), 4.0, 0.6, 0.5).length();
@@ -667,9 +480,6 @@ mod tests {
         assert!(near < far, "closer must be slower: {near} !< {far}");
     }
 
-    // ── cohesion_target ───────────────────────────────────────────────────────────
-
-    // With no heading the target is the plain centroid (the ordinary cohesion pull).
     #[test]
     fn cohesion_target_is_centroid_of_in_range_kin() {
         let kin = [Vec2::new(2.0, 0.0), Vec2::new(0.0, 2.0)];
@@ -677,9 +487,6 @@ mod tests {
         assert!((c - Vec2::new(1.0, 1.0)).length() < 1e-6, "centroid expected, got {c:?}");
     }
 
-    // The straggler case: no kin within radius ⇒ steer toward the *nearest* kin, not
-    // give up. This is the fix for a lost tail diffusing away — the in-range gate alone
-    // would return the elk's own position (zero pull) here.
     #[test]
     fn cohesion_target_falls_back_to_nearest_when_none_in_range() {
         let far = Vec2::new(20.0, 0.0);
@@ -688,8 +495,6 @@ mod tests {
         assert_eq!(c, far, "should steer toward the nearer of two out-of-range kin");
     }
 
-    // In-range kin always win over a closer-counted fallback: presence of any neighbour
-    // within radius means the centroid path, never the nearest-only path.
     #[test]
     fn cohesion_target_prefers_in_range_over_fallback() {
         let kin = [Vec2::new(1.0, 0.0), Vec2::new(50.0, 0.0)];
@@ -697,14 +502,11 @@ mod tests {
         assert_eq!(c, Vec2::new(1.0, 0.0), "only the in-range kin counts toward the centroid");
     }
 
-    // A lone elk with no kin has no cohesion target.
     #[test]
     fn cohesion_target_none_without_kin() {
         assert_eq!(cohesion_target(Vec2::ZERO, &[], Vec2::ZERO, 8.0, 0.0), None);
     }
 
-    // Forward bias shifts the target toward the kin ahead of the heading: one mate ahead
-    // (+x) and one behind, moving +x, must pull the target forward of the plain midpoint.
     #[test]
     fn cohesion_target_forward_bias_pulls_toward_kin_ahead() {
         let ahead = Vec2::new(4.0, 0.0);
@@ -715,7 +517,6 @@ mod tests {
         assert!(biased.x > 0.0, "forward bias must shift the target ahead (+x): {biased:?}");
     }
 
-    // With zero heading the bias has no axis, so even a high fwd_bias gives the plain centroid.
     #[test]
     fn cohesion_target_no_bias_without_heading() {
         let kin = [Vec2::new(4.0, 0.0), Vec2::new(-4.0, 0.0)];
@@ -723,16 +524,12 @@ mod tests {
         assert!(c.length() < 1e-6, "no heading ⇒ unbiased centroid, got {c:?}");
     }
 
-    // ── confidence ────────────────────────────────────────────────────────────────
-
-    // Zero signal ⇒ zero confidence; at the reference it is exactly one half.
     #[test]
     fn confidence_endpoints() {
         assert_eq!(confidence(0.0, 0.5), 0.0);
         assert!((confidence(0.5, 0.5) - 0.5).abs() < 1e-6);
     }
 
-    // Monotone increasing in signal — a steeper gradient never lowers confidence.
     #[test]
     fn confidence_monotone_in_signal() {
         let lo = confidence(0.2, 0.5);
@@ -741,38 +538,28 @@ mod tests {
         assert!(hi < 1.0, "confidence stays below 1");
     }
 
-    // ── quantize_step ─────────────────────────────────────────────────────────────
-
-    // A heading below the dead-band commits no step — the anti-jitter hysteresis.
     #[test]
     fn quantize_stays_put_under_deadband() {
         assert_eq!(quantize_step(Vec2::new(0.05, 0.0), 0.15), None);
         assert_eq!(quantize_step(Vec2::ZERO, 0.15), None);
     }
 
-    // Each compass heading snaps to its own grid step (the eight octants).
     #[test]
     fn quantize_picks_the_nearest_of_eight() {
         assert_eq!(quantize_step(Vec2::new(1.0, 0.0), 0.1), Some((1, 0)));
         assert_eq!(quantize_step(Vec2::new(0.0, 1.0), 0.1), Some((0, 1)));
         assert_eq!(quantize_step(Vec2::new(-1.0, 0.0), 0.1), Some((-1, 0)));
         assert_eq!(quantize_step(Vec2::new(0.0, -1.0), 0.1), Some((0, -1)));
-        // A near-45° heading takes the diagonal step.
         assert_eq!(quantize_step(Vec2::new(1.0, 1.0), 0.1), Some((1, 1)));
         assert_eq!(quantize_step(Vec2::new(-1.0, -0.9), 0.1), Some((-1, -1)));
     }
 
-    // A heading just off an axis still snaps to that axis (within its 45° octant).
     #[test]
     fn quantize_snaps_within_octant() {
-        // 20° above +x is well inside the east octant (±22.5°).
         let v = Vec2::new(1.0, 0.36);
         assert_eq!(quantize_step(v, 0.1), Some((1, 0)));
     }
 
-    // ── separation ────────────────────────────────────────────────────────────────
-
-    // A neighbour to the right pushes the elk left; a far neighbour is ignored.
     #[test]
     fn separation_pushes_away_and_ignores_far() {
         let near = separation(Vec2::ZERO, &[Vec2::new(1.0, 0.0)], 2.5);
@@ -781,7 +568,6 @@ mod tests {
         assert_eq!(far, Vec2::ZERO, "a neighbour beyond the radius exerts no push");
     }
 
-    // Closer neighbours push harder than distant ones (inverse-square, metamorphic).
     #[test]
     fn separation_stronger_when_closer() {
         let close = separation(Vec2::ZERO, &[Vec2::new(0.5, 0.0)], 2.5).length();
@@ -789,56 +575,36 @@ mod tests {
         assert!(close > further, "closer crowd must push harder: {close} !> {further}");
     }
 
-    // ── food boundary ──────────────────────────────────────────────────────────────
-
-    // On dry steppe (no grass capacity) the food fraction reads the shrubs, so a
-    // depleting shrub clump registers as a draining patch — the grass-only metric
-    // could not see this, which is what pinned the herd in place.
     #[test]
     fn food_frac_reads_shrubs_where_grass_cannot_grow() {
         let mut grid = Grid::new(5, 5);
-        // A dry cell: zero grass capacity (no water proximity), but it carries shrubs.
         grid.set_water_prox(12, 0.0);
         grid.set_shrub_cap(12, 1.0);
         grid.set_shrubs(12, 0.8);
         assert!((grid.food_frac(12) - 0.8).abs() < 1e-5, "food_frac must reflect shrub fullness");
-        // Eating the shrubs down drops the fraction — the leave-gate can now see it.
         grid.eat_shrubs(12, 0.6);
         assert!(grid.food_frac(12) < 0.3, "depleting shrubs must lower food_frac");
     }
 
-    // A barren cell (no grass, no shrub capacity) reads empty, not NaN.
     #[test]
     fn food_frac_is_zero_on_carryless_ground() {
         let grid = Grid::new(5, 5);
         assert_eq!(grid.food_frac(12), 0.0);
     }
 
-    // ── should_leave_patch ─────────────────────────────────────────────────────────
-
-    // Leaves only when the patch is drawn down AND somewhere better is reachable.
     #[test]
     fn leaves_only_on_depletion_and_better_reachable() {
-        // Depleted here (0.2 < 0.4) and a richer patch (0.7) reachable → leave.
         assert!(should_leave_patch(0.2, 0.7, 0.4, 0.05));
-        // Depleted but nothing better reachable → stay and graze.
         assert!(!should_leave_patch(0.2, 0.22, 0.4, 0.05));
-        // Rich underfoot → stay even if something richer exists.
         assert!(!should_leave_patch(0.8, 0.95, 0.4, 0.05));
     }
 
-    // ── should_leave_graze ─────────────────────────────────────────────────────────
-
-    // Below the dwell floor the elk stays put even on depleted ground with somewhere
-    // better in reach — this is the rest that stops the perpetual-travel mill.
     #[test]
     fn graze_holds_until_dwell_floor() {
         assert!(!should_leave_graze(10, 30, 0.2, 0.7, 0.4, 0.05));
-        // Same patch state, past the floor → now free to relocate.
         assert!(should_leave_graze(30, 30, 0.2, 0.7, 0.4, 0.05));
     }
 
-    // The dwell floor never *forces* a move: a rested elk on rich ground still stays.
     #[test]
     fn graze_dwell_floor_does_not_force_a_move() {
         assert!(!should_leave_graze(100, 30, 0.8, 0.95, 0.4, 0.05));

@@ -1,22 +1,13 @@
-//! User-tunable launch settings, read from `usersettings.json` at the repo root.
-//!
-//! The file is gitignored; `usersettings.example.json` is the checked-in
-//! template. Anything missing falls back to [`Default`], so a partial file (or
-//! no file at all) still launches. On the web there is no filesystem and the
-//! window is sized by its host canvas, so [`UserSettings::load`] is a no-op
-//! there and returns the defaults.
+//! Launch settings from `usersettings.json` (gitignored; falls back to defaults when absent).
+//! On wasm, `load` is a no-op — defaults always apply.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use serde::Deserialize;
 
-/// Initial window geometry.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
-    /// Maximize to fill the monitor's work area (keeping the OS title bar)
-    /// once the window opens. When true, `width`/`height` are the size the
-    /// window restores to when un-maximized.
     pub maximized: bool,
     pub width: u32,
     pub height: u32,
@@ -28,7 +19,6 @@ impl Default for WindowSettings {
     }
 }
 
-/// Top-level settings resource, loaded once at startup.
 #[derive(Resource, Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct UserSettings {
@@ -36,12 +26,8 @@ pub struct UserSettings {
 }
 
 impl UserSettings {
-    /// Name looked up in the current working directory (the repo root when run
-    /// via `cargo run`).
     pub const FILE: &'static str = "usersettings.json";
 
-    /// Read and parse `usersettings.json`, falling back to defaults when the
-    /// file is absent or malformed.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn load() -> Self {
         match std::fs::read_to_string(Self::FILE) {
@@ -59,9 +45,7 @@ impl UserSettings {
     }
 }
 
-/// Startup system: maximize the primary window if the settings ask for it.
-/// Maximizing is a runtime request in Bevy (there is no construction-time
-/// field), so it happens here rather than in the `WindowPlugin` config.
+// Bevy has no construction-time maximize field, so this must be a startup system.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn maximize_window(
     settings: Res<UserSettings>,

@@ -1,33 +1,18 @@
-//! The invisible continental-divide classification: a Voronoi assignment of every
-//! cell to its nearest main river, recording which side of that river the cell
-//! falls on. A multi-source BFS out from every main-centerline cell propagates the
-//! source's column outward (nearest source wins), so each cell learns the column of
-//! its nearest river. A cell strictly east (greater column) of that river is tagged
-//! `east_of_river`. The watershed midway between adjacent rivers is just where the
-//! nearest-river assignment flips — it is never drawn, only where the tag changes.
+//! Voronoi east/west classification: multi-source BFS from each main-river centerline
+//! assigns every cell to its nearest main; cells strictly east of that column are tagged east.
 
 use std::collections::VecDeque;
 
 use crate::grid::Grid;
 
-/// Strictly-east comparison extracted as a pure function: the cell at `cell_col`
-/// is east of the river whose nearest-centerline column is `river_col`.
 fn is_east(cell_col: usize, river_col: usize) -> bool {
     cell_col > river_col
 }
 
-/// Classify every cell by which side of its nearest main river it falls on.
-/// Multi-source BFS (4-connectivity) out from all main-centerline cells, carrying
-/// the source cell's column; the first (nearest) source to reach a cell wins, so
-/// each cell ends up with the column of its nearest river. Cells with no reachable
-/// river (empty `mains`) stay `false` (west).
 pub(super) fn seed_river_side(grid: &mut Grid, mains: &[Vec<usize>]) {
     let len = grid.len();
-    // `nearest_col[i]` is the column of the nearest main-centerline cell; `usize::MAX`
-    // marks unvisited. BFS by ring order means the first writer is the nearest source.
+    // `usize::MAX` marks unvisited; first writer wins (nearest source).
     let mut nearest_col = vec![usize::MAX; len];
-    // BFS ring distance to the nearest river source — 0 at a centerline cell,
-    // rising outward. The same wavefront that carries `nearest_col` measures it.
     let mut dist = vec![0u32; len];
     let mut queue = VecDeque::new();
 
@@ -51,8 +36,7 @@ pub(super) fn seed_river_side(grid: &mut Grid, mains: &[Vec<usize>]) {
         }
     }
 
-    // Normalize distance by the global max so the farthest interfluve reads as 1
-    // (the divide) and a river as 0. Guard against an empty wavefront (no mains).
+    // Normalize to [0, 1]; guard against empty wavefront (no mains → max 0).
     let max_dist = dist.iter().copied().max().unwrap_or(0).max(1) as f32;
 
     for i in 0..len {
@@ -73,15 +57,12 @@ mod tests {
     use super::*;
     use crate::grid::Grid;
 
-    /// A single straight vertical river at column `c` splits the grid: every cell
-    /// east of it is `true`, every cell west of it is `false`.
     #[test]
     fn east_west_split_around_a_vertical_river() {
         let (width, height) = (16usize, 12usize);
         let c = 7usize;
         let mut grid = Grid::new(width, height);
 
-        // One "main" centerline: a straight vertical line at column c.
         let main: Vec<usize> = (0..height).map(|row| row * width + c).collect();
         seed_river_side(&mut grid, &[main]);
 
@@ -101,7 +82,6 @@ mod tests {
         }
     }
 
-    /// No mains → no source reaches any cell → every cell stays west (false).
     #[test]
     fn no_mains_leaves_all_west() {
         let mut grid = Grid::new(10, 8);
@@ -111,8 +91,6 @@ mod tests {
         }
     }
 
-    /// The pass is deterministic and total: the same inputs classify the same cells
-    /// the same way on a re-run.
     #[test]
     fn classification_is_deterministic() {
         let (width, height) = (12usize, 10usize);
@@ -128,8 +106,6 @@ mod tests {
         assert_eq!(s1, s2, "same river must classify the same cells");
     }
 
-    /// River-distance is 0 on the centerline and grows monotonically with column
-    /// distance from a single straight vertical river; the farthest cell reads 1.
     #[test]
     fn river_dist_rises_away_from_the_river() {
         let (width, height) = (16usize, 12usize);

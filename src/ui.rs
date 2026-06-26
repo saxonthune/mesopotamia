@@ -22,34 +22,24 @@ impl Plugin for UiPlugin {
             .init_resource::<WorldViewRect>()
             // pick_herd (world click → select) runs before the panel draws it.
             .add_systems(Update, (pick_herd, keyboard_speed, crate::history::sample_history))
-            // Install the Phosphor icon font once the egui context exists, so the
-            // pause/play glyphs render instead of tofu boxes.
+            // must be in EguiPrimaryContextPass — context must exist when glyphs first render
             .add_systems(EguiPrimaryContextPass, install_icon_font)
             .add_systems(
                 EguiPrimaryContextPass,
-                // graphs_bar (top) and control_panel (bottom) both claim screen
-                // edges; set_camera_viewport then reads the leftover rect, so it
-                // must run last — hence .chain().
+                // .chain(): set_camera_viewport must run after graphs_bar and control_panel
                 (graphs_bar, control_panel, set_camera_viewport).chain(),
             );
     }
 }
 
-/// The screen rect (logical points) the world camera fills: full width, from the
-/// bottom of the top graphs bar down to the bottom of the window — deliberately
-/// *independent of the bottom dock's height*. `graphs_bar` writes it after it
-/// reserves the top strip; `set_camera_viewport` reads it. Anchoring the world to
-/// this dock-agnostic rect is what makes the dock slide over a fixed map (a sheet
-/// of paper over the table) instead of re-centring and resizing it on every drag.
+/// Rect (logical pts) the world camera fills: top-bar bottom → window bottom, ignoring dock height.
 #[derive(Resource, Default)]
 struct WorldViewRect {
     min: Vec2,
     size: Vec2,
 }
 
-/// A toggleable field overlay rendered in the world view. `ALL` drives the
-/// toggle row; `HashSet<Overlay>` on `UiState` is the source of truth for
-/// which overlays are active. Off by default — pure view state, no sim effect.
+/// Field overlays rendered in the world view. `ALL` drives the toggle row.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Overlay {
     GrassGradient,
@@ -72,11 +62,10 @@ impl Overlay {
 #[derive(Resource)]
 pub struct UiState {
     tab: Tab,
-    selected: Option<u32>, // hex code of the herd shown in the details pane;
-    // persists on a dead/migrated cohort until the user picks another.
-    visible: std::collections::HashSet<Graph>, // overview graphs toggled on in the top bar
-    pub overlays: std::collections::HashSet<Overlay>, // field overlays active in the world view
-    histogram_metric: usize, // index into ELK_METRICS for the distribution histogram
+    selected: Option<u32>, // persists on a dead/migrated cohort until the user picks another
+    visible: std::collections::HashSet<Graph>,
+    pub overlays: std::collections::HashSet<Overlay>,
+    histogram_metric: usize, // index into ELK_METRICS
 }
 
 impl Default for UiState {
@@ -84,8 +73,6 @@ impl Default for UiState {
         Self {
             tab: Tab::default(),
             selected: None,
-            // The survival score is the demo's headline metric, so it opens on its
-            // own; every other graph starts hidden behind its toggle.
             visible: std::collections::HashSet::from([Graph::SurvivalScore]),
             overlays: std::collections::HashSet::new(),
             histogram_metric: 0,
@@ -98,15 +85,11 @@ enum Tab {
     #[default]
     Sliders,
     Herds,
-    /// The box-selection roster + details. Auto-shown when a selection exists and
-    /// hidden when it empties; never the default.
+    /// Auto-shown when a selection exists; hidden when empty.
     Selection,
 }
 
-/// A toggleable overview graph shown in the top bar. `ALL` drives both the
-/// toggle row and the render loop, so adding a variant adds its button and plot
-/// in one place. Visibility is pure view state (lives on `UiState`); the sampler
-/// always records, regardless of what's shown.
+/// `ALL` drives both the toggle row and the render loop — add a variant here to wire button + plot.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Graph {
     SurvivalScore,
@@ -118,7 +101,6 @@ enum Graph {
 impl Graph {
     const ALL: [Graph; 4] = [Graph::SurvivalScore, Graph::Biomass, Graph::Histogram, Graph::Abundance];
 
-    /// The toggle-button label.
     fn label(self) -> &'static str {
         match self {
             Graph::SurvivalScore => "survival score",
@@ -129,38 +111,28 @@ impl Graph {
     }
 }
 
-/// Standard labelled `f32` slider — the one-liner every control page uses.
 fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, label: &str) {
     ui.add(egui::Slider::new(value, range).text(label));
 }
 
-/// A labelled set of time-series read from `History` for line-graph rendering.
 struct PlotSpec<'a> {
-    /// `egui_plot::Plot` id — must be unique within the panel.
+    /// must be unique within the panel (egui_plot requirement)
     id: &'a str,
-    /// Plot height in points. Inline plots use a fixed value; a graph filling a
-    /// resizable window passes the window's available height.
     height: f32,
-    /// Each entry is (display name, ring-buffer reference).
+    /// (display name, ring-buffer)
     series: Vec<(&'a str, &'a std::collections::VecDeque<f32>)>,
 }
 
-/// Declarative panel content. Add new variants here before `Custom` so the
-/// match in `render_items` stays exhaustive and easy to extend.
 #[allow(dead_code)]
 enum Item<'a> {
     Slider { value: &'a mut f32, range: std::ops::RangeInclusive<f32>, label: &'a str },
     Label(String),
     Separator,
-    /// Line graph via egui_plot.
     Plot(PlotSpec<'a>),
-    /// Progressive-disclosure group: a `CollapsingHeader` wrapping nested items.
     Section { title: &'a str, items: Vec<Item<'a>>, default_open: bool },
-    /// Escape hatch for complex bodies that can't yet be expressed as items.
     Custom(Box<dyn FnOnce(&mut egui::Ui) + 'a>),
 }
 
-/// Walk an item list and render each to `ui`. Recursive through `Section`.
 fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
     for item in items {
         match item {
@@ -180,8 +152,7 @@ fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
 
 fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
     use egui_plot::{Line, Plot, PlotPoints};
-    // Lock the view: the plot auto-fits its data each frame, and the user can't
-    // pan or zoom it out of frame. All declarative builder flags on egui_plot.
+    // lock view: plot auto-fits each frame; no pan/zoom
     Plot::new(spec.id)
         .height(spec.height)
         .allow_scroll(false)
@@ -200,14 +171,9 @@ fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
         });
 }
 
-/// Current score at which the gauge's number burns full green — a visual ceiling
-/// for the colour ramp, not a cap on the score itself.
+/// Colour ramp ceiling — not a cap on the score.
 const SCORE_BRIGHT: f32 = 120.0;
 
-/// The survival-score gauge: the live `current` rating big and bold (brighter
-/// green the higher it runs), the session `high` beside it, and a difficulty bar —
-/// the gate that scales every point. A high score takes both: crank difficulty
-/// (a scarcer world) *and* bring the herd far across before it dies.
 fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
     use egui::{Color32, RichText};
 
@@ -230,7 +196,6 @@ fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
         });
     });
 
-    // Herd vitals: pop, energy — each with a trend arrow so tweaks have feedback.
     const LOOKBACK: usize = 300;
     const EPS_POP: f32 = 1.0;
     const EPS_ENERGY: f32 = 0.005;
@@ -250,8 +215,6 @@ fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
     render_difficulty(ui, score.difficulty);
 }
 
-/// Colour for a difficulty level: green when low, orange in the middle, red when
-/// high — the harder you make the world, the hotter the readout.
 fn difficulty_color(difficulty: f32) -> egui::Color32 {
     if difficulty < 0.34 {
         egui::Color32::from_rgb(70, 180, 90)
@@ -262,9 +225,6 @@ fn difficulty_color(difficulty: f32) -> egui::Color32 {
     }
 }
 
-/// The difficulty section: a mobile-signal-bars icon (more bars = harder, coloured
-/// green→orange→red), a big percentage, and a label. Difficulty gates the score —
-/// it scales every point — so it gets its own prominent readout.
 fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
     use egui::{Color32, RichText};
     const BARS: i32 = 5;
@@ -275,7 +235,6 @@ fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
 
     ui.label(RichText::new("DIFFICULTY").size(13.0).weak());
     ui.horizontal(|ui| {
-        // Signal-bars icon: ascending heights, filled bars take the level colour.
         let (resp, painter) = ui.allocate_painter(egui::vec2(58.0, 34.0), egui::Sense::hover());
         let r = resp.rect;
         let slot = r.width() / BARS as f32;
@@ -300,11 +259,9 @@ fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
     });
 }
 
-/// One self-contained control group: a heading and an ordered list of items.
 struct Panel<'a> {
     title: &'a str,
-    /// Target column width — the flex-basis. Panels wrap to a new row when the
-    /// current row can't fit another at its width.
+    /// flex-basis — panels wrap to a new row when full
     width: f32,
     items: Vec<Item<'a>>,
 }
@@ -316,16 +273,12 @@ impl<'a> Panel<'a> {
         Self { title, width: Self::DEFAULT_WIDTH, items }
     }
 
-    /// Override the flex-basis for a wider/narrower group.
     fn width(mut self, width: f32) -> Self {
         self.width = width;
         self
     }
 }
 
-/// Lay panels out left-to-right, wrapping to a new row when the row fills —
-/// `flex-wrap: wrap`. Each panel is boxed to its own `width` so it forms a
-/// column rather than spreading to fill the row.
 fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
     ui.horizontal_wrapped(|ui| {
         for p in panels {
@@ -344,9 +297,7 @@ fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
     });
 }
 
-/// The top bar: a row of toggles that show or hide overview graphs. Graphs start
-/// hidden; toggling one opens a draggable, resizable window floating over the
-/// world (an egui `Window`, not a panel — so it never shrinks the viewport).
+/// Top-bar graph toggles; each opens a floating egui `Window` (not a panel) so it never shrinks the viewport.
 fn graphs_bar(
     mut contexts: EguiContexts,
     mut state: ResMut<UiState>,
@@ -378,17 +329,12 @@ fn graphs_bar(
         });
     });
 
-    // Record the world's view rect for `set_camera_viewport`: full width, from the
-    // bottom of this top bar to the window's bottom edge. It deliberately ignores
-    // the bottom dock, so dragging the dock taller/shorter never moves the map —
-    // the dock simply covers more or less of a fixed world.
+    // Write WorldViewRect for set_camera_viewport: top-bar bottom to window bottom, ignoring the dock.
     let screen = ctx.viewport_rect();
     let top_bottom = top.response.rect.bottom();
     view_rect.min = Vec2::new(screen.min.x, top_bottom);
     view_rect.size = Vec2::new(screen.width(), (screen.bottom() - top_bottom).max(0.0));
 
-    // Survival score: the live rating, its session high, and the difficulty gate.
-    // Its own window so it floats over the world.
     if state.visible.contains(&Graph::SurvivalScore) {
         egui::Window::new(Graph::SurvivalScore.label())
             .default_size([340.0, 110.0])
@@ -396,13 +342,11 @@ fn graphs_bar(
             .show(ctx, |ui| render_score_gauge(ui, &score, &history));
     }
 
-    // Time-series graphs: live in their own floating windows.
     for g in Graph::ALL {
         if state.visible.contains(&g) && matches!(g, Graph::Biomass | Graph::Abundance) {
             egui::Window::new(g.label())
                 .default_size([360.0, 200.0])
-                // The top-bar toggle already shows/hides the graph, so the
-                // window's own collapse arrow is redundant.
+                // top-bar toggle already shows/hides the window; collapse arrow is redundant
                 .collapsible(false)
                 .show(ctx, |ui| {
                     render_plot(ui, graph_plot(g, &history, ui.available_height()));
@@ -410,7 +354,6 @@ fn graphs_bar(
         }
     }
 
-    // Histogram window: needs live elk data and mutable metric selection.
     if state.visible.contains(&Graph::Histogram) {
         let mut sel = state.histogram_metric;
         egui::Window::new(Graph::Histogram.label())
@@ -427,7 +370,6 @@ fn graphs_bar(
         state.histogram_metric = sel;
     }
 
-    // Recent-events window: visible when the DeathSites overlay is active.
     if state.overlays.contains(&Overlay::DeathSites) {
         egui::Window::new("recent deaths")
             .default_size([300.0, 200.0])
@@ -440,9 +382,6 @@ fn graphs_bar(
     Ok(())
 }
 
-/// The plot for one overview graph, sized to `height`. Biomass plots grass and
-/// shrubs as two series so the riparian and steppe compartments read separately
-/// rather than collapsing into one summed line.
 fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'a> {
     match graph {
         Graph::Biomass => PlotSpec {
@@ -453,9 +392,7 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
                 ("shrubs", &history.shrub_mass),
             ],
         },
-        // Forage-per-elk and the regrowth÷drain ratio over time. When the ratio
-        // line sits above 1, herds' patches refill faster than they graze them —
-        // the quantitative reason they camp instead of migrating.
+        // ratio > 1: regrowth outpaces grazing — herds camp rather than migrate
         Graph::Abundance => PlotSpec {
             id: "abundance",
             height,
@@ -469,8 +406,6 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
     }
 }
 
-/// Draw a bar-chart histogram of `metric_idx` across all live elk.
-/// Bins the selected metric into 20 equal-width buckets over [0, 1].
 fn render_histogram(ui: &mut egui::Ui, elk: &Query<&Elk>, metric_idx: usize) {
     use egui_plot::{Bar, BarChart, Plot};
 
@@ -511,7 +446,6 @@ fn render_histogram(ui: &mut egui::Ui, elk: &Query<&Elk>, metric_idx: usize) {
         });
 }
 
-/// Show a scrollable list of the most recent starvation events: tick, cell, energy.
 fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
     if event_log.recent.is_empty() {
         ui.weak("no starvation events yet");
@@ -534,9 +468,7 @@ fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
     });
 }
 
-/// World/forage tuning resources, bundled so `control_panel` stays under Bevy's
-/// 16-param system limit. Grouped because they are all "the world the player
-/// tunes" (the green wave, grass growth, fertility, abundance measurement).
+/// Bundled so `control_panel` stays under Bevy's 16-param system limit.
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldTunables<'w> {
     green_wave: ResMut<'w, GreenWave>,
@@ -544,8 +476,6 @@ struct WorldTunables<'w> {
     ab_params: ResMut<'w, AbundanceParams>,
 }
 
-/// The docked bottom panel: a tab bar with always-visible speed controls, and a
-/// scrolling content area paged by the selected tab.
 #[allow(clippy::too_many_arguments)]
 fn control_panel(
     mut contexts: EguiContexts,
@@ -561,12 +491,7 @@ fn control_panel(
     mut selection: SelectionParams,
     mut dock_settle_frames: Local<u32>,
 ) -> Result {
-    // Open at a quarter of the window height. The window is created at a default
-    // size and the OS/WM resizes it to its real size a few frames later, so
-    // locking the height once on frame 0 would pin the dock to a quarter of the
-    // *initial* size. Force the height to 25% (min == max) until the window has
-    // settled, then relax to a user-resizable panel — egui keeps the height the
-    // user last saw, which is the settled quarter.
+    // OS/WM resizes the window after creation; hold height to 25% for a few frames so the dock opens at the right size.
     const DOCK_SETTLE_FRAMES: u32 = 30;
     let target_height = contexts.ctx_mut()?.viewport_rect().height() * 0.25;
     let settling = *dock_settle_frames < DOCK_SETTLE_FRAMES;
@@ -581,8 +506,6 @@ fn control_panel(
     };
     panel
         .show(contexts.ctx_mut()?, |ui| {
-            // Box-selection housekeeping: drop despawned units, auto-open the tab
-            // on a fresh capture, and fall back off it when the group empties.
             {
                 let elk = &selection.elk;
                 selection.state.units.retain(|e| elk.get(*e).is_ok());
@@ -615,15 +538,11 @@ fn control_panel(
                 }
             });
             ui.separator();
-            // The panel height is user-set by dragging its top border; the
-            // scroll area fills whatever is left below the tab bar, so a taller
-            // panel reveals more rows and a short one scrolls.
             egui::ScrollArea::vertical()
                 .auto_shrink([false, false])
                 .show(ui, |ui| match state.tab {
                 Tab::Sliders => {
-                    // Preset buttons reset the whole bundle in one click; they must
-                    // borrow the resources before the per-slider reborrows below.
+                    // preset apply borrows resources before the per-slider reborrows below
                     ui.horizontal(|ui| {
                         ui.label("presets:");
                         for preset in &crate::elk::presets::PRESETS {
@@ -645,7 +564,6 @@ fn control_panel(
                     let cross_ratio = &mut rc.cross_ratio;
                     panel_flow(ui, vec![
                         Panel::new("Forage", grass_items(world.fertility.as_mut().map(|f| f.as_mut()), grass_regrow, shrub_regrow)),
-                        // Behaviour carries the most rows, so give it a wider column.
                         Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), feed_ratio, cross_ratio)))]).width(300.0),
                         Panel::new("Abundance (measure)", abundance_items(world.ab_params.as_mut())),
                     ])
@@ -657,9 +575,6 @@ fn control_panel(
     Ok(())
 }
 
-/// The Herds tab: a scrollable list of herd cards on the left; clicking one
-/// shows its full details in the scrollable pane on the right. The selection
-/// persists on a dead/migrated cohort until the user picks another.
 fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History) {
     let alive: Vec<u32> = herds
         .order
@@ -704,7 +619,6 @@ fn herd_health(co: &crate::elk::Cohort) -> f32 {
     }
 }
 
-/// A clickable summary card for one herd. Highlights when selected.
 fn herd_card(ui: &mut egui::Ui, code: u32, co: &crate::elk::Cohort, state: &mut UiState) {
     let mut frame = egui::Frame::group(ui.style());
     if state.selected == Some(code) {
@@ -753,7 +667,6 @@ fn herd_details(
     ui.label(format!("migrated out: {}", co.departures));
     ui.separator();
 
-    // Population over time (all elk).
     render_items(ui, vec![
         Item::Label("population".to_string()),
         Item::Plot(PlotSpec {
@@ -764,15 +677,10 @@ fn herd_details(
     ]);
 }
 
-/// Thumbnail edge length in the selection roster, in points.
 const THUMB: f32 = 58.0;
-/// Reserved portrait height in points — programmer-art space for real elk art.
 const PORTRAIT_H: f32 = 168.0;
 
-/// The Selection tab: a three-column side-split — roster | stats | portrait. The
-/// roster is the StarCraft-style thumbnail array (each a herd-tinted silhouette
-/// with code + energy bar); clicking one focuses it into the stats and portrait
-/// columns. Stale (despawned) units are pruned by `control_panel` before this runs.
+/// Stale units are pruned by `control_panel` before this runs.
 fn selection_tab(
     ui: &mut egui::Ui,
     sel: &mut UnitSelectState,
@@ -783,7 +691,6 @@ fn selection_tab(
     let total = sel.captured_total;
 
     ui.columns(3, |cols| {
-        // ── Roster ──────────────────────────────────────────────────────────
         let roster = &mut cols[0];
         roster.horizontal(|ui| {
             let header = if units.len() < total {
@@ -798,8 +705,6 @@ fn selection_tab(
             }
         });
         roster.separator();
-        // Only the roster scrolls — its own area, bounded to the column height, so
-        // the thumbnail array pages independently while stats/portrait stay put.
         egui::ScrollArea::vertical()
             .id_salt("unit_roster")
             .auto_shrink([false, false])
@@ -810,7 +715,6 @@ fn selection_tab(
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(THUMB, THUMB), egui::Sense::click());
                 let painter = ui.painter_at(rect);
                 draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
-                // Energy bar pinned to the thumbnail's bottom edge.
                 let bar = egui::Rect::from_min_max(
                     egui::pos2(rect.left() + 3.0, rect.bottom() - 7.0),
                     egui::pos2(rect.right() - 3.0, rect.bottom() - 3.0),
@@ -843,9 +747,6 @@ fn selection_tab(
             });
         });
 
-        // ── Stats ───────────────────────────────────────────────────────────
-        // Independent scroll: the drive breakdown can run tall without dragging
-        // the roster or portrait along with it.
         let stats = &mut cols[1];
         egui::ScrollArea::vertical()
             .id_salt("unit_stats")
@@ -883,7 +784,6 @@ fn selection_tab(
             }
         });
 
-        // ── Portrait ────────────────────────────────────────────────────────
         let portrait = &mut cols[2];
         let (rect, _) = portrait.allocate_exact_size(
             egui::vec2(portrait.available_width(), PORTRAIT_H),
@@ -915,11 +815,7 @@ fn selection_tab(
     });
 }
 
-/// A left-click in the world selects the nearest elk's herd and opens the Herds
-/// tab on it. Clicks over the egui panel are ignored, as is the click that closed
-/// a box-select drag. The cursor is unprojected through the world camera, so it
-/// respects the viewport clip above the dock. Acts on release so the box-select
-/// gesture (which decides on release) can claim a drag first.
+/// World click → nearest herd's tab. Runs on release so box-select can claim drags; panel clicks are ignored.
 pub(crate) fn pick_herd(
     mouse: Res<ButtonInput<MouseButton>>,
     mut contexts: EguiContexts,
@@ -942,15 +838,12 @@ pub(crate) fn pick_herd(
     let Some(cursor) = window.cursor_position() else {
         return Ok(());
     };
-    // Let the camera do the unprojection — it knows its own viewport, so a click
-    // maps to the right world point even though the world is clipped to the area
-    // above the dock. Outside the viewport (e.g. over the panel) this errors.
+    // camera unprojection respects viewport clip; errors outside the viewport (→ Ok)
     let (cam, cam_transform) = *camera;
     let Ok(world) = cam.viewport_to_world_2d(cam_transform, cursor) else {
         return Ok(());
     };
 
-    // Nearest elk within a generous world-space radius (~6 tiles) picks the herd.
     const PICK_RADIUS: f32 = 96.0;
     let tol2 = PICK_RADIUS * PICK_RADIUS;
     let mut best: Option<(Entity, u32, f32)> = None;
@@ -967,19 +860,11 @@ pub(crate) fn pick_herd(
     Ok(())
 }
 
-/// Map the egui logical rect left free above the bottom dock to a physical-pixel
-/// camera viewport, so the world renders above the panel rather than behind it.
-///
-/// Pure so it can be unit-tested without a window: `min`/`size` are the egui
-/// available rect in logical points, `scale` is the window's scale factor, and
-/// `target` is the render target's physical size. Returns `None` when the free
-/// area collapses (the panel fills the window) so the caller clears the
-/// viewport and the camera falls back to the whole window.
+/// Convert egui logical rect → physical camera viewport. Returns `None` when the area collapses so the camera falls back to the full window.
 fn world_viewport(min: Vec2, size: Vec2, scale: f32, target: UVec2) -> Option<Viewport> {
     let pos = (min * scale).max(Vec2::ZERO).as_uvec2();
     let px = (size * scale).max(Vec2::ZERO).as_uvec2();
-    // Clamp so position + size never exceed the target (an over-large scissor
-    // rect is a hard wgpu crash, not a clip).
+    // wgpu crashes (not clips) on oversized scissor rects; clamp so pos + size never exceed target
     let w = px.x.min(target.x.saturating_sub(pos.x));
     let h = px.y.min(target.y.saturating_sub(pos.y));
     if w == 0 || h == 0 {
@@ -992,11 +877,7 @@ fn world_viewport(min: Vec2, size: Vec2, scale: f32, target: UVec2) -> Option<Vi
     })
 }
 
-/// Confine the *world* camera to `WorldViewRect` — the strip below the top bar
-/// that runs to the window's bottom, ignoring the dock. Because the dock isn't
-/// subtracted, resizing it leaves the viewport (and so the map) untouched; the
-/// dock, drawn by the separate full-window egui camera, simply slides over the
-/// fixed world. Clipping here never touches the UI.
+/// Confine world camera to `WorldViewRect`. The dock is excluded from this rect, so resizing it never moves the map.
 fn set_camera_viewport(
     view_rect: Res<WorldViewRect>,
     window: Single<&Window>,
@@ -1011,41 +892,24 @@ fn set_camera_viewport(
     );
 }
 
-/// Most virtual time `FixedUpdate` is allowed to advance in a single rendered
-/// frame. Bevy runs one fixed step per `1 / fixed_hz` of virtual time, so this
-/// caps how many simulation steps execute per frame and keeps high speeds from
-/// starving the window/OS event loop. At the 10 Hz fixed rate, 500 ms ≈ 5
-/// steps/frame, which is the effective speed ceiling (~30× at 60 FPS). Raise it
-/// to let the simulation run faster, lower it to favour responsiveness.
+/// Max virtual time `FixedUpdate` can advance per frame — caps steps/frame to prevent UI freezes at high speed.
 const FRAME_SIM_BUDGET: Duration = Duration::from_millis(500);
 
-/// Bevy's engine default cap on a single frame's *raw* delta. We never loosen it
-/// (slow speeds keep the default); we only tighten it for fast speeds.
+/// Bevy's default raw-delta cap; `sim_max_delta` only ever tightens this.
 const DEFAULT_MAX_DELTA: Duration = Duration::from_millis(250);
 
-/// The `Time<Virtual>` max-delta that bounds the *scaled* per-frame advance to
-/// `budget`. Bevy clamps the raw frame delta to max-delta *before* multiplying by
-/// `speed`, so the default 250 ms cap does nothing against a large multiplier — a
-/// slow frame's raw delta gets scaled, `FixedUpdate` runs many catch-up steps,
-/// the next frame is slower still, and the loop freezes the UI. Dividing the
-/// budget by `speed` makes the scaled advance — and thus fixed-steps-per-frame —
-/// independent of the multiplier. Below ~2× the engine default already wins, so
-/// `.min` leaves slow/normal play untouched.
+/// Returns max_delta so that max_delta × speed ≤ budget. Without this, Bevy's default 250 ms cap is useless at high multipliers and the UI freezes.
 fn sim_max_delta(budget: Duration, speed: f32) -> Duration {
     budget.div_f32(speed.max(1.0)).min(DEFAULT_MAX_DELTA)
 }
 
-/// Set the requested speed and the matching per-frame budget together; every
-/// speed change must go through here so the responsiveness cap stays in sync.
+/// Every speed change goes through here to keep the per-frame budget in sync.
 fn set_sim_speed(time: &mut Time<Virtual>, speed: f32) {
     time.set_relative_speed(speed);
     time.set_max_delta(sim_max_delta(FRAME_SIM_BUDGET, speed));
 }
 
-/// Merge the Phosphor icon glyphs into egui's font set, once, when the context
-/// first exists. `Local` flips after the first run so this is effectively a
-/// one-shot — set_fonts replaces the whole atlas, so re-running it every frame
-/// would be wasteful.
+/// One-shot: `set_fonts` replaces the whole atlas, so re-running every frame would be wasteful.
 fn install_icon_font(mut contexts: EguiContexts, mut installed: Local<bool>) -> Result {
     if *installed {
         return Ok(());
@@ -1058,10 +922,7 @@ fn install_icon_font(mut contexts: EguiContexts, mut installed: Local<bool>) -> 
     Ok(())
 }
 
-/// Keyboard speed/pause shortcuts: digits 1–4 select the matching speed preset,
-/// 5 jumps to the uncapped fast-forward, and space toggles pause. Suppressed
-/// while egui holds keyboard focus (e.g. editing the custom-speed DragValue) so
-/// the keys don't fight text entry.
+/// Keyboard shortcuts (1–5 for speed, space for pause); suppressed while egui holds focus.
 fn keyboard_speed(
     mut contexts: EguiContexts,
     keys: Res<ButtonInput<KeyCode>>,
@@ -1099,19 +960,15 @@ fn keyboard_speed(
     Ok(())
 }
 
-/// Speed buttons, in order: 1×–4× plus an uncapped fast-forward. The index into
-/// this table is also the digit-key shortcut (1–4 → presets, 5 → uncapped), so
-/// `keyboard_speed` and `speed_inline` share one source of truth.
+/// Index = digit-key shortcut; shared by `keyboard_speed` and `speed_inline`.
 const SPEED_PRESETS: [(&str, f32); 5] =
     [("1x", 1.0), ("2x", 2.0), ("3x", 3.0), ("4x", 4.0), (">>", 64.0)];
 
-/// Base simulation rate — mirrors the `Time::<Fixed>::from_hz(10.0)` the binaries
-/// install. Ticks-per-second shown to the player is this times the play speed.
+/// Must match `Time::<Fixed>::from_hz(N)` in the binaries — ticks/s = FIXED_HZ × speed.
 const FIXED_HZ: f32 = 10.0;
 
 fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     let current = time.relative_speed();
-    // Phosphor play/pause glyph: show the action the click performs.
     let icon = if time.is_paused() {
         egui_phosphor::regular::PLAY
     } else {
@@ -1150,8 +1007,7 @@ fn grass_items<'a>(fertility: Option<&'a mut Fertility>, grass_regrow: &'a mut f
         Item::Slider { value: grass_regrow, range: 0.0..=0.05, label: "grass regrowth / tick" },
         Item::Slider { value: shrub_regrow, range: 0.0..=0.02, label: "shrub regrowth / tick" },
     ];
-    // The Fertility section only appears when the droppings cycle is enabled —
-    // its resource is absent when `DroppingsPlugin` is omitted from the binary.
+    // Fertility resource is absent when DroppingsPlugin is omitted from the binary.
     if let Some(fertility) = fertility {
         items.push(Item::Section {
             title: "Fertility",
@@ -1165,8 +1021,6 @@ fn grass_items<'a>(fertility: Option<&'a mut Fertility>, grass_regrow: &'a mut f
     items
 }
 
-/// Sliders for the herd-abundance measurement. Pure view state — these only
-/// reshape the `abundance` graph, never the simulation.
 fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
     vec![
         Item::Slider { value: &mut p.radius, range: 1.0..=20.0, label: "nearby radius (cells)" },
@@ -1183,8 +1037,7 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, feed_ratio: &mut f32, cro
     ui.separator();
     ui.label("metabolism");
     slider(ui, feed_ratio, 0.5..=16.0, "ticks of life per bite (feed ratio)");
-    // A bite buys `feed_ratio` ticks of drain but lands only once per CHEW_TICKS+1
-    // ticks, so the herd holds even by grazing (CHEW_TICKS+1)/feed_ratio of the time.
+    // break-even: grazing (CHEW_TICKS+1)/feed_ratio of ticks sustains the herd
     let pct = if *feed_ratio > 0.0 {
         100.0 * (crate::elk::CHEW_TICKS + 1) as f32 / *feed_ratio
     } else {
@@ -1202,20 +1055,16 @@ fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, feed_ratio: &mut f32, cro
     slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");
     slider(ui, &mut p.cross_peek, 1.0..=40.0, "cross peek (far-bank sight)");
     slider(ui, &mut p.swim_reluctance, 0.0..=2.0, "swim reluctance (decision cost)");
-    // The crossing-pull crutch: no longer steers movement, kept as the score penalty.
+    // no longer steers movement — kept only as the score penalty
     slider(ui, cross_ratio, 0.0..=2.0, "crossing pull (score penalty)");
 }
 
-/// Direction of change for a time series.
 pub enum Trend {
     Up,
     Down,
     Flat,
 }
 
-/// Direction of a series over the last `lookback` samples: compares the latest value to
-/// the one `lookback` back. Flat if the absolute change is within `eps` or history is
-/// too short.
 pub fn trend(series: &std::collections::VecDeque<f32>, lookback: usize, eps: f32) -> Trend {
     if series.len() <= lookback {
         return Trend::Flat;
@@ -1244,10 +1093,6 @@ pub fn trend_arrow(t: Trend) -> &'static str {
 mod tests {
     use super::*;
 
-    // The scaled per-frame advance (max_delta * speed) is bounded by the budget at
-    // any speed above the point where the engine default already wins (~2x at a
-    // 500ms budget). This is what stops FixedUpdate from running unbounded catch-up
-    // steps and freezing the UI at high multipliers.
     #[test]
     fn fast_speeds_bound_scaled_advance_to_budget() {
         let budget = FRAME_SIM_BUDGET;
@@ -1261,7 +1106,6 @@ mod tests {
         }
     }
 
-    // Higher speed never raises the per-frame cap — it only ever tightens it.
     #[test]
     fn max_delta_is_monotone_non_increasing_in_speed() {
         let budget = FRAME_SIM_BUDGET;
@@ -1273,15 +1117,12 @@ mod tests {
         }
     }
 
-    // Slow and normal play keep Bevy's engine default; the cap only kicks in for
-    // fast-forward.
     #[test]
     fn slow_speeds_keep_engine_default() {
         assert_eq!(sim_max_delta(FRAME_SIM_BUDGET, 0.5), DEFAULT_MAX_DELTA);
         assert_eq!(sim_max_delta(FRAME_SIM_BUDGET, 1.0), DEFAULT_MAX_DELTA);
     }
 
-    // A 1280x960 window at scale 1 with no panel: the world fills it.
     #[test]
     fn full_window_when_no_panel() {
         let vp = world_viewport(Vec2::ZERO, Vec2::new(1280.0, 960.0), 1.0, UVec2::new(1280, 960))
@@ -1290,8 +1131,6 @@ mod tests {
         assert_eq!(vp.physical_size, UVec2::new(1280, 960));
     }
 
-    // A 240pt dock at the bottom shrinks only the height; the world stays pinned
-    // to the top-left.
     #[test]
     fn bottom_dock_shrinks_height_only() {
         let vp = world_viewport(Vec2::ZERO, Vec2::new(1280.0, 720.0), 1.0, UVec2::new(1280, 960))
@@ -1300,10 +1139,7 @@ mod tests {
         assert_eq!(vp.physical_size, UVec2::new(1280, 720));
     }
 
-    // The Retina regression: logical points must be scaled to physical pixels
-    // exactly once. A 640x360 logical region at scale 2 is 1280x720 physical —
-    // not 2560x1440 (double-counted, which crashed wgpu with an oversized
-    // scissor rect).
+    // regression: scale must be applied once; double-counting crashed wgpu with an oversized scissor rect
     #[test]
     fn retina_scale_counts_once() {
         let vp = world_viewport(Vec2::ZERO, Vec2::new(640.0, 360.0), 2.0, UVec2::new(1280, 720))
@@ -1311,7 +1147,6 @@ mod tests {
         assert_eq!(vp.physical_size, UVec2::new(1280, 720));
     }
 
-    // A rect larger than the target is clamped, never allowed to exceed it.
     #[test]
     fn oversize_rect_clamps_to_target() {
         let vp = world_viewport(Vec2::ZERO, Vec2::new(4000.0, 4000.0), 1.0, UVec2::new(1280, 720))
@@ -1319,14 +1154,10 @@ mod tests {
         assert_eq!(vp.physical_size, UVec2::new(1280, 720));
     }
 
-    // When the panel fills the window the free area collapses → no viewport, so
-    // the camera falls back to the full window instead of a zero-size scissor.
     #[test]
     fn collapsed_area_yields_none() {
         assert!(world_viewport(Vec2::new(0.0, 960.0), Vec2::ZERO, 1.0, UVec2::new(1280, 960)).is_none());
     }
-
-    // ── trend ─────────────────────────────────────────────────────────────────
 
     fn deque(values: &[f32]) -> std::collections::VecDeque<f32> {
         values.iter().copied().collect()

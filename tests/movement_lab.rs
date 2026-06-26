@@ -1,16 +1,5 @@
-//! Movement lab — an isolated, watchable bench for the herding steer.
-//!
-//! Unlike `herd_shape` (aggregate scalars: gyration, %travel, energy) these tests
-//! print the *lattice itself* tick by tick via `ascii_frame`, so spatial bugs —
-//! kitty-corner elk deadlocking, a herd diffusing instead of holding a column, a
-//! botched river crossing — are visible directly rather than inferred from a number.
-//!
-//! All are `#[ignore]`'d: they are a human/agent debugging surface, not pass/fail
-//! gates. Run one with, e.g.:
-//!   cargo test --test movement_lab lab_kitty_corner -- --ignored --nocapture
-//!
-//! The map is small and fixed and the herding model is deterministic (no RNG), so
-//! every run replays identically — change a `HerdParams` knob, rerun, read the diff.
+//! Movement lab — prints the lattice tick-by-tick via `ascii_frame` so spatial bugs are visible directly.
+//! All tests are `#[ignore]`'d (human/agent debug surface, not gates); herding is deterministic so every run replays identically.
 
 use bevy::prelude::*;
 use mesopotamia::elk::{ElkParams, HerdParams};
@@ -18,8 +7,6 @@ use mesopotamia::sim_harness::{
     ascii_frame, make_probe_app, open_plain, river_plain, run_migration,
 };
 
-/// Step the app, printing the frame on the first tick, every `every` ticks, and the
-/// last tick.
 fn watch(name: &str, app: &mut App, ticks: u32, every: u32) {
     println!("\n=== {name}: tick 0 (initial) ===\n{}", ascii_frame(app.world_mut()));
     for t in 0..ticks {
@@ -31,7 +18,6 @@ fn watch(name: &str, app: &mut App, ticks: u32, every: u32) {
     }
 }
 
-/// Seed every elk's energy so a short run isn't dominated by starvation.
 fn feed_all(app: &mut App, energy: f32) {
     let world = app.world_mut();
     let mut q = world.query::<&mut mesopotamia::elk::Elk>();
@@ -43,9 +29,7 @@ fn feed_all(app: &mut App, energy: f32) {
 const W: usize = 24;
 const H: usize = 14;
 
-/// Two elk placed kitty-corner (diagonal neighbours) on an abundant plain. The
-/// reported bug: they "try to pass through each other but get stuck." Print every
-/// tick so the exact stall/oscillation is visible.
+// reported bug: kitty-corner pair "try to pass through each other but get stuck"
 #[test]
 #[ignore = "movement lab — run manually with --ignored --nocapture"]
 fn lab_kitty_corner_pair() {
@@ -59,9 +43,7 @@ fn lab_kitty_corner_pair() {
     watch("kitty", &mut app, 20, 1);
 }
 
-/// A small, loosely-spaced herd on an abundant plain. With no forage gradient the
-/// only force is separation+cohesion, so this isolates "spread out everywhere":
-/// a healthy herd should hold a loose clump, not diffuse to the edges.
+// no forage gradient — isolates separation+cohesion; herd should hold a loose clump, not diffuse
 #[test]
 #[ignore = "movement lab — run manually with --ignored --nocapture"]
 fn lab_herd_on_plain() {
@@ -82,7 +64,6 @@ fn lab_herd_on_plain() {
 const HW: usize = 32;
 const HH: usize = 12;
 
-/// The happy-path map and starts. Grass ramps thin→lush west→east; one central river.
 fn happy_map() -> (mesopotamia::grid::Grid, Vec<(usize, u8)>) {
     let river_col = HW / 2;
     let ford_row = HH / 2;
@@ -106,10 +87,7 @@ fn happy_map() -> (mesopotamia::grid::Grid, Vec<(usize, u8)>) {
     (grid, starts)
 }
 
-/// THE HAPPY PATH. A herd spawns on the west edge, must drift east up the gradient,
-/// ford the river, and walk off the east edge (despawn). The verdict on whether the
-/// current systems can move a herd start-to-finish. Bump to a `#[test]` gate once it
-/// reliably passes.
+// west→east gradient + river ford + east-edge despawn; promote to a gate once reliably passing
 #[test]
 #[ignore = "movement lab — run manually with --ignored --nocapture"]
 fn lab_happy_path() {
@@ -129,10 +107,7 @@ fn lab_happy_path() {
     println!("all_departed: {}", report.all_departed());
 }
 
-/// Is the stalled migration mere input-sensitivity or a structural bug? Sweep the two
-/// suspect knobs — `confidence_ref` (leadership scaling) and `cohesion` (reel-back
-/// strength) — over the happy path. If some cell crosses the river and departs, it's
-/// tuning; if every cell stalls, the migration mechanism is structurally broken.
+// distinguishes tuning failure from structural stall: if every cell stalls across the sweep, the mechanism is broken
 #[test]
 #[ignore = "movement lab — run manually with --ignored --nocapture"]
 fn lab_happy_sweep() {
@@ -151,9 +126,7 @@ fn lab_happy_sweep() {
     }
 }
 
-/// A herd on the west bank of a single-ford river. Watch the Travel→Cross handoff:
-/// does the column funnel to the ford and reach the far bank, or pile up against
-/// the water?
+// watch Travel→Cross handoff: does the herd funnel to the ford or pile up against the water?
 #[test]
 #[ignore = "movement lab — run manually with --ignored --nocapture"]
 fn lab_herd_crosses_river() {

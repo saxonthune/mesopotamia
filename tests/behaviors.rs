@@ -1,7 +1,5 @@
-//! Behaviour confirmation: each test runs a named demo `Preset` (the single source
-//! the UI buttons also apply) over a purpose-built map, reduces the run to a metric
-//! kernel from `mesopotamia::behaviors`, and asserts the success threshold. One
-//! behaviour, one map, one metric — so a regression names which behaviour broke.
+//! Behaviour confirmation: one preset, one map, one metric — so a regression names which behaviour broke.
+//! Presets are the same objects the UI buttons apply.
 
 use mesopotamia::behaviors::{eastward_drift, is_circling, path_length, straightness};
 use mesopotamia::elk::presets::{Preset, PRESETS};
@@ -11,8 +9,7 @@ fn preset(name: &str) -> &'static Preset {
     PRESETS.iter().find(|p| p.name == name).expect("preset exists")
 }
 
-/// A square block of elk, all one cohort (slot 0), anchored with its west edge at
-/// `col0` and centred vertically — the compact herd every behaviour starts from.
+// west edge at col0, centred vertically
 fn herd_block(width: usize, height: usize, col0: usize, side: usize) -> Vec<(usize, u8)> {
     let row0 = height / 2 - side / 2;
     let mut starts = Vec::new();
@@ -37,9 +34,7 @@ fn report(name: &str, t: &BehaviorTrace) {
     );
 }
 
-/// Move in a direction: the persistent directional cause is the travelling green-up
-/// wave (a static forage ramp is erased by regrowth within ~30 ticks). Under the
-/// green wave the herd should follow the front east by a clear margin.
+// green-up wave is the directional cause; static ramp erases itself within ~30 ticks
 #[test]
 fn herd_moves_in_a_direction() {
     let (w, h) = (40usize, 12usize);
@@ -54,8 +49,6 @@ fn herd_moves_in_a_direction() {
     );
 }
 
-/// Cross a river: with the green-up wave on (Can cross preset) a herd on the near
-/// bank should ford and end up east of the water.
 #[test]
 fn herd_crosses_a_river() {
     let (w, h) = (40usize, 12usize);
@@ -71,9 +64,7 @@ fn herd_crosses_a_river() {
     );
 }
 
-/// Don't go in circles: on a uniform, abundant plain with no directional cause the
-/// herd has no reason to travel — the chew pin should hold it, so its centroid track
-/// is short and is not a milling loop.
+// no directional cause → chew pin holds the herd; centroid track must be short and non-circular
 #[test]
 fn idle_herd_does_not_circle() {
     let (w, h) = (32usize, 16usize);

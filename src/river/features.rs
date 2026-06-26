@@ -1,6 +1,4 @@
-//! Features layered on top of the main channels — oxbow pools and tributaries.
-//! Each composes the shared cost field with `carve` and `rasterize`; none authors
-//! a main channel itself. Lakes are their own algorithm and live in `lake`.
+//! Oxbow pools and tributaries layered on the main channels. Lakes live in `lake`.
 
 use rand::Rng;
 use rand::rngs::StdRng;
@@ -13,8 +11,6 @@ use super::spec::RiverSpec;
 
 const NEIGHBORS: [(i32, i32); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
 
-/// A cell that holds no water and whose 4-neighbours hold none either — i.e. not
-/// adjacent to any carved channel — and that is a local minimum of the cost field.
 fn is_dry_basin(grid: &Grid, cost: &[u32], i: usize) -> bool {
     grid.water(i) == 0.0
         && NEIGHBORS.iter().all(|&(dx, dy)| {
@@ -27,7 +23,6 @@ fn is_dry_basin(grid: &Grid, cost: &[u32], i: usize) -> bool {
         })
 }
 
-/// Oxbow pools: small pools dropped at randomly chosen dry cost-basins.
 pub(super) fn place_oxbows(grid: &mut Grid, cost: &[u32], rng: &mut StdRng, spec: &RiverSpec) {
     let mut cands: Vec<usize> = (0..grid.len())
         .filter(|&i| is_dry_basin(grid, cost, i))
@@ -39,10 +34,6 @@ pub(super) fn place_oxbows(grid: &mut Grid, cost: &[u32], rng: &mut StdRng, spec
     }
 }
 
-/// Tributaries: short feeders spaced along each main channel. For each main,
-/// steps every `trib_spacing` positions along the interior (skipping first/last
-/// ~10%), picks a source offset ~`trib_length` cells to one lateral side and
-/// slightly upstream, and carves a short feeder to that confluence point.
 pub(super) fn carve_tributaries(
     grid: &mut Grid,
     cost: &[u32],
@@ -69,11 +60,9 @@ pub(super) fn carve_tributaries(
             let conf_col = (confluence_idx % width) as isize;
             let conf_row = (confluence_idx / width) as isize;
 
-            // Offset the source slightly upstream (smaller row) and laterally.
             let half = spec.trib_length / 2;
             let src_row = (conf_row - half).clamp(0, height as isize - 1);
 
-            // Pick left or right side with the seeded rng; try the other if off-grid.
             let left_col = conf_col - spec.trib_length;
             let right_col = conf_col + spec.trib_length;
             let prefer_left: bool = rng.random();
@@ -85,7 +74,6 @@ pub(super) fn carve_tributaries(
 
             let source = src_row as usize * width + src_col as usize;
 
-            // Skip if the candidate source already sits in water.
             if grid.water(source) > 0.0 {
                 continue;
             }

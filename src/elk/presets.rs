@@ -1,36 +1,11 @@
-//! Named slider presets — the three reference regimes the demo is built around,
-//! as one editable data table.
-//!
-//! A [`Preset`] bundles the knobs a player tunes — the [`RatioControls`] economy
-//! ratios, the [`GreenWave`] crest, and the drive-weight overrides on top of
-//! [`ElkParams::default`] — under a name. [`apply`] writes a preset onto the live
-//! resources (the UI's preset buttons), and the harness re-runs the same bundles
-//! to verify each still meets its goal (see the `preset_*` checks in
-//! `tests/herd_shape.rs`).
-//!
-//! **Updating a preset is a one-line edit here.** The values come from the
-//! `evaluate_bundle` sweeps in the harness; when the simulation changes, re-run
-//! those sweeps and edit the table below — nothing else moves.
-//!
-//! These are the **working set** the current model is tuned around: `Default` is the
-//! broken stage-1 herd (resource defaults — mills and overcrowds, no green-wave
-//! following), `Can cross` is the forage-sticky regime that rolls and fords the river
-//! on the *natural* drives (the green wave, not the pull), and `Optimized` is the same
-//! movement under leaner scarcity — a stage-3 score target. `Can cross`/`Optimized`
-//! run at **zero pull**: the crossing is earned by chasing the green-up front across
-//! the water, which the bounded swim cost makes passable.
+//! Named slider presets — the three reference regimes as one editable data table.
+//! Update a preset by editing this file; values come from the `evaluate_bundle` sweeps.
 
 use crate::grid::GreenWave;
 use super::components::ElkParams;
 use super::ratios::RatioControls;
 
-/// The forage-sticky perception the working presets share: the herd follows the
-/// green-up front (`freshness_weight`) and leapfrogs forward off depleted ground
-/// (`sightline_*`), reaching a little farther for its local gradient (`grass_radius`).
-/// Survival on the long march to the river comes from the slow-chew + low-drain
-/// standard physiology baked into `ElkParams::default`; these overrides are the
-/// *forage perception* tuned on top of it. The steer weights themselves live in
-/// `HerdParams`; economy (bite_ratio/regrow) and the green wave are set per preset.
+/// Shared forage-perception overrides: wider radius, freshness pull, forward sightline.
 fn forage_sticky(p: &mut ElkParams) {
     p.grass_radius = 8.0;
     p.freshness_weight = 4.0;
@@ -38,54 +13,34 @@ fn forage_sticky(p: &mut ElkParams) {
     p.sightline_weight = 3.0;
 }
 
-/// One named regime: the full set of tunables that define it.
 pub struct Preset {
-    /// Short label shown on the UI button.
     pub name: &'static str,
-    /// One-line hover description of what the regime is for.
     pub description: &'static str,
-    /// Economy ratios (bite / regrow / cross).
     pub ratios: RatioControls,
-    /// The travelling green-up crest.
     pub green_wave: GreenWave,
-    /// Drive-weight / perception overrides applied on top of `ElkParams::default()`.
-    /// A named `fn` (not a closure) so the table is `const`.
+    /// Named fn (not a closure) so the table is `const`.
     pub apply_params: fn(&mut ElkParams),
 }
 
-// ── Per-preset ElkParams overrides ────────────────────────────────────────────
-
-/// Default regime keeps every drive weight at the resource default — the broken
-/// stage-1 herd that mills, overcrowds, and never follows the green wave.
 fn default_params(_p: &mut ElkParams) {}
 
-/// Can-cross regime: the forage-sticky movement, nothing added — it rolls with the
-/// green-up front and fords the river on the natural drives at zero pull.
 fn can_cross_params(p: &mut ElkParams) {
     forage_sticky(p);
 }
 
-/// Optimized regime: same forage-sticky movement, tuned a touch harder (sharper
-/// pick, longer sight) for a herd that has to hold together under scarcity.
 fn optimized_params(p: &mut ElkParams) {
     forage_sticky(p);
     p.sightline_range = 28.0;
 }
 
-// ── The table ─────────────────────────────────────────────────────────────────
-//
-// GreenWave / RatioControls literals are spelled out (not `..default()`) so the
-// table is `const` and every value is visible in one place. Keep the DEFAULT rows
-// in sync with the resources' own `Default` impls.
-
-/// The three working regimes, in display order.
+// Literals (not `..default()`) so the table is `const` and every value is visible.
+// Keep DEFAULT rows in sync with the resources' own Default impls.
 pub const PRESETS: [Preset; 3] = [
     Preset {
         name: "Default",
         description: "Stock weights, no pull, plenty of food — with no eastward drive the \
                       herd mills and overcrowds the first segment, never crossing (stage 1, broken).",
         ratios: RatioControls { feed_ratio: 8.0, grass_regrow: 0.02, shrub_regrow: 0.0025, cross_ratio: 0.0 },
-        // Green wave unplugged (strength 0) to match GreenWave::default() — see grid.rs.
         green_wave: GreenWave { strength: 0.0, speed: 0.010, wavelength: 85.0 },
         apply_params: default_params,
     },
@@ -107,11 +62,8 @@ pub const PRESETS: [Preset; 3] = [
     },
 ];
 
-/// Write a preset onto the live resources. Resets `ElkParams` to default first so
-/// the preset is a *complete*, reproducible configuration (no leftover from a
-/// previous preset), then applies its overrides. The derived economy params
-/// (`graze_yield`/`intrinsic`/`migration`) are recomputed from `ratios` by
-/// `apply_ratios` each tick, so they are not set here.
+/// Write a preset onto the live resources. Resets `ElkParams` to default first so no
+/// leftover from a previous preset bleeds in; derived economy params recomputed by `apply_ratios`.
 pub fn apply(
     preset: &Preset,
     ratios: &mut RatioControls,
@@ -128,7 +80,6 @@ pub fn apply(
 mod tests {
     use super::*;
 
-    // Every preset has a non-empty, unique name (the UI buttons key off them).
     #[test]
     fn presets_have_unique_nonempty_names() {
         for p in &PRESETS {
@@ -141,8 +92,6 @@ mod tests {
         }
     }
 
-    // The Default preset reproduces the resources' own defaults — applying it is a
-    // true "reset to stock", so its table rows must track the Default impls.
     #[test]
     fn default_preset_reproduces_resource_defaults() {
         let mut ratios = RatioControls { feed_ratio: 0.0, grass_regrow: 0.0, shrub_regrow: 0.0, cross_ratio: 0.0 };
@@ -164,7 +113,6 @@ mod tests {
         assert_eq!(params.grass_radius, ElkParams::default().grass_radius, "apply() must reset ElkParams");
     }
 
-    // Applying a non-default preset writes its bundle onto the resources.
     #[test]
     fn apply_writes_the_bundle() {
         let can_cross = &PRESETS[1];

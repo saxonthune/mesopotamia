@@ -1,130 +1,68 @@
-//! Declarative authoring knobs for the watershed plus the flow-direction enum.
-//! A `RiverSpec` (its `seed` field included) fully determines the water field;
-//! same spec → same world.
+//! `RiverSpec` — declarative authoring knobs for the watershed. Same spec → same world.
 
 use rand::Rng;
 
-/// Default watershed seed used by `RiverSpec::default()`. The full water field is
-/// a pure function of the spec, so overriding `RiverSpec::seed` yields a fresh
-/// river network from the same knobs.
 pub(super) const RIVER_SEED: u64 = 0xBEDA;
 
-/// Directional cost constants: against-heading steps are penalised by this much
-/// on top of the base noise cost (scale ~1–1001). Low bendiness → high penalty
-/// (river runs straight); high bendiness → low penalty (river wanders freely).
+// Directional penalty range: high = straight river, low = wanders freely.
 pub(super) const PEN_HIGH: u32 = 5000;
 pub(super) const PEN_LOW: u32 = 100;
 
-/// Primary flow direction for the river. Only `Down` (top→bottom) is exercised;
-/// the enum is kept minimal so a future `Right` variant is a small addition.
 pub enum Heading {
     Down,
 }
 
-/// Declarative authoring knobs for the watershed. One `RiverSpec` plus the
-/// `RIVER_SEED` fully determines the water field; same pair → same world.
-///
-/// Could become a Bevy `Resource` later to expose knobs to the editor UI.
 pub struct RiverSpec {
-    /// Seed for the watershed RNG. All channel, tributary, oxbow, and lake RNG
-    /// derives from this, so the whole water field is a pure function of the spec.
     pub seed: u64,
-    /// Number of main rivers (default 3 — evenly spaced for elk crossings).
-    /// Entry columns are distributed across the width as width*(i+1)/(count+1),
-    /// so spacing tracks the grid size instead of a fixed column period.
     pub count: usize,
-    /// Primary flow direction (default `Down`: top-edge → bottom-edge).
     pub heading: Heading,
-    /// Lateral lean: exit_col = entry_col + drift * height (default ~0.25).
+    /// exit_col = entry_col + drift * height
     pub drift: f32,
-    /// [0, 1] single knob: 0 = nearly straight / broad bends, 1 = wanders far.
-    /// Drives both the smoothing-pass count (wavelength) and the directional-
-    /// penalty weight — one intuitive control instead of two separate dials.
+    /// [0,1]: 0 = straight, 1 = wanders. Drives smoothing-pass count and penalty weight.
     pub bendiness: f32,
-    /// Domain-warp displacement for the cost field, in cells. Bends the otherwise
-    /// straight cost valleys into sinuous ones, so meanders emerge from the field
-    /// rather than from per-step jitter. 0 disables warping. Larger = wider swings.
+    /// Domain-warp displacement in cells; bends cost valleys into sinuous ones. 0 disables.
     pub warp_amp: f32,
-    /// Smoothing passes for the two domain-warp displacement fields — their
-    /// wavelength. More passes give broader, lower-frequency meanders; fewer give
-    /// tighter wiggle. Kept above `bendiness`'s base passes so the warp swings the
-    /// valley coherently over a long span instead of adding high-frequency noise.
+    /// Smoothing passes for the warp displacement fields (wavelength).
     pub warp_passes: usize,
-    /// Cells between successive feeders along a main centerline.
     pub trib_spacing: usize,
-    /// Lateral source offset / nominal feeder length in cells.
     pub trib_length: isize,
-    /// Full-depth core radius (cells within the centerline that get max water).
     pub core: isize,
-    /// BFS reach for the water-proximity carrying-capacity field around river and
-    /// tributary channels — the number of cells the grass bank fades over.
     pub water_reach: u32,
-    /// BFS reach for the bank around lake cells, kept shorter than `water_reach` so
-    /// lakes carry shallower banks — fewer rings of grass than a river of the same
-    /// depth.
+    /// Shorter than `water_reach` so lake banks carry fewer grass rings than river banks.
     pub lake_reach: u32,
     pub trib_radius: isize,
     pub trib_depth: f32,
     pub oxbow_count: usize,
     pub oxbow_radius: isize,
     pub oxbow_depth: f32,
-    /// Water level at a full riffle (shallow end of the depth range).
     pub riffle_depth: f32,
-    /// Bank radius at a riffle (wide).
     pub riffle_radius: isize,
-    /// Bank radius at a pool (narrow).
     pub pool_radius: isize,
-    /// Water cells at or below this level are tagged as fordable crossings.
     pub riffle_ford_threshold: f32,
-    /// 1-D smoothing passes for the per-river riffle/pool profile.
     pub riffle_passes: usize,
-    /// Fractional jitter applied to each river's drift: drift_i = drift * (1 ± spread).
     pub drift_spread: f32,
-    /// Additive jitter on each river's bendiness (clamped to [0, 1]).
     pub bendiness_spread: f32,
-    /// Number of big lakes, seated at blue-noise positions (Mitchell's best-candidate)
-    /// among genuinely interior cells (high distance-to-water) so they pool in the
-    /// centers of the open spaces the rivers leave.
+    /// Blue-noise placed at interior cells (high dist-to-water) so they pool in open pockets.
     pub big_lake_count: usize,
-    /// Base metaball kernel radius for each big lake, in cells. The first kernel sits
-    /// at the lake center with this radius; the summed metaball field, cut at
-    /// `lake_iso`, is the basin footprint and its depth.
+    /// Metaball kernel radius; the summed field cut at `lake_iso` is the footprint and depth.
     pub big_lake_radius: isize,
-    /// Number of minor scattered lakes, seated at blue-noise positions among all
-    /// lake sites (no interior requirement) and repelled by the big-lake centers.
+    /// Repelled by big-lake centers so minors don't land on them.
     pub minor_lake_count: usize,
-    /// Base metaball kernel radius for each minor lake, in cells — smaller than
-    /// `big_lake_radius` so minors read as small pools.
     pub minor_lake_radius: isize,
-    /// Fraction of the max distance-to-water a cell must clear to be a big-lake
-    /// candidate (default 0.6): only cells deep in the open space between rivers
-    /// qualify, so big lakes sit at the interior peaks.
+    /// Fraction of max dist-to-water a cell must clear to qualify as a big-lake site.
     pub big_lake_dist_frac: f32,
-    /// Max lobe count per lake (range `1..=lake_lobes_max`, biased low). 1 reads
-    /// round; 2+ offset kernels read as a peanut or oblong bulge.
+    /// 1 = round; 2+ offset kernels read as peanut/bulge.
     pub lake_lobes_max: usize,
-    /// Max kernel offset in cells for extra lobes. Small offsets bulge, medium ones
-    /// read as a peanut — the knob that controls non-circularity.
+    /// Max offset in cells for extra lobes — controls non-circularity.
     pub lake_offset: f32,
-    /// Iso-level the summed metaball field is cut at: cells whose field is below it
-    /// hold no lake water, above it take a depth rising with the field.
+    /// Metaball iso-level; field below it = no water, above it = depth rising with field.
     pub lake_iso: f32,
-    /// Best-candidate sample count K: each lake after the first is the farthest of
-    /// `lake_samples` random candidates from the lakes already placed. Shared across
-    /// both passes.
     pub lake_samples: usize,
-    /// Confluence pairs `(child, parent)`: the child main merges into the parent
-    /// instead of running to the bottom edge. Requires `parent < child` so the
-    /// parent is already carved when the child is carved (mains carved in index order).
+    /// `(child, parent)` pairs. Requires `parent < child` so the parent is carved first.
     pub confluence_pairs: Vec<(usize, usize)>,
 }
 
-/// Build a random confluence set for `count` mains: one randomly chosen child
-/// (index ≥ 1) merges into a randomly chosen earlier main, so *which* two rivers
-/// collide varies per world instead of always being mains 0 and 1. The
-/// `parent < child` invariant holds by construction (parent is drawn from
-/// `0..child`), so the parent is already carved when the child seeks it. Returns
-/// empty for `count < 2` — nothing to merge into.
+// `parent < child` by construction so the parent is carved before the child seeks it.
 pub fn random_confluences(count: usize, rng: &mut impl Rng) -> Vec<(usize, usize)> {
     if count < 2 {
         return Vec::new();

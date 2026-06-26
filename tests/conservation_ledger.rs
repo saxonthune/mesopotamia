@@ -1,11 +1,7 @@
 use mesopotamia::elk::{energy_expected_delta, energy_ledger_closes, population_balances, EnergyFlows, Herds};
 use mesopotamia::sim_harness::{elk_flows, make_app, total_elk_energy};
 
-// ── Invariant 1: population conservation identity ──────────────────────────
-
-/// For every cohort, alive + deaths + departures must equal the number of elk
-/// originally spawned in that cohort's wave. Checked after the full run so that
-/// tally_herds has had time to recount every cohort.
+// checked after the full run so tally_herds has had time to recount every cohort
 #[test]
 fn population_identity_holds_after_run() {
     const TICKS: u32 = 300;
@@ -18,7 +14,6 @@ fn population_identity_holds_after_run() {
     let world = app.world();
     let herds = world.get_resource::<Herds>().unwrap();
 
-    // Print cohort totals for inspection on failure.
     for (code, c) in &herds.cohorts {
         let sum = c.alive + c.deaths + c.departures;
         if sum != c.spawned {
@@ -31,23 +26,10 @@ fn population_identity_holds_after_run() {
     assert!(population_balances(herds), "population identity violated — see cohort breakdown above");
 }
 
-// ── Invariant 2: energy ledger closes per tick ─────────────────────────────
-
-/// Run a headless sim for N ticks and assert the energy ledger closes each
-/// tick within a small floating-point tolerance. All source/sink flows are
-/// tracked by the simulation systems (intake, drain, swim, births, starvation
-/// residuals, departure energy), so the expected delta should match the
-/// measured delta with only floating-point rounding error.
-///
-/// If a genuine leak is found the test will fail with the accumulated error,
-/// pointing to the leaky flow.
 #[test]
 fn energy_ledger_closes_each_tick() {
     const TICKS: u32 = 300;
-    // Floating-point rounding across many elk and operations accumulates error.
-    // Each operation has ~1e-7 relative error; with ~200 elk over 300 ticks,
-    // the expected accumulated drift is well under 0.01. A tolerance of 0.01
-    // per tick is tight enough to catch a genuine leak.
+    // ~1e-7 relative error × ~200 elk × 300 ticks accumulates well under 0.01; tight enough to catch a real leak
     const TOL_PER_TICK: f32 = 0.01;
 
     let mut app = make_app();
@@ -68,7 +50,6 @@ fn energy_ledger_closes_each_tick() {
         let after = total_elk_energy(app.world());
         let flows = elk_flows(app.world());
 
-        // Only check ticks where something is happening.
         if before > 0.0 || flows.births > 0.0 {
             let expected = energy_expected_delta(&flows);
             let error = (after - before - expected).abs();

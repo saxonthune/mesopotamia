@@ -11,41 +11,32 @@ use super::color::elk_color;
 
 const TILE_SIZE: f32 = 16.0;
 
-// Population lifecycle tuning.
-pub const TARGET_POPULATION: usize = 200; // fixed headcount — does NOT scale with grid area,
-// so a bigger world means the same herds spread thinner rather than 4× more elk
-const MAX_POPULATION: usize = 240; // hard ceiling: spawning stops above this no matter how
-// far the creeping target has climbed
-const WAVE_INTERVAL: u32 = 280; // ticks between successive spawn waves
-const PACK_BASE: usize = 20; // elk per wave at the start
-const TARGET_GROWTH_PERIOD: u32 = 1200; // +1 to target population per this many ticks
-const PACK_GROWTH_PERIOD: u32 = 2400; // +1 to wave size per this many ticks
+pub const TARGET_POPULATION: usize = 200; // fixed headcount — does NOT scale with grid area
+const MAX_POPULATION: usize = 240;
+const WAVE_INTERVAL: u32 = 280;
+const PACK_BASE: usize = 20;
+const TARGET_GROWTH_PERIOD: u32 = 1200;
+const PACK_GROWTH_PERIOD: u32 = 2400;
 pub const EDGE_COL: usize = GRID_WIDTH - 2; // the two farthest columns count as "at the edge"
-const EDGE_TICKS: u32 = 3; // consecutive ticks in that band before the elk leaves the map
+const EDGE_TICKS: u32 = 3;
 
-// Spawn-position policy. Herds spawn from a single anchor that random-walks
-// inside a left-edge zone, so successive packs trail one another along the path
-// of grass the last pack grazed — with an occasional jump to a fresh spot.
-const SPAWN_ZONE_COLS: f32 = 6.0; // anchor stays within the left N columns
-const ANCHOR_WALK_MIN: f32 = 18.0; // each wave's anchor moves at least this far up/down...
-const ANCHOR_WALK_MAX: f32 = 40.0; // ...and at most this far, so consecutive herds don't pile up
-const HERD_SPREAD: f32 = 3.0; // blob half-width scattered around the anchor
-const SIZE_JITTER: f32 = 0.5; // herd size varies by ±this fraction of the base
+// Anchor random-walks inside a left-edge zone; occasional jump to a fresh spot.
+const SPAWN_ZONE_COLS: f32 = 6.0;
+const ANCHOR_WALK_MIN: f32 = 18.0;
+const ANCHOR_WALK_MAX: f32 = 40.0;
+const HERD_SPREAD: f32 = 3.0;
+const SIZE_JITTER: f32 = 0.5;
 const JUMP_PROB: f32 = 0.2; // chance each wave to reseed the anchor at random
 
-/// Vary a wave's headcount: `base` scaled by a uniform factor in
-/// `[1 - jitter, 1 + jitter]`, never below 1.
 fn herd_size(base: usize, rng: &mut impl Rng, jitter: f32) -> usize {
     let factor = rng.random_range(1.0 - jitter..1.0 + jitter);
     ((base as f32 * factor).round() as usize).max(1)
 }
 
-/// The first wave's anchor: centered vertically, random column within the zone.
 fn seed_anchor(rng: &mut impl Rng, zone_cols: f32) -> Vec2 {
     Vec2::new(rng.random_range(0.0..zone_cols), (GRID_HEIGHT / 2) as f32)
 }
 
-/// A fresh anchor anywhere in the left spawn zone (the occasional reseed jump).
 fn random_anchor(rng: &mut impl Rng, zone_cols: f32) -> Vec2 {
     Vec2::new(
         rng.random_range(0.0..zone_cols),
@@ -53,10 +44,7 @@ fn random_anchor(rng: &mut impl Rng, zone_cols: f32) -> Vec2 {
     )
 }
 
-/// Random-walk the anchor vertically by a *guaranteed* step in
-/// `[min_walk, max_walk]` (up or down), reflecting off the top/bottom edges so
-/// the displacement survives — consecutive herds never land on one another. The
-/// column is re-jittered freely within the narrow zone.
+/// Guaranteed vertical step in `[min_walk, max_walk]`, reflecting at grid edges.
 fn step_anchor(anchor: Vec2, rng: &mut impl Rng, min_walk: f32, max_walk: f32, zone_cols: f32) -> Vec2 {
     let max_row = (GRID_HEIGHT - 1) as f32;
     let mag = rng.random_range(min_walk..max_walk);
@@ -71,8 +59,6 @@ fn step_anchor(anchor: Vec2, rng: &mut impl Rng, min_walk: f32, max_walk: f32, z
     Vec2::new(rng.random_range(0.0..zone_cols), row.clamp(0.0, max_row))
 }
 
-/// Scatter `size` grid cells in a square blob of half-width `spread` around the
-/// anchor, each clamped onto the grid.
 fn scatter(anchor: Vec2, size: usize, rng: &mut impl Rng, spread: f32) -> Vec<usize> {
     (0..size)
         .map(|_| {
@@ -87,13 +73,9 @@ fn scatter(anchor: Vec2, size: usize, rng: &mut impl Rng, spread: f32) -> Vec<us
         .collect()
 }
 
-/// Spawn one cohort of elk — pack `code`, slot `slot` (color/identity) — one
-/// entity per cell in `cells`.
 fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
     let color = elk_color(slot as usize, false);
     for &cell in cells {
-        // Start settled on the spawn cell; the herding model commits whole-cell steps
-        // from here and keeps `prev_cell`/`move_t` in sync for the render slide.
         commands.spawn((
             Sprite::from_color(color, Vec2::splat(TILE_SIZE * 0.7)),
             Transform::from_xyz(0.0, 0.0, 1.0),
@@ -114,7 +96,6 @@ fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
     }
 }
 
-/// Recompute live counts and energy totals for every cohort each frame.
 pub(super) fn tally_herds(mut herds: ResMut<Herds>, elk: Query<&Elk>) {
     for c in herds.cohorts.values_mut() {
         c.alive = 0;
@@ -131,8 +112,6 @@ pub(super) fn tally_herds(mut herds: ResMut<Herds>, elk: Query<&Elk>) {
     }
 }
 
-/// Spawns cohorts in spaced waves whenever the population sits below a target.
-/// Both the target and the wave size creep upward with elapsed time.
 pub(super) fn spawn_waves(
     mut commands: Commands,
     mut spawner: ResMut<Spawner>,
@@ -146,8 +125,6 @@ pub(super) fn spawn_waves(
         return;
     }
 
-    // The creeping target grows with time but is capped: spawning halts once the
-    // population reaches the hard ceiling, however high the target has climbed.
     let target = (TARGET_POPULATION + (spawner.elapsed / TARGET_GROWTH_PERIOD) as usize)
         .min(MAX_POPULATION);
     let base = PACK_BASE + (spawner.elapsed / PACK_GROWTH_PERIOD) as usize;
@@ -163,8 +140,6 @@ pub(super) fn spawn_waves(
     let code = spawner.rng.random_range(0..0x0100_0000u32); // 6 hex digits
     let size = herd_size(base, &mut spawner.rng, SIZE_JITTER);
 
-    // The first wave starts mid-height; later waves random-walk from the last
-    // spot, with an occasional jump to a fresh spot so the trail doesn't ossify.
     let prev_anchor = spawner.anchor;
     let anchor = match prev_anchor {
         None => seed_anchor(&mut spawner.rng, SPAWN_ZONE_COLS),
@@ -180,8 +155,6 @@ pub(super) fn spawn_waves(
     herds.order.push(code);
     flows.births += size as f32;
 
-    // Prune the oldest *dead* cohorts once the registry grows past its cap;
-    // never evict a living herd.
     let Herds { cohorts, order } = &mut *herds;
     while order.len() > MAX_COHORTS {
         let victim = order
@@ -199,9 +172,7 @@ pub(super) fn spawn_waves(
     spawner.cooldown = WAVE_INTERVAL;
 }
 
-/// On leaving `Running` (a regenerate), despawn every elk and reset the herd
-/// lifecycle resources so the new world starts from an empty range. The tuned
-/// `ElkParams` are deliberately left untouched.
+/// Despawns elk and resets lifecycle resources. `ElkParams` deliberately left untouched.
 pub(super) fn teardown(
     mut commands: Commands,
     elk: Query<Entity, With<Elk>>,
@@ -215,8 +186,6 @@ pub(super) fn teardown(
     *herds = Herds::default();
 }
 
-/// Despawns any elk that has lingered at the far edge long enough to count as
-/// having left the map. Elk despawn individually, so a partial pack empties out.
 pub(super) fn cull(
     mut commands: Commands,
     grid: Res<Grid>,
@@ -226,9 +195,7 @@ pub(super) fn cull(
     mut event_log: ResMut<EventLog>,
     spawner: Res<Spawner>,
 ) {
-    // The far edge is the two rightmost columns of the *runtime* grid, not the
-    // compile-time GRID_WIDTH — so despawn-at-edge works on any map size (the
-    // small lab maps as well as the full world).
+    // Runtime grid width, not compile-time GRID_WIDTH — works on any map size.
     let width = grid.width();
     let edge_col = width.saturating_sub(2);
     for (entity, mut elk) in &mut elk {
@@ -239,8 +206,6 @@ pub(super) fn cull(
                     c.departures += 1;
                 }
                 flows.departures_energy += elk.energy;
-                // A departure is a scored win — the mirror of `Starved` in
-                // `metabolize`. The score system folds both into the rating.
                 event_log.push(Event {
                     tick: spawner.elapsed as u64,
                     cell: elk.cell,
@@ -300,8 +265,7 @@ mod tests {
     #[test]
     fn step_anchor_stays_in_grid() {
         let mut r = rng();
-        // Start at a corner so the walk is pushed against the edges.
-        let mut a = Vec2::new(0.0, 0.0);
+            let mut a = Vec2::new(0.0, 0.0);
         for _ in 0..500 {
             a = step_anchor(a, &mut r, ANCHOR_WALK_MIN, ANCHOR_WALK_MAX, SPAWN_ZONE_COLS);
             assert!((0.0..SPAWN_ZONE_COLS).contains(&a.x), "col {} escaped zone", a.x);
@@ -312,8 +276,7 @@ mod tests {
     #[test]
     fn step_anchor_always_displaces_vertically() {
         let mut r = rng();
-        // From a comfortable mid-row spot (no edge reflection), every step must
-        // move at least the minimum so herds never spawn on top of each other.
+        // Mid-row start avoids edge reflection so minimum step is always observable.
         let start = Vec2::new(2.0, (GRID_HEIGHT / 2) as f32);
         for _ in 0..500 {
             let next = step_anchor(start, &mut r, ANCHOR_WALK_MIN, ANCHOR_WALK_MAX, SPAWN_ZONE_COLS);
@@ -344,7 +307,6 @@ mod tests {
     #[test]
     fn scatter_clamps_at_grid_corner() {
         let mut r = rng();
-        // Anchor in the top-left corner: negative offsets must clamp, not wrap.
         let cells = scatter(Vec2::new(0.0, 0.0), 50, &mut r, HERD_SPREAD);
         for c in cells {
             let (col, row) = (c % GRID_WIDTH, c / GRID_WIDTH);
