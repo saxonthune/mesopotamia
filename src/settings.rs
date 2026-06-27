@@ -2,6 +2,7 @@
 //! On wasm, `load` is a no-op — defaults always apply.
 
 use bevy::prelude::*;
+#[cfg(not(target_arch = "wasm32"))]
 use bevy::window::PrimaryWindow;
 use serde::Deserialize;
 

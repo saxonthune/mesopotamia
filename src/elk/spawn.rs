@@ -3,8 +3,9 @@ use rand::Rng;
 
 use crate::events::{Event, EventKind, EventLog};
 use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH};
+use crate::worldgen::testmap::WorldSource;
 
-use super::components::{Cohort, Elk, Herds, Spawner, MAX_COHORTS};
+use super::components::{Cohort, Elk, Herds, ManualSpawn, Spawner, MAX_COHORTS};
 use super::herding::Herding;
 use super::ledger::EnergyFlows;
 use super::color::elk_color;
@@ -73,7 +74,11 @@ fn scatter(anchor: Vec2, size: usize, rng: &mut impl Rng, spread: f32) -> Vec<us
         .collect()
 }
 
-fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
+/// ±`RESTLESS_SPREAD` around neutral: the per-elk leave-bar spread that gives the herd a
+/// front-to-back personality gradient (restless elk pull ahead, content elk trail).
+const RESTLESS_SPREAD: f32 = 0.3;
+
+fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize], rng: &mut impl Rng) {
     let color = elk_color(slot as usize, false);
     for &cell in cells {
         commands.spawn((
@@ -91,7 +96,10 @@ fn spawn_cohort(commands: &mut Commands, slot: u8, code: u32, cells: &[usize]) {
                 grazing: false,
                 at_edge: 0,
             },
-            Herding::default(),
+            Herding {
+                restlessness: rng.random_range(1.0 - RESTLESS_SPREAD..1.0 + RESTLESS_SPREAD),
+                ..Default::default()
+            },
         ));
     }
 }
@@ -166,10 +174,59 @@ pub(super) fn spawn_waves(
         cohorts.remove(&code);
     }
 
-    spawn_cohort(&mut commands, slot, code, &cells);
+    spawn_cohort(&mut commands, slot, code, &cells, &mut spawner.rng);
 
     spawner.next_pack = (slot + 1) % super::PACK_COUNT as u8;
     spawner.cooldown = WAVE_INTERVAL;
+}
+
+/// Auto-spawn waves only on the procedural world; test maps spawn by hand via the UI.
+/// `Option` so probe apps without `WorldgenPlugin` (no `WorldSource`) keep auto-spawning.
+pub(super) fn auto_spawn_enabled(source: Option<Res<WorldSource>>) -> bool {
+    !matches!(source.as_deref(), Some(WorldSource::TestMap(_)))
+}
+
+/// Scatter `count` elk near the left edge, vertically centred — works on any grid size.
+fn left_zone_cells(grid: &Grid, count: u32, rng: &mut impl Rng) -> Vec<usize> {
+    let (w, h) = (grid.width(), grid.height());
+    let anchor_col = (w as f32 * 0.04).round().max(1.0);
+    let anchor_row = h as f32 / 2.0;
+    let spread = (h as f32 / 5.0).max(2.0);
+    (0..count)
+        .map(|_| {
+            let col = (anchor_col + rng.random_range(-1.5..1.5)).round().clamp(0.0, (w - 1) as f32) as usize;
+            let row = (anchor_row + rng.random_range(-spread..spread)).round().clamp(0.0, (h - 1) as f32) as usize;
+            row * w + col
+        })
+        .collect()
+}
+
+/// Spawn one cohort of `ManualSpawn.count` elk when the UI button has fired.
+pub(super) fn manual_spawn(
+    mut commands: Commands,
+    mut req: ResMut<ManualSpawn>,
+    mut spawner: ResMut<Spawner>,
+    mut herds: ResMut<Herds>,
+    mut flows: ResMut<EnergyFlows>,
+    grid: Res<Grid>,
+) {
+    if !req.fire {
+        return;
+    }
+    req.fire = false;
+    let count = req.count.clamp(1, 100);
+
+    let spawner = &mut *spawner;
+    let slot = spawner.next_pack;
+    let code = spawner.rng.random_range(0..0x0100_0000u32);
+    let cells = left_zone_cells(&grid, count, &mut spawner.rng);
+
+    herds.cohorts.insert(code, Cohort { slot, spawned: count, ..default() });
+    herds.order.push(code);
+    flows.births += count as f32;
+
+    spawn_cohort(&mut commands, slot, code, &cells, &mut spawner.rng);
+    spawner.next_pack = (slot + 1) % super::PACK_COUNT as u8;
 }
 
 /// Despawns elk and resets lifecycle resources. `ElkParams` deliberately left untouched.

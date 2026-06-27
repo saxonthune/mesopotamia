@@ -86,7 +86,7 @@ The correct shape is always the same: **model the cause, let the phenomenon emer
 *driver* is legitimate — the world-unfold takes a seed, co-evolution takes an environment, and a
 green-up may take a moving seasonal signal, because the sun is a real cause external to the
 ecosystem. What is illegitimate is encoding the *result*. So a green wave is built by letting a
-simple moving growth-condition act on the grass field through the same local growth, senescence, and
+simple moving growth-condition act on the grass field through the same local growth and
 diffusion rules already present, with grazing feeding back into it — and the band, its timing, and
 its coupling to the herd fall out. If a behaviour has to be installed to appear, that is the signal
 that its generative conditions have not yet been found, not that it needs a controller.

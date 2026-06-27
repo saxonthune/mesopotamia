@@ -255,8 +255,8 @@ fn setup(
     let flower_start = flowers.tiles[0][0].clone();
     commands.insert_resource(flowers);
     let shrubs = build_shrub_palette(&mut images);
-    // Separate cameras: world camera gets a clipped viewport; egui camera must stay
-    // full-window or the UI shrinks with it. See bevy_egui side_panel example.
+    // Separate cameras: world camera fills the window, egui camera composites the UI on top.
+    // Every UI surface is a screen-space overlay, so neither camera's viewport reflows with the panels.
     egui_settings.auto_create_primary_context = false;
 
     commands.spawn((Camera2d, WorldCamera));
@@ -529,22 +529,13 @@ fn sync_grass_tiles(
     }
 }
 
-fn cell_pos(cell: usize) -> Vec2 {
-    let col = (cell % GRID_WIDTH) as f32;
-    let row = (cell / GRID_WIDTH) as f32;
-    Vec2::new(
-        (col - GRID_WIDTH as f32 / 2.0 + 0.5) * TILE_SIZE,
-        (row - GRID_HEIGHT as f32 / 2.0 + 0.5) * TILE_SIZE,
-    )
-}
-
 // Lerps prev_cell→cell using the fixed-step overstep fraction for smooth render-rate motion.
-fn sync_elk_transform(time: Res<Time<Fixed>>, mut elk: Query<(&Elk, &mut Transform)>) {
+fn sync_elk_transform(time: Res<Time<Fixed>>, grid: Res<Grid>, mut elk: Query<(&Elk, &mut Transform)>) {
     let over = time.overstep_fraction();
     for (elk, mut transform) in &mut elk {
         let t_start = (elk.move_t - elk.move_rate).max(0.0);
         let t = (t_start + elk.move_rate * over).clamp(0.0, 1.0);
-        let p = cell_pos(elk.prev_cell).lerp(cell_pos(elk.cell), t);
+        let p = cell_world_pos(&grid, elk.prev_cell).lerp(cell_world_pos(&grid, elk.cell), t);
         transform.translation.x = p.x;
         transform.translation.y = p.y;
     }

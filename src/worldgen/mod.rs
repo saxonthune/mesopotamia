@@ -6,6 +6,7 @@ mod rough;
 mod soil;
 mod soil_texture;
 mod soil_type;
+pub mod testmap;
 mod vegetation;
 
 use bevy::prelude::*;
@@ -16,12 +17,15 @@ use crate::grid::Grid;
 use crate::river::{generate_water, random_confluences, RiverSpec};
 use crate::sim::Sim;
 
+use testmap::WorldSource;
+
 pub struct WorldgenPlugin;
 
 impl Plugin for WorldgenPlugin {
     fn build(&self, app: &mut App) {
         // Default: random OS seed each run; overwrite `WorldSeed` before `generate_world` to pin or replay.
         app.insert_resource(WorldSeed(rand::random()))
+            .init_resource::<WorldSource>()
             .add_systems(OnEnter(Sim::Generating), generate_world);
     }
 }
@@ -58,8 +62,19 @@ impl WorldSpec {
 }
 
 /// Layer call order is the contract: each step reads fields the prior step wrote.
-fn generate_world(mut grid: ResMut<Grid>, seed: Res<WorldSeed>, mut next: ResMut<NextState<Sim>>) {
+fn generate_world(
+    mut grid: ResMut<Grid>,
+    seed: Res<WorldSeed>,
+    source: Res<WorldSource>,
+    mut next: ResMut<NextState<Sim>>,
+) {
     grid.reset();
+    if let WorldSource::TestMap(map) = *source {
+        info!("worldgen test map = {}", map.name);
+        (map.build)(&mut grid);
+        next.set(Sim::Running);
+        return;
+    }
     info!("worldgen master seed = {:#018x}", seed.0);
     let spec = WorldSpec::from_seed(seed.0);
 

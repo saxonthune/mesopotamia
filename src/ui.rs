@@ -1,16 +1,16 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use bevy::camera::Viewport;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
 use crate::elk::abundance::AbundanceParams;
-use crate::elk::{Elk, ElkParams, Herding, Herds, RatioControls, Score};
+use crate::elk::{Elk, ElkParams, Herding, Herds, ManualSpawn, RatioControls, Score};
 use crate::droppings::Fertility;
 use crate::events::EventLog;
-use crate::grid::{GreenWave, Grid};
-use crate::history::History;
+use crate::grid::Grid;
+use crate::metrics::MetricLog;
 use crate::render::{cell_world_pos, WorldCamera};
+use crate::ui_kit::{group_row, render_plot, window, Group, PlotSpec, TitledGroup};
 use crate::unit_select::{draw_elk_silhouette, herd_color32, SelectionParams, UnitSelectState};
 
 pub struct UiPlugin;
@@ -18,25 +18,15 @@ pub struct UiPlugin;
 impl Plugin for UiPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<UiState>()
-            .init_resource::<History>()
-            .init_resource::<WorldViewRect>()
+            // InstrumentPlugin owns sampling; init here too so the UI never hard-depends on plugin order.
+            .init_resource::<MetricLog>()
             // pick_herd (world click → select) runs before the panel draws it.
-            .add_systems(Update, (pick_herd, keyboard_speed, crate::history::sample_history))
+            .add_systems(Update, (pick_herd, keyboard_speed))
             // must be in EguiPrimaryContextPass — context must exist when glyphs first render
             .add_systems(EguiPrimaryContextPass, install_icon_font)
-            .add_systems(
-                EguiPrimaryContextPass,
-                // .chain(): set_camera_viewport must run after graphs_bar and control_panel
-                (graphs_bar, control_panel, set_camera_viewport).chain(),
-            );
+            // Every surface is a screen-space overlay; the world camera fills the window and no panel reserves space.
+            .add_systems(EguiPrimaryContextPass, (graphs_bar, control_panel));
     }
-}
-
-/// Rect (logical pts) the world camera fills: top-bar bottom → window bottom, ignoring dock height.
-#[derive(Resource, Default)]
-struct WorldViewRect {
-    min: Vec2,
-    size: Vec2,
 }
 
 /// Field overlays rendered in the world view. `ALL` drives the toggle row.
@@ -111,70 +101,10 @@ impl Graph {
     }
 }
 
-fn slider(ui: &mut egui::Ui, value: &mut f32, range: std::ops::RangeInclusive<f32>, label: &str) {
-    ui.add(egui::Slider::new(value, range).text(label));
-}
-
-struct PlotSpec<'a> {
-    /// must be unique within the panel (egui_plot requirement)
-    id: &'a str,
-    height: f32,
-    /// (display name, ring-buffer)
-    series: Vec<(&'a str, &'a std::collections::VecDeque<f32>)>,
-}
-
-#[allow(dead_code)]
-enum Item<'a> {
-    Slider { value: &'a mut f32, range: std::ops::RangeInclusive<f32>, label: &'a str },
-    Label(String),
-    Separator,
-    Plot(PlotSpec<'a>),
-    Section { title: &'a str, items: Vec<Item<'a>>, default_open: bool },
-    Custom(Box<dyn FnOnce(&mut egui::Ui) + 'a>),
-}
-
-fn render_items(ui: &mut egui::Ui, items: Vec<Item>) {
-    for item in items {
-        match item {
-            Item::Slider { value, range, label } => slider(ui, value, range, label),
-            Item::Label(text) => { ui.label(text); }
-            Item::Separator => { ui.separator(); }
-            Item::Plot(spec) => render_plot(ui, spec),
-            Item::Section { title, items, default_open } => {
-                egui::CollapsingHeader::new(title)
-                    .default_open(default_open)
-                    .show(ui, |ui| render_items(ui, items));
-            }
-            Item::Custom(f) => f(ui),
-        }
-    }
-}
-
-fn render_plot(ui: &mut egui::Ui, spec: PlotSpec) {
-    use egui_plot::{Line, Plot, PlotPoints};
-    // lock view: plot auto-fits each frame; no pan/zoom
-    Plot::new(spec.id)
-        .height(spec.height)
-        .allow_scroll(false)
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_boxed_zoom(false)
-        .show(ui, |plot_ui| {
-            for (name, data) in spec.series {
-                let points: PlotPoints = data
-                    .iter()
-                    .enumerate()
-                    .map(|(i, &v)| [i as f64, v as f64])
-                    .collect();
-                plot_ui.line(Line::new(name, points));
-            }
-        });
-}
-
 /// Colour ramp ceiling — not a cap on the score.
 const SCORE_BRIGHT: f32 = 120.0;
 
-fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
+fn render_score_gauge(ui: &mut egui::Ui, score: &Score, log: &MetricLog) {
     use egui::{Color32, RichText};
 
     let lit = (score.current / SCORE_BRIGHT).clamp(0.0, 1.0);
@@ -196,13 +126,16 @@ fn render_score_gauge(ui: &mut egui::Ui, score: &Score, history: &History) {
         });
     });
 
+    // LOOKBACK is in samples; InstrumentPlugin samples once per sim tick (10 Hz) → ~30 s window.
     const LOOKBACK: usize = 300;
     const EPS_POP: f32 = 1.0;
     const EPS_ENERGY: f32 = 0.005;
-    let pop = history.population.back().copied().unwrap_or(0.0);
-    let pop_arr = trend_arrow(trend(&history.population, LOOKBACK, EPS_POP));
-    let energy = history.avg_energy.back().copied().unwrap_or(0.0);
-    let energy_arr = trend_arrow(trend(&history.avg_energy, LOOKBACK, EPS_ENERGY));
+    let population = log.column("population");
+    let avg_energy = log.column("mean_energy");
+    let pop = population.last().copied().unwrap_or(0.0);
+    let pop_arr = trend_arrow(trend(&population, LOOKBACK, EPS_POP));
+    let energy = avg_energy.last().copied().unwrap_or(0.0);
+    let energy_arr = trend_arrow(trend(&avg_energy, LOOKBACK, EPS_ENERGY));
     ui.label(
         RichText::new(format!(
             "pop {pop:.0} {pop_arr}   energy {energy:.2} {energy_arr}"
@@ -259,57 +192,18 @@ fn render_difficulty(ui: &mut egui::Ui, difficulty: f32) {
     });
 }
 
-struct Panel<'a> {
-    title: &'a str,
-    /// flex-basis — panels wrap to a new row when full
-    width: f32,
-    items: Vec<Item<'a>>,
-}
-
-impl<'a> Panel<'a> {
-    const DEFAULT_WIDTH: f32 = 240.0;
-
-    fn new(title: &'a str, items: Vec<Item<'a>>) -> Self {
-        Self { title, width: Self::DEFAULT_WIDTH, items }
-    }
-
-    fn width(mut self, width: f32) -> Self {
-        self.width = width;
-        self
-    }
-}
-
-fn panel_flow(ui: &mut egui::Ui, panels: Vec<Panel>) {
-    ui.horizontal_wrapped(|ui| {
-        for p in panels {
-            ui.allocate_ui_with_layout(
-                egui::vec2(p.width, ui.available_height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    egui::Frame::group(ui.style()).show(ui, |ui| {
-                        ui.set_width(p.width);
-                        ui.heading(p.title);
-                        render_items(ui, p.items);
-                    });
-                },
-            );
-        }
-    });
-}
-
-/// Top-bar graph toggles; each opens a floating egui `Window` (not a panel) so it never shrinks the viewport.
+/// Top-bar graph toggles; each opens a floating egui `Window`. A screen-space overlay — it does not reserve viewport.
 fn graphs_bar(
     mut contexts: EguiContexts,
     mut state: ResMut<UiState>,
-    mut view_rect: ResMut<WorldViewRect>,
-    history: Res<History>,
+    log: Res<MetricLog>,
     elk: Query<&Elk>,
     event_log: Res<EventLog>,
     score: Res<crate::elk::Score>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
 
-    let top = egui::TopBottomPanel::top("graphs_bar").show(ctx, |ui| {
+    egui::TopBottomPanel::top("graphs_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.label("graphs:");
             for g in Graph::ALL {
@@ -329,67 +223,50 @@ fn graphs_bar(
         });
     });
 
-    // Write WorldViewRect for set_camera_viewport: top-bar bottom to window bottom, ignoring the dock.
-    let screen = ctx.viewport_rect();
-    let top_bottom = top.response.rect.bottom();
-    view_rect.min = Vec2::new(screen.min.x, top_bottom);
-    view_rect.size = Vec2::new(screen.width(), (screen.bottom() - top_bottom).max(0.0));
-
     if state.visible.contains(&Graph::SurvivalScore) {
-        egui::Window::new(Graph::SurvivalScore.label())
-            .default_size([340.0, 110.0])
-            .collapsible(false)
-            .show(ctx, |ui| render_score_gauge(ui, &score, &history));
+        window(ctx, Graph::SurvivalScore.label(), [340.0, 110.0], |ui| {
+            render_score_gauge(ui, &score, &log)
+        });
     }
 
     for g in Graph::ALL {
         if state.visible.contains(&g) && matches!(g, Graph::Biomass | Graph::Abundance) {
-            egui::Window::new(g.label())
-                .default_size([360.0, 200.0])
-                // top-bar toggle already shows/hides the window; collapse arrow is redundant
-                .collapsible(false)
-                .show(ctx, |ui| {
-                    render_plot(ui, graph_plot(g, &history, ui.available_height()));
-                });
+            window(ctx, g.label(), [360.0, 200.0], |ui| {
+                render_plot(ui, graph_plot(g, &log, ui.available_height()));
+            });
         }
     }
 
     if state.visible.contains(&Graph::Histogram) {
         let mut sel = state.histogram_metric;
-        egui::Window::new(Graph::Histogram.label())
-            .default_size([360.0, 200.0])
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    for (i, m) in crate::metrics::ELK_METRICS.iter().enumerate() {
-                        ui.selectable_value(&mut sel, i, m.name);
-                    }
-                });
-                render_histogram(ui, &elk, sel);
+        window(ctx, Graph::Histogram.label(), [360.0, 200.0], |ui| {
+            ui.horizontal(|ui| {
+                for (i, m) in crate::metrics::ELK_METRICS.iter().enumerate() {
+                    ui.selectable_value(&mut sel, i, m.name);
+                }
             });
+            render_histogram(ui, &elk, sel);
+        });
         state.histogram_metric = sel;
     }
 
     if state.overlays.contains(&Overlay::DeathSites) {
-        egui::Window::new("recent deaths")
-            .default_size([300.0, 200.0])
-            .collapsible(false)
-            .show(ctx, |ui| {
-                render_event_list(ui, &event_log);
-            });
+        window(ctx, "recent deaths", [300.0, 200.0], |ui| {
+            render_event_list(ui, &event_log);
+        });
     }
 
     Ok(())
 }
 
-fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'a> {
+fn graph_plot(graph: Graph, log: &MetricLog, height: f32) -> PlotSpec<'static> {
     match graph {
         Graph::Biomass => PlotSpec {
             id: "biomass",
             height,
             series: vec![
-                ("grass", &history.grass_mass),
-                ("shrubs", &history.shrub_mass),
+                ("grass", log.column("grass_mass")),
+                ("shrubs", log.column("shrub_mass")),
             ],
         },
         // ratio > 1: regrowth outpaces grazing — herds camp rather than migrate
@@ -397,8 +274,8 @@ fn graph_plot<'a>(graph: Graph, history: &'a History, height: f32) -> PlotSpec<'
             id: "abundance",
             height,
             series: vec![
-                ("forage per elk", &history.abundance_per_elk),
-                ("regrowth ÷ drain", &history.regrowth_drain_ratio),
+                ("forage per elk", log.column("abundance_per_elk")),
+                ("regrowth ÷ drain", log.column("regrowth_drain_ratio")),
             ],
         },
         Graph::Histogram => unreachable!("Histogram is rendered by render_histogram, not graph_plot"),
@@ -471,9 +348,9 @@ fn render_event_list(ui: &mut egui::Ui, event_log: &EventLog) {
 /// Bundled so `control_panel` stays under Bevy's 16-param system limit.
 #[derive(bevy::ecs::system::SystemParam)]
 struct WorldTunables<'w> {
-    green_wave: ResMut<'w, GreenWave>,
     fertility: Option<ResMut<'w, Fertility>>,
     ab_params: ResMut<'w, AbundanceParams>,
+    manual_spawn: ResMut<'w, ManualSpawn>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -487,7 +364,7 @@ fn control_panel(
     mut world_seed: ResMut<crate::worldgen::WorldSeed>,
     mut next_state: ResMut<NextState<crate::sim::Sim>>,
     herds: Res<Herds>,
-    history: Res<History>,
+    log: Res<MetricLog>,
     mut selection: SelectionParams,
     mut dock_settle_frames: Local<u32>,
 ) -> Result {
@@ -550,32 +427,49 @@ fn control_panel(
                                 crate::elk::presets::apply(
                                     preset,
                                     ratio_controls.as_mut(),
-                                    world.green_wave.as_mut(),
                                     elk_params.as_mut(),
                                 );
                             }
                         }
                     });
                     ui.separator();
+                    spawn_controls(ui, world.manual_spawn.as_mut());
+                    ui.separator();
                     let rc = ratio_controls.as_mut();
                     let grass_regrow = &mut rc.grass_regrow;
                     let shrub_regrow = &mut rc.shrub_regrow;
                     let feed_ratio = &mut rc.feed_ratio;
                     let cross_ratio = &mut rc.cross_ratio;
-                    panel_flow(ui, vec![
-                        Panel::new("Forage", grass_items(world.fertility.as_mut().map(|f| f.as_mut()), grass_regrow, shrub_regrow)),
-                        Panel::new("Behaviour", vec![Item::Custom(Box::new(|ui| behaviour_tab(ui, elk_params.as_mut(), feed_ratio, cross_ratio)))]).width(300.0),
-                        Panel::new("Abundance (measure)", abundance_items(world.ab_params.as_mut())),
-                    ])
+                    let fertility = world.fertility.as_mut().map(|f| f.as_mut());
+                    let elk_params = elk_params.as_mut();
+                    let ab_params = world.ab_params.as_mut();
+                    group_row(ui, vec![
+                        TitledGroup::new("Forage", |g| grass_group(g, fertility, grass_regrow, shrub_regrow)),
+                        TitledGroup::new("Behaviour", |g| behaviour_group(g, elk_params, feed_ratio, cross_ratio)).width(300.0),
+                        TitledGroup::new("Abundance (measure)", |g| abundance_group(g, ab_params)),
+                    ]);
                 }
-                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &history),
+                Tab::Herds => herds_view(ui, state.as_mut(), &herds, &log),
                 Tab::Selection => selection_tab(ui, selection.state.as_mut(), &selection.elk),
             });
         });
     Ok(())
 }
 
-fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &History) {
+/// Manual herd spawning: a button to release a wave, with the count set by a slider or typed
+/// directly. The slider and the number box edit the same `count`, so they stay in sync.
+fn spawn_controls(ui: &mut egui::Ui, ms: &mut ManualSpawn) {
+    ui.horizontal(|ui| {
+        ui.label("spawn:");
+        if ui.button("▶ spawn wave").clicked() {
+            ms.fire = true;
+        }
+        ui.add(egui::Slider::new(&mut ms.count, 1..=100).text("elk"));
+        ui.add(egui::DragValue::new(&mut ms.count).range(1..=100));
+    });
+}
+
+fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, log: &MetricLog) {
     let alive: Vec<u32> = herds
         .order
         .iter()
@@ -603,7 +497,7 @@ fn herds_view(ui: &mut egui::Ui, state: &mut UiState, herds: &Herds, history: &H
                 .selected
                 .and_then(|c| herds.cohorts.get(&c).map(|co| (c, co)))
             {
-                Some((code, co)) => herd_details(ui, code, co, history),
+                Some((code, co)) => herd_details(ui, code, co, log),
                 None => {
                     ui.weak("select a herd");
                 }
@@ -651,7 +545,7 @@ fn herd_details(
     ui: &mut egui::Ui,
     code: u32,
     co: &crate::elk::Cohort,
-    history: &History,
+    log: &MetricLog,
 ) {
     ui.heading(format!("pack {code:06x}"));
     ui.label(format!("status: {}", if co.alive > 0 { "alive" } else { "no survivors" }));
@@ -667,14 +561,12 @@ fn herd_details(
     ui.label(format!("migrated out: {}", co.departures));
     ui.separator();
 
-    render_items(ui, vec![
-        Item::Label("population".to_string()),
-        Item::Plot(PlotSpec {
-            id: "pop_plot",
-            height: 80.0,
-            series: vec![("population", &history.population)],
-        }),
-    ]);
+    ui.label("population");
+    render_plot(ui, PlotSpec {
+        id: "pop_plot",
+        height: 80.0,
+        series: vec![("population", log.column("population"))],
+    });
 }
 
 const THUMB: f32 = 58.0;
@@ -860,38 +752,6 @@ pub(crate) fn pick_herd(
     Ok(())
 }
 
-/// Convert egui logical rect → physical camera viewport. Returns `None` when the area collapses so the camera falls back to the full window.
-fn world_viewport(min: Vec2, size: Vec2, scale: f32, target: UVec2) -> Option<Viewport> {
-    let pos = (min * scale).max(Vec2::ZERO).as_uvec2();
-    let px = (size * scale).max(Vec2::ZERO).as_uvec2();
-    // wgpu crashes (not clips) on oversized scissor rects; clamp so pos + size never exceed target
-    let w = px.x.min(target.x.saturating_sub(pos.x));
-    let h = px.y.min(target.y.saturating_sub(pos.y));
-    if w == 0 || h == 0 {
-        return None;
-    }
-    Some(Viewport {
-        physical_position: pos,
-        physical_size: UVec2::new(w, h),
-        ..default()
-    })
-}
-
-/// Confine world camera to `WorldViewRect`. The dock is excluded from this rect, so resizing it never moves the map.
-fn set_camera_viewport(
-    view_rect: Res<WorldViewRect>,
-    window: Single<&Window>,
-    camera: Single<&mut Camera, With<WorldCamera>>,
-) {
-    let target = UVec2::new(window.physical_width(), window.physical_height());
-    camera.into_inner().viewport = world_viewport(
-        view_rect.min,
-        view_rect.size,
-        window.scale_factor(),
-        target,
-    );
-}
-
 /// Max virtual time `FixedUpdate` can advance per frame — caps steps/frame to prevent UI freezes at high speed.
 const FRAME_SIM_BUDGET: Duration = Duration::from_millis(500);
 
@@ -1002,61 +862,52 @@ fn speed_inline(ui: &mut egui::Ui, time: &mut Time<Virtual>) {
     ui.label(format!("{tps:.0} ticks/s")).on_hover_text("simulation ticks per second (10 Hz × speed)");
 }
 
-fn grass_items<'a>(fertility: Option<&'a mut Fertility>, grass_regrow: &'a mut f32, shrub_regrow: &'a mut f32) -> Vec<Item<'a>> {
-    let mut items = vec![
-        Item::Slider { value: grass_regrow, range: 0.0..=0.05, label: "grass regrowth / tick" },
-        Item::Slider { value: shrub_regrow, range: 0.0..=0.02, label: "shrub regrowth / tick" },
-    ];
+fn grass_group(g: &mut Group, fertility: Option<&mut Fertility>, grass_regrow: &mut f32, shrub_regrow: &mut f32) {
+    g.slider(grass_regrow, 0.0..=0.05, "grass regrowth / tick");
+    g.slider(shrub_regrow, 0.0..=0.02, "shrub regrowth / tick");
     // Fertility resource is absent when DroppingsPlugin is omitted from the binary.
     if let Some(fertility) = fertility {
-        items.push(Item::Section {
-            title: "Fertility",
-            items: vec![
-                Item::Slider { value: &mut fertility.rate, range: 0.0..=0.5, label: "droppings → grass / tick" },
-                Item::Slider { value: &mut fertility.efficiency, range: 0.0..=1.0, label: "conversion efficiency" },
-            ],
-            default_open: false,
+        g.section("Fertility", false, |g| {
+            g.slider(&mut fertility.rate, 0.0..=0.5, "droppings → grass / tick");
+            g.slider(&mut fertility.efficiency, 0.0..=1.0, "conversion efficiency");
         });
     }
-    items
 }
 
-fn abundance_items(p: &mut AbundanceParams) -> Vec<Item<'_>> {
-    vec![
-        Item::Slider { value: &mut p.radius, range: 1.0..=20.0, label: "nearby radius (cells)" },
-        Item::Slider { value: &mut p.energy_weight, range: 0.0..=1.0, label: "grass ↔ energy weight" },
-    ]
+fn abundance_group(g: &mut Group, p: &mut AbundanceParams) {
+    g.slider(&mut p.radius, 1.0..=20.0, "nearby radius (cells)");
+    g.slider(&mut p.energy_weight, 0.0..=1.0, "grass ↔ energy weight");
 }
 
-fn behaviour_tab(ui: &mut egui::Ui, p: &mut ElkParams, feed_ratio: &mut f32, cross_ratio: &mut f32) {
-    ui.label("forage perception");
-    slider(ui, &mut p.grass_radius, 1.0..=12.0, "grass radius (cells)");
-    slider(ui, &mut p.freshness_weight, 0.0..=6.0, "freshness weight (green-up front)");
-    slider(ui, &mut p.sightline_range, 0.0..=32.0, "sightline range (cells)");
-    slider(ui, &mut p.sightline_weight, 0.0..=5.0, "sightline weight (leapfrog)");
-    ui.separator();
-    ui.label("metabolism");
-    slider(ui, feed_ratio, 0.5..=16.0, "ticks of life per bite (feed ratio)");
+fn behaviour_group(g: &mut Group, p: &mut ElkParams, feed_ratio: &mut f32, cross_ratio: &mut f32) {
+    g.label("forage perception");
+    g.slider(&mut p.grass_radius, 1.0..=12.0, "grass radius (cells)");
+    g.slider(&mut p.freshness_weight, 0.0..=6.0, "freshness weight (green-up front)");
+    g.slider(&mut p.sightline_range, 0.0..=32.0, "sightline range (cells)");
+    g.slider(&mut p.sightline_weight, 0.0..=5.0, "sightline weight (leapfrog)");
+    g.separator();
+    g.label("metabolism");
+    g.slider(feed_ratio, 0.5..=16.0, "ticks of life per bite (feed ratio)");
     // break-even: grazing (CHEW_TICKS+1)/feed_ratio of ticks sustains the herd
     let pct = if *feed_ratio > 0.0 {
         100.0 * (crate::elk::CHEW_TICKS + 1) as f32 / *feed_ratio
     } else {
         f32::INFINITY
     };
-    ui.label(if pct > 100.0 {
+    g.label(if pct > 100.0 {
         "break-even grazing: impossible — herds starve".to_string()
     } else {
         format!("break-even grazing: {pct:.0}% of ticks")
     });
-    ui.separator();
-    ui.label("crossing");
-    slider(ui, &mut p.water_cost, 0.0..=4.0, "water crossing cost");
-    slider(ui, &mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
-    slider(ui, &mut p.swim_drain, 0.0..=0.05, "swim energy drain");
-    slider(ui, &mut p.cross_peek, 1.0..=40.0, "cross peek (far-bank sight)");
-    slider(ui, &mut p.swim_reluctance, 0.0..=2.0, "swim reluctance (decision cost)");
+    g.separator();
+    g.label("crossing");
+    g.slider(&mut p.water_cost, 0.0..=4.0, "water crossing cost");
+    g.slider(&mut p.ford_discount, 0.0..=1.0, "ford discount (0 = free)");
+    g.slider(&mut p.swim_drain, 0.0..=0.05, "swim energy drain");
+    g.slider(&mut p.cross_peek, 1.0..=40.0, "cross peek (far-bank sight)");
+    g.slider(&mut p.swim_reluctance, 0.0..=2.0, "swim reluctance (decision cost)");
     // no longer steers movement — kept only as the score penalty
-    slider(ui, cross_ratio, 0.0..=2.0, "crossing pull (score penalty)");
+    g.slider(cross_ratio, 0.0..=2.0, "crossing pull (score penalty)");
 }
 
 pub enum Trend {
@@ -1065,11 +916,11 @@ pub enum Trend {
     Flat,
 }
 
-pub fn trend(series: &std::collections::VecDeque<f32>, lookback: usize, eps: f32) -> Trend {
+pub fn trend(series: &[f32], lookback: usize, eps: f32) -> Trend {
     if series.len() <= lookback {
         return Trend::Flat;
     }
-    let latest = *series.back().unwrap();
+    let latest = *series.last().unwrap();
     let back = series[series.len() - 1 - lookback];
     let delta = latest - back;
     if delta > eps {
@@ -1124,72 +975,27 @@ mod tests {
     }
 
     #[test]
-    fn full_window_when_no_panel() {
-        let vp = world_viewport(Vec2::ZERO, Vec2::new(1280.0, 960.0), 1.0, UVec2::new(1280, 960))
-            .expect("non-empty viewport");
-        assert_eq!(vp.physical_position, UVec2::ZERO);
-        assert_eq!(vp.physical_size, UVec2::new(1280, 960));
-    }
-
-    #[test]
-    fn bottom_dock_shrinks_height_only() {
-        let vp = world_viewport(Vec2::ZERO, Vec2::new(1280.0, 720.0), 1.0, UVec2::new(1280, 960))
-            .expect("non-empty viewport");
-        assert_eq!(vp.physical_position, UVec2::ZERO);
-        assert_eq!(vp.physical_size, UVec2::new(1280, 720));
-    }
-
-    // regression: scale must be applied once; double-counting crashed wgpu with an oversized scissor rect
-    #[test]
-    fn retina_scale_counts_once() {
-        let vp = world_viewport(Vec2::ZERO, Vec2::new(640.0, 360.0), 2.0, UVec2::new(1280, 720))
-            .expect("non-empty viewport");
-        assert_eq!(vp.physical_size, UVec2::new(1280, 720));
-    }
-
-    #[test]
-    fn oversize_rect_clamps_to_target() {
-        let vp = world_viewport(Vec2::ZERO, Vec2::new(4000.0, 4000.0), 1.0, UVec2::new(1280, 720))
-            .expect("non-empty viewport");
-        assert_eq!(vp.physical_size, UVec2::new(1280, 720));
-    }
-
-    #[test]
-    fn collapsed_area_yields_none() {
-        assert!(world_viewport(Vec2::new(0.0, 960.0), Vec2::ZERO, 1.0, UVec2::new(1280, 960)).is_none());
-    }
-
-    fn deque(values: &[f32]) -> std::collections::VecDeque<f32> {
-        values.iter().copied().collect()
-    }
-
-    #[test]
     fn trend_up_when_latest_exceeds_lookback() {
-        let s = deque(&[1.0, 1.0, 1.0, 2.0]);
-        assert!(matches!(trend(&s, 2, 0.05), Trend::Up));
+        assert!(matches!(trend(&[1.0, 1.0, 1.0, 2.0], 2, 0.05), Trend::Up));
     }
 
     #[test]
     fn trend_down_when_latest_below_lookback() {
-        let s = deque(&[2.0, 2.0, 2.0, 1.0]);
-        assert!(matches!(trend(&s, 2, 0.05), Trend::Down));
+        assert!(matches!(trend(&[2.0, 2.0, 2.0, 1.0], 2, 0.05), Trend::Down));
     }
 
     #[test]
     fn trend_flat_within_eps() {
-        let s = deque(&[1.0, 1.01, 0.99, 1.02]);
-        assert!(matches!(trend(&s, 2, 0.1), Trend::Flat));
+        assert!(matches!(trend(&[1.0, 1.01, 0.99, 1.02], 2, 0.1), Trend::Flat));
     }
 
     #[test]
     fn trend_flat_when_series_too_short() {
-        let s = deque(&[1.0, 2.0]);
-        assert!(matches!(trend(&s, 5, 0.01), Trend::Flat));
+        assert!(matches!(trend(&[1.0, 2.0], 5, 0.01), Trend::Flat));
     }
 
     #[test]
     fn trend_flat_on_empty_series() {
-        let s = deque(&[]);
-        assert!(matches!(trend(&s, 3, 0.01), Trend::Flat));
+        assert!(matches!(trend(&[], 3, 0.01), Trend::Flat));
     }
 }

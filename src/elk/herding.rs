@@ -5,7 +5,7 @@ use bevy::prelude::*;
 
 use crate::grid::Grid;
 
-use super::components::{Elk, ElkParams};
+use super::components::{Elk, ElkParams, ENERGY_DRAIN};
 use super::ledger::EnergyFlows;
 use super::movement::{cross_desire, forage_across, forage_sightline, grass_gradient, swim_cost};
 
@@ -29,11 +29,27 @@ pub struct Herding {
     pub dwell: u32,
     /// Ticks left chewing — while nonzero the Graze steer is pinned to zero, physically halting the herd.
     pub chew: u32,
+    /// EMA of this elk's per-tick energy intake — the marginal-value signal the leave rule reads.
+    /// Per-elk and local, so the herd desynchronizes (no shared dwell clock to phase-lock on).
+    pub intake_ema: f32,
+    /// Per-elk leave-bar multiplier set at spawn (1.0 = neutral). Restless elk (>1) abandon a
+    /// thinning patch sooner and sort to the front; content elk (<1) linger at the rear. The
+    /// heterogeneity that deepens desync and gives the herd a front-to-back gradient.
+    pub restlessness: f32,
 }
 
 impl Default for Herding {
     fn default() -> Self {
-        Herding { state: HerdState::Graze, goal: Goal::None, dwell: 0, chew: 0 }
+        // Start content (above any leave threshold) so a fresh spawn grazes before the EMA settles.
+        // restlessness 1.0 is the neutral default; real spawns draw a spread (see spawn_cohort).
+        Herding {
+            state: HerdState::Graze,
+            goal: Goal::None,
+            dwell: 0,
+            chew: 0,
+            intake_ema: 2.0 * ENERGY_DRAIN,
+            restlessness: 1.0,
+        }
     }
 }
 
@@ -85,12 +101,11 @@ pub struct HerdParams {
     /// Forage-signal magnitude at which confidence is exactly 0.5.
     pub confidence_ref: f32,
     pub scan_radius: f32,
-    pub leave_frac: f32,
-    /// Rest floor: ticks an elk must graze before relocating — stops perpetual travel up a gradient.
-    pub graze_min_dwell: u32,
+    /// Leave a patch when recent intake falls below `leave_intake_ratio × drain × energy` — the
+    /// per-elk marginal-value rule. ×energy makes a fed elk pickier (leaves sooner) and a hungry
+    /// one tolerant (lingers on grazed ground), the asymmetry that sorts a front from a back.
+    pub leave_intake_ratio: f32,
     pub travel_margin: f32,
-    /// Gain above underfoot that triggers migration even from a full patch — the green-up crest a fed herd chases.
-    pub pursue_margin: f32,
     pub goal_timeout: u32,
     /// Millington 13.2.3 dead-band: pulls weaker than this leave the elk settled (anti-jitter).
     pub deadband: f32,
@@ -111,10 +126,8 @@ impl Default for HerdParams {
             coh_radius: 8.0,
             confidence_ref: 0.5,
             scan_radius: 8.0,
-            leave_frac: 0.4,
-            graze_min_dwell: 30,
+            leave_intake_ratio: 0.4,
             travel_margin: 0.05,
-            pursue_margin: 0.15,
             goal_timeout: 200,
             deadband: 0.15,
         }
@@ -199,21 +212,11 @@ pub fn quantize_step(desired: Vec2, deadband: f32) -> Option<(isize, isize)> {
     Some(step)
 }
 
-/// Both gates required: depleted *and* somewhere better — hysteresis that holds a herd on thin ground when nothing richer is reachable.
-pub fn should_leave_patch(here_frac: f32, best_frac: f32, leave_frac: f32, margin: f32) -> bool {
-    here_frac < leave_frac && best_frac > here_frac + margin
-}
-
-/// dwell floor: without it a herd on a gradient leaves for a marginally richer cell every tick and travels forever.
-pub fn should_leave_graze(
-    dwell: u32,
-    min_dwell: u32,
-    here_frac: f32,
-    best_frac: f32,
-    leave_frac: f32,
-    margin: f32,
-) -> bool {
-    dwell >= min_dwell && should_leave_patch(here_frac, best_frac, leave_frac, margin)
+/// Marginal-value leave threshold on recent intake rate: `ratio × drain × energy`. A fed elk
+/// (energy ≈ 1) demands intake near break-even and moves on quickly; a hungry elk (energy ≈ 0)
+/// tolerates near-zero intake and lingers — the per-elk asymmetry that lets a front lead a back.
+pub fn leave_intake_threshold(energy: f32, ratio: f32, drain: f32) -> f32 {
+    ratio * drain * energy.clamp(0.0, 1.0)
 }
 
 fn cell_center(cell: usize, grid: &Grid) -> Vec2 {
@@ -223,26 +226,6 @@ fn cell_center(cell: usize, grid: &Grid) -> Vec2 {
 
 fn attract(cell: usize, grid: &Grid, ep: &ElkParams) -> f32 {
     grid.forage(cell) + ep.freshness_weight * grid.freshness(cell)
-}
-
-// Reads food_frac (grass+shrubs) so a dry-steppe shrub depletion registers — the grass-only metric could never see it.
-fn best_reachable_food_frac(here: usize, grid: &Grid, radius: f32) -> f32 {
-    let r = radius.ceil() as isize;
-    let mut best = grid.food_frac(here);
-    for dy in -r..=r {
-        for dx in -r..=r {
-            if dx == 0 && dy == 0 {
-                continue;
-            }
-            if (Vec2::new(dx as f32, dy as f32)).length() > radius {
-                continue;
-            }
-            if let Some(n) = grid.step(here, dx, dy) {
-                best = best.max(grid.food_frac(n));
-            }
-        }
-    }
-    best
 }
 
 // Scan is direction-unbiased; forward motion emerges from where the forage actually is, not a hard-coded axis.
@@ -331,8 +314,6 @@ pub(super) fn herd_step(
         let signal = grass_gradient(here, &grid, &ep) + forage_sightline(here, &grid, &ep);
         let conf = confidence(signal.length(), hp.confidence_ref);
 
-        let here_frac = grid.food_frac(here);
-
         herd.dwell = herd.dwell.saturating_add(1);
 
         // Evaluated independent of move state so a grazing herd beside a river considers the ford on forage merits alone.
@@ -355,18 +336,17 @@ pub(super) fn herd_step(
                     let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
                     desired = sep + restore + align;
                 }
-                if herd.dwell >= hp.graze_min_dwell {
-                    let here_attract = attract(here, &grid, &ep);
-                    let best_frac = best_reachable_food_frac(here, &grid, ep.grass_radius);
-                    let depleted = should_leave_patch(here_frac, best_frac, hp.leave_frac, hp.travel_margin);
-                    let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
-                    let gain = val - here_attract;
-                    let leave = (depleted && gain > hp.travel_margin) || gain > hp.pursue_margin;
-                    if cell != here && leave {
-                        herd.state = HerdState::Travel;
-                        herd.goal = Goal::Patch(cell);
-                        herd.dwell = 0;
-                    }
+                // Marginal-value leave: go when recent intake here has dropped below the elk's
+                // satiation-scaled threshold AND a richer cell is reachable. The trigger is local
+                // and per-elk (no shared dwell clock) — front depletes & leaves first, back lingers.
+                let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
+                let gain = val - attract(here, &grid, &ep);
+                let threshold = leave_intake_threshold(elk.energy, hp.leave_intake_ratio, ENERGY_DRAIN)
+                    * herd.restlessness;
+                if cell != here && herd.intake_ema < threshold && gain > hp.travel_margin {
+                    herd.state = HerdState::Travel;
+                    herd.goal = Goal::Patch(cell);
+                    herd.dwell = 0;
                 }
             }
             HerdState::Travel => {
@@ -593,20 +573,14 @@ mod tests {
     }
 
     #[test]
-    fn leaves_only_on_depletion_and_better_reachable() {
-        assert!(should_leave_patch(0.2, 0.7, 0.4, 0.05));
-        assert!(!should_leave_patch(0.2, 0.22, 0.4, 0.05));
-        assert!(!should_leave_patch(0.8, 0.95, 0.4, 0.05));
-    }
-
-    #[test]
-    fn graze_holds_until_dwell_floor() {
-        assert!(!should_leave_graze(10, 30, 0.2, 0.7, 0.4, 0.05));
-        assert!(should_leave_graze(30, 30, 0.2, 0.7, 0.4, 0.05));
-    }
-
-    #[test]
-    fn graze_dwell_floor_does_not_force_a_move() {
-        assert!(!should_leave_graze(100, 30, 0.8, 0.95, 0.4, 0.05));
+    fn leave_threshold_scales_with_satiation() {
+        let drain = 0.002;
+        // A fed elk demands near break-even intake (leaves sooner); a hungry one tolerates less.
+        let fed = leave_intake_threshold(1.0, 1.0, drain);
+        let hungry = leave_intake_threshold(0.2, 1.0, drain);
+        assert!((fed - drain).abs() < 1e-9, "full elk threshold is ratio×drain");
+        assert!(hungry < fed, "hungry elk has a lower bar: {hungry} !< {fed}");
+        assert_eq!(leave_intake_threshold(0.0, 1.0, drain), 0.0, "starving elk tolerates anything");
+        assert_eq!(leave_intake_threshold(-0.5, 1.0, drain), 0.0, "energy clamps at 0");
     }
 }

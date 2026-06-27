@@ -8,6 +8,13 @@ default:
 demo1:
     cargo run --features bevy/dynamic_linking --bin demo1
 
+# Run the game on a hand-built test map instead of the procedural world. Map
+# names come from `worldgen::testmap::TEST_MAPS`.
+# Usage: just testmap            (defaults to oval-gaps)
+#        just testmap oval-gaps
+testmap name="oval-gaps":
+    cargo run --features bevy/dynamic_linking --bin demo1 -- --test-map {{name}}
+
 # Run the Driftscape terminal screensaver (Starliner). It's a standalone crate
 # off the game's build, so it links no Bevy. Quit with q/Esc/Ctrl-C.
 demo3:
@@ -36,6 +43,13 @@ test-all:
 # Usage: just probe working_presets_probe   (any probe fn name in tests/herd_shape.rs)
 probe name:
     cargo test --release --test herd_shape {{name}} -- --ignored --nocapture
+
+# Run the headless scenario harness and print metric projections for an agent to read:
+# the per-metric summary always, the full CSV dump with `csv=1`.
+# Usage: just probe-scenario          (summary table)
+#        just probe-scenario csv=1    (full CSV time series)
+probe-scenario csv="0":
+    cargo test --release --test scenarios {{ if csv == "1" { "oval_gaps_dump_csv -- --ignored" } else { "oval_gaps_records_a_spawned_wave --" } }} --nocapture
 
 # Wraps build-web.sh. Prereqs: `cargo install wasm-bindgen-cli --version 0.2.125`
 # (must match the wasm-bindgen dep) and, optionally, `cargo install wasm-opt`.

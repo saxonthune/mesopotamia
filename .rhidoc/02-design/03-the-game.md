@@ -25,17 +25,15 @@ the puzzle; turning it into a migration is the play.
 
 The player fixes it by tuning the model's behavioural weights — foraging strength,
 dispersal, perception, the crossing appetite — until the herd feeds itself and rolls
-across the map as a coherent wave. The decisive lever is the **natural eastward drive**:
-the green wave, a travelling crest of fresh forage. A herd tuned to track the *freshest*
-grass migrates with the crest, because following peak forage quality is itself the
-journey east. Reaching this is the demo's core puzzle: the satisfaction of turning a
-dying, aimless herd into a living migration by adjusting numbers and watching the system
-answer.
+across the map as a coherent wave. The work is to make the herd cohere and feed as it
+moves, so that it travels on its natural drives as a single group rather than milling in
+place. Reaching this is the demo's core puzzle: the satisfaction of turning a dying,
+aimless herd into a living migration by adjusting numbers and watching the system answer.
 
 The migration **pull** — a direct eastward force — exists as a crutch, not the intended
 solution. It can drag a herd across without any model skill, so the score penalizes
 leaning on it: a crossing earned by the natural drive is worth more than one bought with
-the pull. The pull is training wheels; the green wave is riding.
+the pull. The pull is training wheels, to be dialled back once the herd moves on its own.
 
 ## Stage 3 — the score loop
 
@@ -60,7 +58,7 @@ the high-water mark is the trophy: "your high was 168."
 
 The pull penalty is what keeps this loop honest. Without it, the score collapses to
 "max the pull, max the scarcity" and the model tuning stops mattering. With it, the only
-way the score climbs is a model that genuinely surfs the green wave through famine — so
+way the score climbs is a model that genuinely migrates and survives through famine — so
 stage 3 is a continuation of stage 2's craft, not an escape from it.
 
 ## The shape of the whole

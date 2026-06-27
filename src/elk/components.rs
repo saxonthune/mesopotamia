@@ -52,8 +52,24 @@ impl Default for Spawner {
 }
 
 impl Spawner {
+    // Only the native headless harness reseeds; on wasm that caller is compiled out.
+    #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
     pub(crate) fn reseed(&mut self, seed: u64) {
         self.rng = StdRng::seed_from_u64(seed);
+    }
+}
+
+/// Backs the UI spawn panel: `count` is the slider/textbox value, `fire` is set by the button
+/// and cleared by `manual_spawn` once it spawns. Used when auto-spawn is off (test maps).
+#[derive(Resource)]
+pub struct ManualSpawn {
+    pub count: u32,
+    pub fire: bool,
+}
+
+impl Default for ManualSpawn {
+    fn default() -> Self {
+        Self { count: 20, fire: false }
     }
 }
 
@@ -76,10 +92,15 @@ pub struct Herds {
     pub order: Vec<u32>,
 }
 
-/// Food stripped per bite — fixed; the elk slider tunes energy-per-food, not this.
+/// Food stripped per bite on *full* forage; a grazed-down cell yields proportionally less via the
+/// Holling-II response in `metabolism::functional_response`. The elk slider tunes energy-per-food.
 pub const BITE: f32 = 0.05;
-/// Giving-up density: grass below `GRAZE_FLOOR × capacity` isn't worth biting.
-pub const GRAZE_FLOOR: f32 = 0.3;
+/// Giving-up density: forage below `GRAZE_FLOOR × capacity` isn't worth biting. Low so cells graze
+/// down to near-bare — kept above zero only so a worked-over patch stays faintly visible.
+pub const GRAZE_FLOOR: f32 = 0.05;
+/// Holling Type-II half-saturation (fullness units): roughly the fullness at which intake halves.
+/// Lower ⇒ forage stays fast until heavily grazed ⇒ a sharper front (fast) vs back (slow) gradient.
+pub const GRAZE_HALF_SAT: f32 = 0.2;
 /// Per-tick metabolic drain — fixed; `feed_ratio` tunes intake against it, not this.
 pub const ENERGY_DRAIN: f32 = 0.002;
 /// Ticks locked chewing after a bite; paces intake to one bite per `CHEW_TICKS + 1`.

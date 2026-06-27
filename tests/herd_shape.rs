@@ -1,11 +1,8 @@
 //! Herd-shape soak tests on a flat, evenly-stocked open plain.
 //! Terrain explains nothing here — any failure belongs to the decision model alone.
 
-use mesopotamia::elk::{ElkParams, RatioControls};
-use mesopotamia::grid::GreenWave;
-use mesopotamia::sim_harness::{
-    centroid_col, diagnose, diagnose_worldgen, make_app, make_probe_app, open_plain,
-};
+use mesopotamia::elk::ElkParams;
+use mesopotamia::sim_harness::{diagnose, diagnose_worldgen, open_plain};
 
 const W: usize = 40;
 const H: usize = 40;
@@ -89,55 +86,4 @@ fn worldgen_herd_does_not_starve_in_permanent_travel() {
         mean_energy > 0.3,
         "herd is starving out: mean live energy {mean_energy:.3} (a collapse drives this toward 0)"
     );
-}
-
-#[test]
-#[ignore = "green wave crosses diagnostic — run manually: cargo test --test herd_shape green_wave_crosses -- --ignored --nocapture"]
-fn green_wave_crosses_on_worldgen() {
-    const TICKS: u32 = 600;
-    let run = |name: &str, strength: f32| -> f32 {
-        let mut app = make_app();
-        app.insert_resource(RatioControls { cross_ratio: 0.0, ..Default::default() });
-        app.insert_resource(GreenWave { strength, ..Default::default() });
-        let mut final_centroid = 0.0f32;
-        for t in 0..TICKS {
-            app.update();
-            let col = centroid_col(app.world_mut());
-            final_centroid = col;
-            if t % 99 == 98 || t == 0 {
-                println!("[worldgen/{name}] tick {:>4}: centroid_col={col:.1}", t + 1);
-            }
-        }
-        final_centroid
-    };
-    let off = run("wave-off", 0.0);
-    let on = run("wave-on", 0.5);
-    println!("worldgen: wave-off final={off:.1}, wave-on final={on:.1}, advantage={:.1}", on - off);
-}
-
-// isolates grass-wave signal on a shrub-free plain (shrubs can pin the herd)
-#[test]
-#[ignore = "green wave plain diagnostic — run manually: cargo test --test herd_shape green_wave_crosses -- --ignored --nocapture"]
-fn green_wave_crosses_on_plain() {
-    const TICKS: u32 = 600;
-    let run = |name: &str, strength: f32| -> f32 {
-        let starts = cluster();
-        let grid = open_plain(W, H, 1.0);
-        let mut app = make_probe_app(grid, &starts);
-        app.insert_resource(RatioControls { cross_ratio: 0.0, ..Default::default() });
-        app.insert_resource(GreenWave { strength, ..Default::default() });
-        let mut final_centroid = 0.0f32;
-        for t in 0..TICKS {
-            app.update();
-            let col = centroid_col(app.world_mut());
-            final_centroid = col;
-            if t % 99 == 98 || t == 0 {
-                println!("[plain/{name}] tick {:>4}: centroid_col={col:.1}", t + 1);
-            }
-        }
-        final_centroid
-    };
-    let off = run("wave-off", 0.0);
-    let on = run("wave-on", 0.5);
-    println!("plain: wave-off final={off:.1}, wave-on final={on:.1}, advantage={:.1}", on - off);
 }

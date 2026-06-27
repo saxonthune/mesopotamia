@@ -5,10 +5,12 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimeUpdateStrategy;
 use std::time::Duration;
 
-use crate::elk::{Cohort, Elk, ElkParams, ElkSimPlugin, EnergyFlows, HerdParams, Herding, Herds, RatioControls, Score, Spawner};
+use crate::elk::{Cohort, Elk, ElkParams, ElkSimPlugin, EnergyFlows, HerdParams, Herding, Herds, ManualSpawn, RatioControls, Spawner};
 use crate::droppings::DroppingsPlugin;
-use crate::grid::{GreenWave, Grid, GridPlugin};
+use crate::grid::{Grid, GridPlugin};
+use crate::metrics::{MetricLog, WorldMetric};
 use crate::sim::{Sim, SimStatePlugin};
+use crate::worldgen::testmap::WorldSource;
 use crate::worldgen::{WorldSeed, WorldgenPlugin};
 
 const HZ: f64 = 10.0;
@@ -107,79 +109,43 @@ pub fn run_metrics(params: ElkParams, ticks: u32) -> RunMetrics {
     RunMetrics { survival, max_col }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct PresetOutcome {
-    pub survival: f32,
-    pub max_col: usize,
-    pub centroid_col: f32,
-    pub score_high: f32,
-    pub score_current: f32,
-    pub difficulty: f32,
-}
-
-/// Economy knobs (`graze_yield`/`intrinsic`/`migration`) are derived by `apply_ratios` each tick;
-/// set them via `ratios`, not `params` — values on `params` are overwritten.
-pub fn evaluate_bundle(
-    ratios: RatioControls,
-    wave: GreenWave,
-    params: ElkParams,
-    ticks: u32,
-) -> PresetOutcome {
-    evaluate_bundle_seeded(rand::random(), ratios, wave, params, ticks)
-}
-
-/// `evaluate_bundle` over a pinned seed so two configs compare on the same map (reproducibility, not bit-determinism).
-pub fn evaluate_bundle_seeded(
-    seed: u64,
-    ratios: RatioControls,
-    wave: GreenWave,
-    params: ElkParams,
-    ticks: u32,
-) -> PresetOutcome {
-    let mut app = make_app();
-    // Must insert before the first update, when `generate_world` reads it.
-    app.insert_resource(WorldSeed(seed));
-    app.insert_resource(params);
-    app.insert_resource(ratios);
-    app.insert_resource(wave);
-
-    let mut max_col = 0usize;
-
-    for _ in 0..ticks {
-        app.update();
-        max_col = max_col.max(max_col_reached(app.world_mut()));
-    }
-
-    let centroid = centroid_col(app.world_mut());
-
-    let world = app.world_mut();
-    let score = world.get_resource::<Score>().unwrap();
-    let (score_high, score_current, difficulty) =
-        (score.high, score.current, score.difficulty);
-
-    let herds = world.get_resource::<Herds>().unwrap();
-    let (total_deaths, total_spawned) =
-        herds.cohorts.values().fold((0u32, 0u32), |(d, s), c| {
-            (d + c.deaths, s + c.alive + c.deaths + c.departures)
-        });
-    let survival = if total_spawned > 0 {
-        1.0 - total_deaths as f32 / total_spawned as f32
-    } else {
-        1.0
-    };
-
-    PresetOutcome {
-        survival,
-        max_col,
-        centroid_col: centroid,
-        score_high,
-        score_current,
-        difficulty,
-    }
-}
-
 pub fn journey_natural(params: ElkParams, ticks: u32) -> usize {
     run_metrics(params, ticks).max_col
+}
+
+/// A reusable headless scenario: a map, tuning, a spawn schedule, a tick budget. `run` plays it
+/// through the real plugins and samples `metrics` into a `MetricLog` — the raw data source other
+/// projections (CSV/console for an agent, in-app graphs, test assertions) read.
+pub struct Scenario {
+    pub world: WorldSource,
+    pub params: ElkParams,
+    pub ratios: RatioControls,
+    /// `(tick, count)` pairs — each fires a manual spawn of `count` elk at that tick.
+    pub spawns: Vec<(u32, u32)>,
+    pub ticks: u32,
+}
+
+pub fn run(scenario: &Scenario, metrics: &[WorldMetric]) -> MetricLog {
+    let mut app = make_app();
+    // A test map sizes the grid to its content; replaces GridPlugin's default-size grid.
+    if let WorldSource::TestMap(m) = scenario.world {
+        app.insert_resource(Grid::new(m.width, m.height));
+    }
+    app.insert_resource(scenario.world);
+    app.insert_resource(scenario.params.clone());
+    app.insert_resource(scenario.ratios);
+
+    let mut log = MetricLog::new(metrics);
+    for tick in 0..scenario.ticks {
+        for &(_, count) in scenario.spawns.iter().filter(|(t, _)| *t == tick) {
+            let mut ms = app.world_mut().resource_mut::<ManualSpawn>();
+            ms.count = count;
+            ms.fire = true;
+        }
+        app.update();
+        log.sample(app.world_mut(), metrics);
+    }
+    log
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -519,7 +485,6 @@ pub fn run_behavior(
     (preset.apply_params)(&mut params);
     app.insert_resource(params);
     app.insert_resource(preset.ratios);
-    app.insert_resource(preset.green_wave);
     {
         let world = app.world_mut();
         // Register the probe herd as one cohort so `cull` tallies departures

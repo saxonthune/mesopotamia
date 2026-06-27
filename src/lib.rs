@@ -14,9 +14,11 @@ pub mod overlay;
 pub mod settings;
 pub mod sim;
 pub mod ui;
+pub mod ui_kit;
 pub mod unit_select;
 pub mod river;
 pub mod worldgen;
+// Native/test-only headless harness (pulls ScheduleRunnerPlugin); kept out of the wasm bundle.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod sim_harness;
 pub mod behaviors;
-pub mod history;

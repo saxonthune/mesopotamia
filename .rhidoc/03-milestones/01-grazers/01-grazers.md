@@ -57,18 +57,12 @@ The demo surfaces, for any moment, how much of a herd's movement comes from the 
 
 To make that tuning possible the demo exposes a readout and a control for each force in play, arranged so a change and its consequence are both legible: adjusting a weight visibly shifts both the force balance and the survival outcome.
 
-## The Green Wave
+## Forage Freshness
 
-The green wave works through forage **freshness**, not peak biomass. At the crest, grass actively regreens; cells that are regrowing accumulate a freshness signal that decays away from the active front. The herd's grass-seeking drive steers by freshness-weighted attractiveness — `forage(n) + freshness_weight × freshness(n)` — so the strongest pull is at the live green-up front, not at the standing-crop peak behind it. Following the fresh front is migrating east; the crest's eastward advance carries the herd with it on the natural drive alone.
-
-The mechanism chain: the crest raises the regrowth rate at its leading edge → cells there green up (positive `grew`) → freshness rises at those cells → the crest advances east → the fresh band moves east with it → the freshness-weighted grass drive points east → the herd migrates.
-
-The wave acts purely by reshaping the grass field in space and time. At the crest, grass regrows faster than the baseline rate; in the trough behind it, regrowth slows and standing ungrazed crop fades (senescence). The wavelength-mean floor stays equal to the baseline intrinsic rate, so the wave redistributes regrowth without changing the global forage budget — difficulty (keyed to `regrow_ratio`) is unaffected.
-
-Two identity conditions hold: `freshness_weight == 0` gives the raw biomass gradient (today's behaviour); `GreenWave.strength == 0` disables the wave entirely — no freshness grows, every cell reverts to the baseline intrinsic floor and zero senescence, reproducing pre-wave behaviour exactly.
+Grass regrowth carries a **freshness** signal, not just peak biomass. Wherever a cell regrows (after grazing), it accumulates a freshness signal that decays elsewhere. The herd's grass-seeking drive steers by freshness-weighted attractiveness — `forage(n) + freshness_weight × freshness(n)` — so the strongest pull is at the live green-up front of recent regrowth, not at the standing-crop peak behind it. With `freshness_weight == 0` the drive reduces to the raw biomass gradient.
 
 ## The Migration Pull and the Score
 
 The migration pull is a penalized crutch. It provides a uniform eastward pressure that moves the herd even when the natural drives would not, but it costs score: the Survival Score multiplies each despawn payout by `pull_factor(p, PULL_PENALTY)` where `p = (cross_ratio / CROSS_REF).clamp(0, 1)` is the normalised dialed pull. At `cross_ratio == 0` the payout is unpenalised — a zero-pull crossing earns full score. As the slider rises, each despawn pays less, so a crossing bought by cranking the pull scores less than one earned on the natural drives.
 
-The intended skill path: the player starts with the pull as a scaffold, discovers that raising it hurts the score, and learns to tune the natural drives (grass weight, freshness weight, green-wave parameters) until the herd migrates on its own and the pull can be dialled back to zero — highest score at zero pull with self-imposed scarcity.
+The intended skill path: the player starts with the pull as a scaffold, discovers that raising it hurts the score, and learns to tune the natural drives (grass weight, freshness weight) until the herd migrates on its own and the pull can be dialled back to zero — highest score at zero pull with self-imposed scarcity.

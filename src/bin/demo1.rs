@@ -1,62 +1,21 @@
-//! Demo 1 binary: shares sim modules with `main.rs` via `#[path]` re-includes;
-//! entry point binds to the page's `<canvas>` for web (`wasm32`) or runs natively.
+//! Demo 1 binary: the sole web/native entry point. It assembles the game from the `mesopotamia`
+//! library crate; on web it binds the page's `<canvas>`, and wasm-bindgen targets this binary.
 
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_egui::EguiPlugin;
 
-#[path = "../field.rs"]
-mod field;
-#[path = "../grid.rs"]
-mod grid;
-#[path = "../grass_tile.rs"]
-mod grass_tile;
-#[path = "../flower_tile.rs"]
-mod flower_tile;
-#[path = "../shrub_tile.rs"]
-mod shrub_tile;
-// The droppings cycle compiles into this crate but is never constructed here
-// (it's omitted from the plugin tuple below), so the module is dead code.
-#[path = "../droppings.rs"]
-#[allow(dead_code)]
-mod droppings;
-#[path = "../elk/mod.rs"]
-mod elk;
-#[path = "../death_marker.rs"]
-mod death_marker;
-#[path = "../events.rs"]
-mod events;
-#[path = "../metrics.rs"]
-mod metrics;
-#[path = "../render.rs"]
-mod render;
-#[path = "../overlay.rs"]
-mod overlay;
-#[path = "../settings.rs"]
-mod settings;
-#[path = "../history.rs"]
-mod history;
-#[path = "../sim.rs"]
-mod sim;
-#[path = "../ui.rs"]
-mod ui;
-#[path = "../unit_select.rs"]
-mod unit_select;
-#[path = "../river/mod.rs"]
-mod river;
-#[path = "../worldgen/mod.rs"]
-mod worldgen;
-
-use crate::death_marker::DeathMarkerPlugin;
-use crate::elk::ElkSimPlugin;
-use crate::grid::GridPlugin;
-use crate::overlay::OverlayPlugin;
-use crate::sim::SimStatePlugin;
-use crate::worldgen::WorldgenPlugin;
-use crate::settings::UserSettings;
-use crate::ui::UiPlugin;
-use crate::unit_select::UnitSelectPlugin;
-use render::RenderPlugin;
+use mesopotamia::death_marker::DeathMarkerPlugin;
+use mesopotamia::elk::ElkSimPlugin;
+use mesopotamia::grid::GridPlugin;
+use mesopotamia::metrics::InstrumentPlugin;
+use mesopotamia::overlay::OverlayPlugin;
+use mesopotamia::render::RenderPlugin;
+use mesopotamia::settings::UserSettings;
+use mesopotamia::sim::SimStatePlugin;
+use mesopotamia::ui::UiPlugin;
+use mesopotamia::unit_select::UnitSelectPlugin;
+use mesopotamia::worldgen::WorldgenPlugin;
 
 const CANVAS_ID: &str = "#game-canvas"; // matches <canvas id="game-canvas"> in web/
 
@@ -72,18 +31,34 @@ fn main() {
                 fit_canvas_to_parent: true,
                 prevent_default_event_handling: false,
                 resolution: WindowResolution::new(settings.window.width, settings.window.height), // ignored on web
-
                 ..default()
             }),
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        // DroppingsPlugin intentionally omitted; add it here to re-enable the nutrient cycle.
-        .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin))
+        // DroppingsPlugin intentionally omitted; add it to re-enable the nutrient cycle.
+        .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin, InstrumentPlugin::default()))
         .insert_resource(settings);
 
     #[cfg(not(target_arch = "wasm32"))]
-    app.add_systems(Startup, settings::maximize_window);
+    {
+        use mesopotamia::grid::Grid;
+        use mesopotamia::worldgen::testmap;
+
+        app.add_systems(Startup, mesopotamia::settings::maximize_window);
+        match testmap::source_from_args(std::env::args()) {
+            Ok(source) => {
+                if let testmap::WorldSource::TestMap(m) = source {
+                    app.insert_resource(Grid::new(m.width, m.height));
+                }
+                app.insert_resource(source);
+            }
+            Err(msg) => {
+                eprintln!("{msg}");
+                std::process::exit(2);
+            }
+        }
+    }
 
     app.run();
 }

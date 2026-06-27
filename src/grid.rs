@@ -55,28 +55,6 @@ impl Default for GrowthRate {
     }
 }
 
-// strength=0 disables the wave: floor == intrinsic everywhere, no senescence.
-#[derive(Resource, Clone, Copy)]
-pub struct GreenWave {
-    pub strength: f32,
-    pub speed: f32,
-    pub wavelength: f32,
-}
-
-impl Default for GreenWave {
-    fn default() -> Self {
-        Self {
-            // 0 = off: crest coded as own cause — co-evolution rejects it (doc01.03).
-            strength: 0.0,
-            speed: 0.010,
-            wavelength: 85.0,
-        }
-    }
-}
-
-#[derive(Resource, Default)]
-pub struct SimTick(pub u32);
-
 impl Grid {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
@@ -311,48 +289,26 @@ impl Plugin for GridPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Grid::new(GRID_WIDTH, GRID_HEIGHT))
             .init_resource::<GrowthRate>()
-            .init_resource::<GreenWave>()
-            .init_resource::<SimTick>()
             .add_systems(
                 FixedUpdate,
-                (tick_counter, growth, grow_shrubs)
+                (growth, grow_shrubs)
                     .chain()
                     .run_if(in_state(Sim::Running)),
             );
     }
 }
 
-fn tick_counter(mut tick: ResMut<SimTick>) {
-    tick.0 += 1;
-}
-
-// Both 1.0 so wavelength-mean floor equals `intrinsic` exactly: 0.5·(CREST_GAIN − TROUGH_CUT) = 0.
-const CREST_GAIN: f32 = 1.0;
-const TROUGH_CUT: f32 = 1.0;
 const FRESH_DECAY: f32 = 0.05; // ~20-tick half-life
 const FRESH_GAIN: f32 = 8.0;
-const SENESCE_MAX: f32 = 0.05; // max fractional loss per tick at trough
 
-fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>, wave: Res<GreenWave>, tick: Res<SimTick>) {
+fn growth(mut grid: ResMut<Grid>, rate: Res<GrowthRate>) {
     let n = grid.len();
     let width = grid.width();
     let height = grid.height();
     let caps: Vec<f32> = (0..n).map(|i| grid.capacity(i)).collect();
-    let t = tick.0 as f32;
-
-    let mut floor = vec![0.0f32; n];
-    let mut senesce = vec![0.0f32; n];
-    for i in 0..n {
-        let col = i % width;
-        let w = field::green_wave(col, wave.wavelength, t, wave.speed);
-        floor[i] = (rate.intrinsic
-            * (1.0 + wave.strength * (CREST_GAIN * w - TROUGH_CUT * (1.0 - w))))
-            .max(0.0);
-        senesce[i] = wave.strength * SENESCE_MAX * (1.0 - w);
-    }
 
     let prev_grass = grid.grass.clone();
-    let next_grass = field::wave_grow(&prev_grass, &caps, width, height, &floor, rate.spread, &senesce);
+    let next_grass = field::spread_grow(&prev_grass, &caps, width, height, rate.intrinsic, rate.spread);
     let grew: Vec<f32> = (0..n)
         .map(|i| (next_grass[i] - prev_grass[i]).max(0.0))
         .collect();

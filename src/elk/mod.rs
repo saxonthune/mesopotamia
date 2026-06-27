@@ -10,7 +10,7 @@ pub mod abundance;
 pub mod presets;
 pub mod ratios;
 
-pub use components::{Cohort, Elk, ElkParams, Herds, Spawner, CHEW_TICKS, ENERGY_DRAIN};
+pub use components::{Cohort, Elk, ElkParams, Herds, ManualSpawn, Spawner, CHEW_TICKS, ENERGY_DRAIN};
 pub use ratios::RatioControls;
 pub use score::Score;
 #[allow(unused_imports)]
@@ -37,6 +37,7 @@ impl Plugin for ElkSimPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins(EventsPlugin)
             .init_resource::<Spawner>()
+            .init_resource::<ManualSpawn>()
             .init_resource::<ElkParams>()
             .init_resource::<HerdParams>()
             .init_resource::<Herds>()
@@ -52,7 +53,8 @@ impl Plugin for ElkSimPlugin {
                     herding::herd_step,
                     metabolism::graze,
                     metabolism::metabolize,
-                    spawn::spawn_waves,
+                    spawn::spawn_waves.run_if(spawn::auto_spawn_enabled),
+                    spawn::manual_spawn,
                     spawn::cull,
                     // Order-independent: the monotonic event cursor folds each
                     // despawn exactly once, at worst a tick after it happens.

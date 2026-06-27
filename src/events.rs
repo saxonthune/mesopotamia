@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use std::collections::VecDeque;
 
-// Match history.rs's WINDOW so the ring-buffer holds the same simulation span.
+// Match metrics.rs's LIVE_WINDOW so the ring-buffer holds the same simulation span.
 const EVENT_CAP: usize = 6000;
 
 #[derive(Clone, Copy, Debug)]
