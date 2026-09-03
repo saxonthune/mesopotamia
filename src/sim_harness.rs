@@ -120,6 +120,7 @@ pub struct Scenario {
     pub world: WorldSource,
     pub params: ElkParams,
     pub ratios: RatioControls,
+    pub herd: HerdParams,
     /// `(tick, count)` pairs — each fires a manual spawn of `count` elk at that tick.
     pub spawns: Vec<(u32, u32)>,
     pub ticks: u32,
@@ -134,6 +135,7 @@ pub fn run(scenario: &Scenario, metrics: &[WorldMetric]) -> MetricLog {
     app.insert_resource(scenario.world);
     app.insert_resource(scenario.params.clone());
     app.insert_resource(scenario.ratios);
+    app.insert_resource(scenario.herd.clone());
 
     let mut log = MetricLog::new(metrics);
     for tick in 0..scenario.ticks {
@@ -348,6 +350,7 @@ pub fn ascii_frame(world: &mut World) -> String {
                     HerdState::Graze => 'g',
                     HerdState::Travel => 'T',
                     HerdState::Cross => 'X',
+                    HerdState::Search => 's',
                 },
                 Some(states) if states.len() <= 9 => {
                     char::from_digit(states.len() as u32, 10).unwrap()

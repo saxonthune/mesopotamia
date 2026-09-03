@@ -30,11 +30,12 @@ Both converge on the same loop, which is the redesign's spine: **pick a destinat
 
 ## The architecture the research points to
 
-An elk runs a **small state machine** — *graze*, *travel*, *cross* — and each state drives **steering behaviours** rather than a per-tick softmax:
+An elk runs a **small state machine** — *graze*, *travel*, *cross*, *search* — and each state drives **steering behaviours** rather than a per-tick softmax:
 
-- **Graze** — hold and feed, a slow wander pausing to eat. Transition to *travel* on a per-elk marginal-value judgment: the elk's own intake here has fallen below a hunger-scaled bar *and* a richer cell is reachable (doc03.01.08).
+- **Graze** — hold and feed, a slow wander pausing to eat. Transition to *travel* on a per-elk marginal-value judgment: the elk's own intake here has fallen below a hunger-scaled bar *and* a richer cell is reachable (doc03.01.08); if intake is below the bar but *nothing* richer is in range, transition to *search* instead.
 - **Travel** — commit to a destination (a richer patch, or a neighbour ahead) and **Arrive** at it. Arrive is the anti-overshoot primitive: two radii, an outer one where the elk slows and an inner one where it stops, so it settles onto a target instead of orbiting and oscillating the way a plain seek does. The committed destination is held across ticks and only re-chosen on arrival or when it becomes invalid — which is what structurally removes the buzzing.
 - **Cross** — the existing river logic (doc03.01.08): perceive the far bank across the span, weigh `cross_desire` against the bounded `swim_cost`, and Arrive at the far bank once committed.
+- **Search** — extensive relocation when no forage is in perception (Nathan 2008's directed-relocation complement to graze's area-restricted search). The elk wanders a **correlated random walk** — a persistent heading turned by a small per-tick angle — with **cohesion dropped**, dispersing from the herd until food enters range, then transitioning to *travel*. The wander is decorrelated per-elk by a deterministic seed (no RNG, so the fixed-step schedule replays), which keeps searchers from re-synchronising. This makes the rule set *complete* — an elk is never without a behaviour, so there is no stuck state for a supervisor to detect and repair — and it is where the phase-lock escape-hatch routes: an elk that detects it is making no net progress (a local, honest signal, not a global "am I phase-locked" oracle) drops into *search* and the dispersal breaks the lock.
 
 **Hysteresis** sits on every transition and on the separation/cohesion blend — the dead-band the literature prescribes — so a decision does not propagate and amplify through the herd. The existing `travel_margin` is one instance of this; the redesign generalises it.
 

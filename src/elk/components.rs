@@ -116,9 +116,15 @@ pub struct ElkParams {
     pub swim_drain: f32,
     /// Weight on freshness vs standing crop; 0.0 = raw biomass gradient (default).
     pub freshness_weight: f32,
-    /// Look-ahead distance (cells east) for a richer patch; 0.0 = off (default).
+    /// Radius of the long-range, distance-discounted leave-target scan — how far a depleted elk
+    /// can perceive the next patch across a void. 0.0 = off. Repurposed from the retired eastward
+    /// sightline; the scan is omnidirectional now.
     pub sightline_range: f32,
-    /// Pull weight for `forage_sightline`; 0.0 = off (default).
+    /// Per-cell value penalty on the long scan: a far cell's forage is discounted by
+    /// `distance × sightline_discount`. This is the travel cost across bare ground — what makes the
+    /// herd exploit local forage first and jump only once the local patch is stripped.
+    pub sightline_discount: f32,
+    /// Pull weight for the retired eastward `forage_sightline`; 0.0 = off. Inert in steering now.
     pub sightline_weight: f32,
     /// Look-across distance for crossing decisions; must exceed river width or the far bank is invisible.
     pub cross_peek: f32,
@@ -136,7 +142,8 @@ impl Default for ElkParams {
             ford_discount: 0.1,
             swim_drain: 0.01,
             freshness_weight: 0.0,
-            sightline_range: 0.0,
+            sightline_range: 24.0,
+            sightline_discount: 0.012,
             sightline_weight: 0.0,
             // Above the widest worldgen channel (~19) so the far bank is always visible.
             cross_peek: 28.0,

@@ -12,10 +12,10 @@ use super::color::elk_color;
 
 const TILE_SIZE: f32 = 16.0;
 
-pub const TARGET_POPULATION: usize = 200; // fixed headcount — does NOT scale with grid area
-const MAX_POPULATION: usize = 240;
+pub const TARGET_POPULATION: usize = 560; // fixed headcount — does NOT scale with grid area
+const MAX_POPULATION: usize = 700;
 const WAVE_INTERVAL: u32 = 280;
-const PACK_BASE: usize = 20;
+const PACK_BASE: usize = 70;
 const TARGET_GROWTH_PERIOD: u32 = 1200;
 const PACK_GROWTH_PERIOD: u32 = 2400;
 pub const EDGE_COL: usize = GRID_WIDTH - 2; // the two farthest columns count as "at the edge"
@@ -25,7 +25,7 @@ const EDGE_TICKS: u32 = 3;
 const SPAWN_ZONE_COLS: f32 = 6.0;
 const ANCHOR_WALK_MIN: f32 = 18.0;
 const ANCHOR_WALK_MAX: f32 = 40.0;
-const HERD_SPREAD: f32 = 3.0;
+const HERD_SPREAD: f32 = 6.0;
 const SIZE_JITTER: f32 = 0.5;
 const JUMP_PROB: f32 = 0.2; // chance each wave to reseed the anchor at random
 
