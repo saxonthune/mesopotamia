@@ -72,8 +72,15 @@ for demo in "${DEMOS[@]}"; do
     # Copy the demo's page (canvas + description).
     cp "$ROOT/web/demos/$demo/index.html" "$out/index.html"
 
-    size=$(du -h "$out/${demo}_bg.wasm" | cut -f1)
-    echo "==> $demo done — wasm is $size"
+    # Cloudflare Pages rejects any single file over 25 MiB. Fail here, before
+    # the upload, so an over-budget wasm is caught with a clear message.
+    bytes=$(stat -c%s "$out/${demo}_bg.wasm")
+    limit=$((25 * 1024 * 1024))
+    printf '==> %s done - wasm is %s (%d bytes)\n' "$demo" "$(du -h "$out/${demo}_bg.wasm" | cut -f1)" "$bytes"
+    if (( bytes > limit )); then
+        echo "ERROR: ${demo}_bg.wasm exceeds the Cloudflare Pages 25 MiB per-file limit." >&2
+        exit 1
+    fi
 done
 
 echo "==> site assembled in dist/. Preview: (cd dist && python3 -m http.server)"

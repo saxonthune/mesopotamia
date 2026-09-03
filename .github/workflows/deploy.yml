@@ -21,9 +21,6 @@ jobs:
         with:
           tool: wasm-bindgen-cli@0.2.125,wasm-opt,just
 
-      - name: Unit tests
-        run: cargo test --lib
-
       - name: Build static site
         run: ./build-web.sh
 

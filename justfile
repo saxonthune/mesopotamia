@@ -70,8 +70,9 @@ web-serve:
     @echo "Serving dist/ on http://localhost:8000  (Ctrl-C to stop)"
     cd dist && python3 -m http.server 8000
 
-# One-shot local preview: fast debug build, then serve. http://localhost:8000
-web-preview: web-dev web-serve
+# One-shot local preview of the exact deploy artifact: release build, then serve.
+# http://localhost:8000  (slow to build; use web-dev for layout/glue iteration.)
+web-preview: web web-serve
 
 # Stage 1 is the syn extractor over the source tree; stage 2 shapes its JSON
 # into graph + pack. The extractor is a standalone tool crate, kept out of the

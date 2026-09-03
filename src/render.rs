@@ -32,11 +32,8 @@ impl Plugin for RenderPlugin {
                 (
                         (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
                     release_buttons_on_focus_loss,
-                    sync_tiles,
-                    sync_poop,
-                    sync_shrubs,
-                    sync_flower_patches,
-                    sync_grass_tiles,
+                    (sync_tiles, sync_poop, sync_shrubs, sync_flower_patches, sync_grass_tiles)
+                        .run_if(resource_changed::<Grid>),
                     apply_camera,
                     sync_elk_transform,
                     sync_elk_color,
@@ -436,7 +433,10 @@ fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
 
         let c = flood_color(c, grid.water(tile.index) / MAX_WATER);
 
-        sprite.color = Color::srgb(c.x, c.y, c.z);
+        let color = Color::srgb(c.x, c.y, c.z);
+        if sprite.color != color {
+            sprite.color = color;
+        }
     }
 }
 
@@ -461,15 +461,19 @@ fn flood_color(land: Vec3, water_frac: f32) -> Vec3 {
 
 fn sync_poop(grid: Res<Grid>, mut dots: Query<(&PoopDot, &mut Transform)>) {
     for (dot, mut transform) in &mut dots {
-        let p = grid.poop(dot.index) / MAX_POOP;
-        transform.scale = Vec3::splat(p);
+        let s = Vec3::splat(grid.poop(dot.index) / MAX_POOP);
+        if transform.scale != s {
+            transform.scale = s;
+        }
     }
 }
 
 fn sync_shrubs(grid: Res<Grid>, mut dots: Query<(&ShrubDot, &mut Transform)>) {
     for (dot, mut transform) in &mut dots {
-        let s = grid.shrubs(dot.index) / MAX_SHRUBS;
-        transform.scale = Vec3::splat(s);
+        let s = Vec3::splat(grid.shrubs(dot.index) / MAX_SHRUBS);
+        if transform.scale != s {
+            transform.scale = s;
+        }
     }
 }
 
@@ -495,10 +499,14 @@ fn sync_flower_patches(
 ) {
     for (patch, mut transform, mut sprite) in &mut patches {
         if !flower_bloomed(&grid, patch.index) {
-            transform.scale = Vec3::ZERO;
+            if transform.scale != Vec3::ZERO {
+                transform.scale = Vec3::ZERO;
+            }
             continue;
         }
-        transform.scale = Vec3::ONE;
+        if transform.scale != Vec3::ONE {
+            transform.scale = Vec3::ONE;
+        }
         let level = flower_level(grid.river_dist(patch.index));
         let variant = patch.index % FLOWER_VARIANTS;
         let handle = &palette.tiles[level][variant];
@@ -516,10 +524,14 @@ fn sync_grass_tiles(
     for (tile, mut transform, mut sprite) in &mut tiles {
         let level = grass_level(grid.grass(tile.index) / MAX_GRASS);
         if level == 0 {
-            transform.scale = Vec3::ZERO;
+            if transform.scale != Vec3::ZERO {
+                transform.scale = Vec3::ZERO;
+            }
             continue;
         }
-        transform.scale = Vec3::ONE;
+        if transform.scale != Vec3::ONE {
+            transform.scale = Vec3::ONE;
+        }
         // Cell-stable variant so the layout doesn't flicker as grass grows.
         let variant = tile.index % GRASS_VARIANTS;
         let handle = &palette.tiles[level - 1][variant];
