@@ -58,7 +58,7 @@ probe-scenario csv="0":
 web:
     ./build-web.sh
 
-# Fast debug wasm build for the tweak/refresh loop — skips release opt + wasm-opt.
+# Fast debug wasm build for the tweak/refresh loop - skips release opt + wasm-opt.
 # Bigger wasm, much shorter compile. Use `just web` for the deploy artifact.
 web-dev:
     ./build-web.sh dev
@@ -69,6 +69,9 @@ web-dev:
 web-serve:
     @echo "Serving dist/ on http://localhost:8000  (Ctrl-C to stop)"
     cd dist && python3 -m http.server 8000
+
+# One-shot local preview: fast debug build, then serve. http://localhost:8000
+web-preview: web-dev web-serve
 
 # Stage 1 is the syn extractor over the source tree; stage 2 shapes its JSON
 # into graph + pack. The extractor is a standalone tool crate, kept out of the

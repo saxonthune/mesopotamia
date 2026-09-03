@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Demo 1 — Grazing on the river</title>
+  <title>Elk herding - Mesopotamia</title>
   <style>
     :root { color-scheme: dark; }
     body {
@@ -50,7 +50,7 @@
 <body>
   <header class="topbar">
     <a class="back" href="../../">← all demos</a>
-    <h1>Demo 1 — Grazing on the river</h1>
+    <h1>Elk herding</h1>
   </header>
 
   <div id="stage">
@@ -60,19 +60,17 @@
   </div>
 
   <div class="desc">
-    <h2>What's going on</h2>
+    <h2>About</h2>
     <p>
-      A river is generated procedurally: white noise is smoothed into a cost
-      field, then a least-cost path is carved bank-to-bank, giving a meandering
-      channel of substantial width. Distance from the water sets each tile's
-      grass carrying capacity — lush at the banks, barren far away.
+      Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+      tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
+      veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
+      commodo consequat.
     </p>
     <p>
-      Elk spawn in packs on the left and migrate rightward under a pressure
-      that grows over time. They steer by a boids-like blend of separation,
-      cohesion, and the grass gradient. Grazing converts grass into energy and,
-      after digestion, into poop that fertilizes wherever the elk has wandered —
-      closing an ecological loop between water, grass, and herd.
+      Duis aute irure dolor in reprehenderit in voluptate velit esse cillum
+      dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
+      proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
     </p>
     <p class="controls">
       Drag (middle/right mouse) to pan · scroll to zoom · click ⛶ for fullscreen
@@ -88,12 +86,12 @@
     const canvas = document.getElementById('game-canvas');
 
     // Keep wheel events over the canvas from scrolling the page. preventDefault
-    // stops only the browser's default scroll — propagation still reaches Bevy,
+    // stops only the browser's default scroll - propagation still reaches Bevy,
     // so the in-game zoom handler sees the event.
     canvas.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
 
     // Right-drag pans the camera, so suppress the browser context menu over the
-    // canvas — otherwise a right-click pops a menu that swallows the mouseup,
+    // canvas - otherwise a right-click pops a menu that swallows the mouseup,
     // leaving Bevy convinced the button is still held (a stuck pan).
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
