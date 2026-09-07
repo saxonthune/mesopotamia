@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use bevy::diagnostic::{DiagnosticsStore, EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
 
@@ -9,9 +10,9 @@ use crate::droppings::Fertility;
 use crate::events::EventLog;
 use crate::grid::Grid;
 use crate::metrics::MetricLog;
-use crate::render::{cell_world_pos, WorldCamera};
+use crate::render::{cell_world_pos, PerfStats, WorldCamera};
 use crate::ui_kit::{group_row, render_plot, window, Group, PlotSpec, TitledGroup};
-use crate::unit_select::{draw_elk_silhouette, herd_color32, SelectionParams, UnitSelectState};
+use crate::unit_select::{herd_color32, SelectionParams, UnitSelectState};
 
 pub struct UiPlugin;
 
@@ -63,7 +64,7 @@ impl Default for UiState {
         Self {
             tab: Tab::default(),
             selected: None,
-            visible: std::collections::HashSet::from([Graph::SurvivalScore]),
+            visible: std::collections::HashSet::new(),
             overlays: std::collections::HashSet::new(),
             histogram_metric: 0,
         }
@@ -75,8 +76,8 @@ enum Tab {
     #[default]
     Sliders,
     Herds,
-    /// Auto-shown when a selection exists; hidden when empty.
     Selection,
+    Perf,
 }
 
 /// `ALL` drives both the toggle row and the render loop — add a variant here to wire button + plot.
@@ -207,6 +208,7 @@ fn graphs_bar(
         ui.horizontal(|ui| {
             ui.label("graphs:");
             for g in Graph::ALL {
+                if matches!(g, Graph::SurvivalScore) { continue; }
                 let on = state.visible.contains(&g);
                 if ui.selectable_label(on, g.label()).clicked() {
                     if on { state.visible.remove(&g); } else { state.visible.insert(g); }
@@ -365,6 +367,8 @@ fn control_panel(
     mut next_state: ResMut<NextState<crate::sim::Sim>>,
     herds: Res<Herds>,
     log: Res<MetricLog>,
+    perf_stats: Res<PerfStats>,
+    diagnostics: Res<DiagnosticsStore>,
     mut selection: SelectionParams,
     mut dock_settle_frames: Local<u32>,
 ) -> Result {
@@ -406,6 +410,7 @@ fn control_panel(
                 if has_units {
                     ui.selectable_value(&mut state.tab, Tab::Selection, "Selection");
                 }
+                ui.selectable_value(&mut state.tab, Tab::Perf, "Perf");
                 ui.separator();
                 speed_inline(ui, time.as_mut());
                 ui.separator();
@@ -451,6 +456,7 @@ fn control_panel(
                 }
                 Tab::Herds => herds_view(ui, state.as_mut(), &herds, &log),
                 Tab::Selection => selection_tab(ui, selection.state.as_mut(), &selection.elk),
+                Tab::Perf => perf_tab(ui, &perf_stats, &diagnostics),
             });
         });
     Ok(())
@@ -569,8 +575,31 @@ fn herd_details(
     });
 }
 
+fn perf_tab(ui: &mut egui::Ui, stats: &PerfStats, diagnostics: &DiagnosticsStore) {
+    let fps = diagnostics
+        .get(&FrameTimeDiagnosticsPlugin::FPS)
+        .and_then(|d| d.smoothed());
+    let frame_ms = diagnostics
+        .get(&FrameTimeDiagnosticsPlugin::FRAME_TIME)
+        .and_then(|d| d.smoothed());
+    let entity_count = diagnostics
+        .get(&EntityCountDiagnosticsPlugin::ENTITY_COUNT)
+        .and_then(|d| d.value());
+
+    let text = format!(
+        "FPS: {}\nframe time: {}\n\ntotal entities: {}\nvisible sprites: {}\nhidden sprites: {}\n\nsync runs/sec: {}",
+        fps.map_or("-".into(), |v| format!("{v:.0}")),
+        frame_ms.map_or("-".into(), |v| format!("{v:.1} ms")),
+        entity_count.map_or("-".into(), |v| format!("{v:.0}")),
+        stats.visible_sprites,
+        stats.hidden_sprites,
+        stats.sync_runs,
+    );
+
+    ui.add(egui::TextEdit::multiline(&mut text.as_str()).desired_width(f32::INFINITY));
+}
+
 const THUMB: f32 = 58.0;
-const PORTRAIT_H: f32 = 168.0;
 
 /// Stale units are pruned by `control_panel` before this runs.
 fn selection_tab(
@@ -582,7 +611,7 @@ fn selection_tab(
     let units = sel.units.clone();
     let total = sel.captured_total;
 
-    ui.columns(3, |cols| {
+    ui.columns(2, |cols| {
         let roster = &mut cols[0];
         roster.horizontal(|ui| {
             let header = if units.len() < total {
@@ -606,7 +635,7 @@ fn selection_tab(
                 let Ok((_, ec, _)) = elk.get(e) else { continue };
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(THUMB, THUMB), egui::Sense::click());
                 let painter = ui.painter_at(rect);
-                draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
+                painter.rect_filled(rect, 3.0, herd_color32(ec.slot));
                 let bar = egui::Rect::from_min_max(
                     egui::pos2(rect.left() + 3.0, rect.bottom() - 7.0),
                     egui::pos2(rect.right() - 3.0, rect.bottom() - 3.0),
@@ -675,35 +704,6 @@ fn selection_tab(
                 ui.weak("select a unit");
             }
         });
-
-        let portrait = &mut cols[2];
-        let (rect, _) = portrait.allocate_exact_size(
-            egui::vec2(portrait.available_width(), PORTRAIT_H),
-            egui::Sense::hover(),
-        );
-        let painter = portrait.painter_at(rect);
-        match sel.focused.and_then(|e| elk.get(e).ok()) {
-            Some((_, ec, _)) => {
-                draw_elk_silhouette(&painter, rect, herd_color32(ec.slot));
-                painter.text(
-                    rect.center_bottom() + egui::vec2(0.0, -8.0),
-                    egui::Align2::CENTER_BOTTOM,
-                    format!("{:06x}", ec.code),
-                    egui::FontId::monospace(15.0),
-                    egui::Color32::WHITE,
-                );
-            }
-            None => {
-                painter.rect_filled(rect, 4.0, egui::Color32::from_gray(24));
-                painter.text(
-                    rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    "no unit",
-                    egui::FontId::proportional(12.0),
-                    egui::Color32::from_gray(120),
-                );
-            }
-        }
     });
 }
 

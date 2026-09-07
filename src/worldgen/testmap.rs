@@ -24,24 +24,21 @@ pub enum WorldSource {
     TestMap(&'static TestMap),
 }
 
-// Five 25×13 shrub ovals over bare ground, gaps widening 3/6/10/18. Sized so a 50–100-elk herd
-// *fills and strips* one patch in a few hundred ticks — the depletion that drives the jump — and
-// gaps stay within the ~24-cell discounted sightline so the next patch is perceivable from the edge.
-const OVAL_HALF_W: usize = 12;
-const OVAL_HALF_H: usize = 6;
-const OVAL_GAPS: [usize; 4] = [3, 6, 10, 18];
-const PAD_X: usize = 6;
-const PAD_Y: usize = 8;
+// Four 20×10 shrub ovals (gaps 2/8/20), 4 bare cols of margin each side, 10 bare rows each side.
+const OVAL_HALF_W: usize = 10;
+const OVAL_HALF_H: usize = 5;
+const OVAL_GAPS: [usize; 3] = [2, 8, 20];
+const PAD_X: usize = 4;
+const PAD_Y: usize = 10;
 
-const OVAL_GAPS_W: usize = (OVAL_GAPS.len() + 1) * (2 * OVAL_HALF_W + 1)
-    + OVAL_GAPS[0] + OVAL_GAPS[1] + OVAL_GAPS[2] + OVAL_GAPS[3]
-    + 2 * PAD_X;
+const OVAL_GAPS_W: usize =
+    4 * (2 * OVAL_HALF_W + 1) + OVAL_GAPS[0] + OVAL_GAPS[1] + OVAL_GAPS[2] + 2 * PAD_X;
 const OVAL_GAPS_H: usize = (2 * OVAL_HALF_H + 1) + 2 * PAD_Y;
 
 pub const TEST_MAPS: &[TestMap] = &[TestMap {
     name: "oval-gaps",
-    description: "Five 25×13 shrub ovals in a row over bare ground, gaps widening 3/6/10/18 cells — \
-                  a jump-distance test: each patch is herd-sized so it strips and the herd chains on.",
+    description: "Four 20×10 shrub ovals in a row over bare ground, gaps of 2/8/20 cells — \
+                  a crossing test over widening bare ground.",
     width: OVAL_GAPS_W,
     height: OVAL_GAPS_H,
     build: oval_gaps,
@@ -203,9 +200,9 @@ mod tests {
         }
         let right_pad = row.len() - row.iter().rposition(|&s| s).unwrap() - 1;
 
-        assert_eq!(runs_shrub.len(), OVAL_GAPS.len() + 1, "one more oval than gaps");
-        assert_eq!(runs_gap, OVAL_GAPS.to_vec(), "gaps match the widening series");
-        assert_eq!((left_pad, right_pad), (PAD_X, PAD_X), "PAD_X bare columns each side");
+        assert_eq!(runs_shrub.len(), 4, "four ovals on the centre row");
+        assert_eq!(runs_gap, vec![2, 8, 20], "gaps widen 2/8/20");
+        assert_eq!((left_pad, right_pad), (PAD_X, PAD_X), "4 bare columns each side");
 
         // Vertical padding: PAD_Y bare rows above the first shrub column of cells.
         let cc = left_pad + OVAL_HALF_W; // centre of the first oval

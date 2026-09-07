@@ -179,30 +179,6 @@ pub fn herd_color32(slot: u8) -> egui::Color32 {
     )
 }
 
-pub fn draw_elk_silhouette(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
-    painter.rect_filled(rect, 4.0, egui::Color32::from_gray(28));
-    let c = rect.center();
-    let s = rect.width().min(rect.height());
-    painter.circle_filled(c + egui::vec2(-s * 0.04, s * 0.06), s * 0.26, color);
-    let head = c + egui::vec2(s * 0.22, -s * 0.16);
-    painter.circle_filled(head, s * 0.12, color);
-    let antler = egui::Stroke::new((s * 0.03).max(1.0), color);
-    painter.line_segment([head, head + egui::vec2(s * 0.10, -s * 0.22)], antler);
-    painter.line_segment([head, head + egui::vec2(-s * 0.02, -s * 0.26)], antler);
-    painter.line_segment(
-        [head + egui::vec2(s * 0.04, -s * 0.13), head + egui::vec2(s * 0.16, -s * 0.17)],
-        antler,
-    );
-    let leg = egui::Stroke::new((s * 0.045).max(1.0), color);
-    for dx in [-0.14_f32, -0.02, 0.10] {
-        let x = c.x + dx * s;
-        painter.line_segment(
-            [egui::pos2(x, c.y + s * 0.14), egui::pos2(x, c.y + s * 0.34)],
-            leg,
-        );
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,7 +7,7 @@ use crate::grid::Grid;
 
 use super::components::{Elk, ElkParams, ENERGY_DRAIN};
 use super::ledger::EnergyFlows;
-use super::movement::{cross_desire, forage_across, grass_gradient, swim_cost};
+use super::movement::{cross_desire, forage_across, forage_sightline, grass_gradient, swim_cost};
 
 const WATER_EPS: f32 = 0.01;
 
@@ -36,12 +36,6 @@ pub struct Herding {
     /// thinning patch sooner and sort to the front; content elk (<1) linger at the rear. The
     /// heterogeneity that deepens desync and gives the herd a front-to-back gradient.
     pub restlessness: f32,
-    /// Current wander heading — meaningful only in `Search`, zero otherwise. The persistent
-    /// direction of the correlated random walk; reset to zero on leaving Search.
-    pub heading: Vec2,
-    /// Cell snapshotted `progress_age` ticks ago — the escape-hatch reference for net displacement.
-    pub progress_ref: usize,
-    pub progress_age: u32,
 }
 
 impl Default for Herding {
@@ -55,9 +49,6 @@ impl Default for Herding {
             chew: 0,
             intake_ema: 2.0 * ENERGY_DRAIN,
             restlessness: 1.0,
-            heading: Vec2::ZERO,
-            progress_ref: 0,
-            progress_age: 0,
         }
     }
 }
@@ -81,10 +72,6 @@ pub enum HerdState {
     Travel,
     /// Committed river traversal: lock onto the far bank and pay the swim cost.
     Cross,
-    /// Extensive search (Nathan 2008): no forage in range — wander a correlated random walk,
-    /// cohesion dropped, until food enters perception. An elk is never without a behaviour, so
-    /// there is no stuck state to detect; this is also where the phase-lock escape-hatch routes.
-    Search,
 }
 
 /// Committed destination — not re-rolled each tick. Herd following is emergent per-tick cohesion, not a stored target.
@@ -232,50 +219,6 @@ pub fn leave_intake_threshold(energy: f32, ratio: f32, drain: f32) -> f32 {
     ratio * drain * energy.clamp(0.0, 1.0)
 }
 
-/// Max per-tick turn of the Search wander (radians) — large enough to explore, small enough that
-/// the walk is correlated (covers ground) rather than Brownian jitter.
-const WANDER_MAX_TURN: f32 = 0.6;
-
-/// Ticks between escape-hatch progress checks, and the net cells of travel expected within one
-/// window before an under-fed elk is judged stuck and diverted to Search.
-const PROGRESS_WINDOW: u32 = 48;
-const PROGRESS_MIN: f32 = 4.0;
-
-/// Escape-hatch decision (pure): an elk that covered fewer than `min_progress` cells over the
-/// window *while its intake sits below the leave bar* is sloshing — moving but neither feeding nor
-/// getting anywhere. The intake guard is what spares a contentedly-grazing elk, which also holds
-/// position but is well-fed. Diverting it to Search disperses it and breaks the phase-lock.
-pub fn is_stuck(net_cells: f32, min_progress: f32, intake_ema: f32, leave_bar: f32) -> bool {
-    net_cells < min_progress && intake_ema < leave_bar
-}
-
-/// Deterministic integer hash (murmur-style finalizer). Search uses it instead of an RNG resource
-/// so the fixed-step schedule replays identically; the seed is per-elk (`restlessness.to_bits()`),
-/// so two elk wander independently rather than in lockstep.
-fn hash32(mut h: u32) -> u32 {
-    h ^= h >> 16;
-    h = h.wrapping_mul(0x7feb_352d);
-    h ^= h >> 15;
-    h = h.wrapping_mul(0x846c_a68b);
-    h ^= h >> 16;
-    h
-}
-
-fn hash_unit(seed: u32) -> f32 {
-    hash32(seed) as f32 / u32::MAX as f32
-}
-
-/// Per-elk initial wander heading — a unit vector decorrelated across elk by seed.
-fn rand_unit(seed: u32) -> Vec2 {
-    Vec2::from_angle(hash_unit(seed) * std::f32::consts::TAU)
-}
-
-/// Per-tick correlated turn in `[-WANDER_MAX_TURN, WANDER_MAX_TURN]`, varying with the dwell clock
-/// and decorrelated across elk by seed — so searchers don't all turn the same way at the same tick.
-fn wander_turn(seed: u32, dwell: u32) -> f32 {
-    (hash_unit(seed ^ dwell.wrapping_mul(0x9e37_79b9)) - 0.5) * 2.0 * WANDER_MAX_TURN
-}
-
 fn cell_center(cell: usize, grid: &Grid) -> Vec2 {
     let (c, r) = grid.col_row(cell);
     Vec2::new(c as f32 + 0.5, r as f32 + 0.5)
@@ -283,37 +226,6 @@ fn cell_center(cell: usize, grid: &Grid) -> Vec2 {
 
 fn attract(cell: usize, grid: &Grid, ep: &ElkParams) -> f32 {
     grid.forage(cell) + ep.freshness_weight * grid.freshness(cell)
-}
-
-/// Long-range, omnidirectional, distance-discounted leave-target scan. A far cell's attract is
-/// charged `distance × discount` (the cost of crossing bare ground), so the nearest rich cell wins:
-/// the local patch's un-grazed remainder is preferred while it lasts, and the next patch across a
-/// void is chosen only once the local neighbourhood is stripped to the floor. Returns the cell and
-/// its *net* (discounted) value; `here` is the baseline (zero distance, no discount). Strided by 2
-/// to quarter the cost — patches are far wider than the stride, so none are missed.
-fn richest_discounted(here: usize, grid: &Grid, ep: &ElkParams, radius: f32, discount: f32) -> (usize, f32) {
-    let r = radius.ceil() as isize;
-    let mut best_cell = here;
-    let mut best_net = attract(here, grid, ep);
-    let mut dy = -r;
-    while dy <= r {
-        let mut dx = -r;
-        while dx <= r {
-            let dist = ((dx * dx + dy * dy) as f32).sqrt();
-            if (dx != 0 || dy != 0) && dist <= radius {
-                if let Some(n) = grid.step(here, dx, dy) {
-                    let net = attract(n, grid, ep) - discount * dist;
-                    if net > best_net {
-                        best_net = net;
-                        best_cell = n;
-                    }
-                }
-            }
-            dx += 2;
-        }
-        dy += 2;
-    }
-    (best_cell, best_net)
 }
 
 // Scan is direction-unbiased; forward motion emerges from where the forage actually is, not a hard-coded axis.
@@ -399,10 +311,7 @@ pub(super) fn herd_step(
         let align = if align_n > 0.0 { (align_sum / align_n) * hp.alignment } else { Vec2::ZERO };
 
         let here = elk.cell;
-        let seed = herd.restlessness.to_bits();
-        // Local gradient only; the long-range pull is the omnidirectional discounted scan in the
-        // leave rule, not a hard-coded axis. conf reads "am I on a forage slope" for the follow blend.
-        let signal = grass_gradient(here, &grid, &ep);
+        let signal = grass_gradient(here, &grid, &ep) + forage_sightline(here, &grid, &ep);
         let conf = confidence(signal.length(), hp.confidence_ref);
 
         herd.dwell = herd.dwell.saturating_add(1);
@@ -416,27 +325,6 @@ pub(super) fn herd_step(
             }
         }
 
-        // Escape hatch: every PROGRESS_WINDOW ticks, an under-fed elk that hasn't covered ground is
-        // sloshing → divert to Search. restlessness scales the bar so they don't all trip in sync.
-        herd.progress_age += 1;
-        if herd.progress_age >= PROGRESS_WINDOW {
-            let (c0, r0) = grid.col_row(herd.progress_ref);
-            let (c1, r1) = grid.col_row(here);
-            let net = ((c1 as isize - c0 as isize).abs() + (r1 as isize - r0 as isize).abs()) as f32;
-            let leave_bar =
-                leave_intake_threshold(elk.energy, hp.leave_intake_ratio, ENERGY_DRAIN) * herd.restlessness;
-            if !matches!(herd.state, HerdState::Cross | HerdState::Search)
-                && is_stuck(net, PROGRESS_MIN * herd.restlessness, herd.intake_ema, leave_bar)
-            {
-                herd.state = HerdState::Search;
-                herd.goal = Goal::None;
-                herd.heading = rand_unit(seed);
-                herd.dwell = 0;
-            }
-            herd.progress_ref = here;
-            herd.progress_age = 0;
-        }
-
         // desired direction picks the grid step; feeding is decoupled so a travelling elk over food still eats.
         let desired;
         match herd.state {
@@ -448,54 +336,16 @@ pub(super) fn herd_step(
                     let restore = arrive(pos, coh_center, GRAZE_COH_SLOW, GRAZE_COH_DEAD, 1.0) * hp.cohesion;
                     desired = sep + restore + align;
                 }
-                // Marginal-value leave, per-elk (no shared dwell clock) — front depletes & leaves
-                // first, back lingers. Cheap local scan first: a richer cell in the patch → exploit
-                // it. Only once the local neighbourhood is at the floor does the depleted elk pay
-                // for the long discounted scan and jump to the next patch across the void.
-                let here_val = attract(here, &grid, &ep);
-                let threshold = leave_intake_threshold(elk.energy, hp.leave_intake_ratio, ENERGY_DRAIN)
-                    * herd.restlessness;
-                if herd.intake_ema < threshold {
-                    let (near, near_val) = richest_within(here, &grid, &ep, hp.scan_radius);
-                    if near != here && near_val - here_val > hp.travel_margin {
-                        herd.state = HerdState::Travel;
-                        herd.goal = Goal::Patch(near);
-                        herd.dwell = 0;
-                    } else {
-                        let (far, far_net) =
-                            richest_discounted(here, &grid, &ep, ep.sightline_range, ep.sightline_discount);
-                        if far != here && far_net - here_val > hp.travel_margin {
-                            herd.state = HerdState::Travel;
-                            herd.goal = Goal::Patch(far);
-                            herd.dwell = 0;
-                        } else if !elk.grazing {
-                            // Nothing reachable even across the void — wander rather than starve in place.
-                            herd.state = HerdState::Search;
-                            herd.goal = Goal::None;
-                            herd.heading = rand_unit(seed);
-                            herd.dwell = 0;
-                        }
-                    }
-                }
-            }
-            HerdState::Search => {
-                let turn = wander_turn(seed, herd.dwell);
-                herd.heading = Vec2::from_angle(turn).rotate(herd.heading);
-                // No cohesion term: a searcher disperses from the blob, and that dispersal is the
-                // phase-lock break — heterogeneous seeds send them different ways.
-                desired = herd.heading * hp.max_speed + sep;
-
+                // Marginal-value leave: go when recent intake here has dropped below the elk's
+                // satiation-scaled threshold AND a richer cell is reachable. The trigger is local
+                // and per-elk (no shared dwell clock) — front depletes & leaves first, back lingers.
                 let (cell, val) = richest_within(here, &grid, &ep, hp.scan_radius);
                 let gain = val - attract(here, &grid, &ep);
-                if elk.grazing {
-                    herd.state = HerdState::Graze;
-                    herd.goal = Goal::None;
-                    herd.heading = Vec2::ZERO;
-                    herd.dwell = 0;
-                } else if cell != here && gain > hp.travel_margin {
+                let threshold = leave_intake_threshold(elk.energy, hp.leave_intake_ratio, ENERGY_DRAIN)
+                    * herd.restlessness;
+                if cell != here && herd.intake_ema < threshold && gain > hp.travel_margin {
                     herd.state = HerdState::Travel;
                     herd.goal = Goal::Patch(cell);
-                    herd.heading = Vec2::ZERO;
                     herd.dwell = 0;
                 }
             }
@@ -505,9 +355,6 @@ pub(super) fn herd_step(
                     _ => here,
                 };
                 let target = cell_center(target_cell, &grid);
-                // Arrive at the committed cell — works across a forage void where the local gradient
-                // is zero, which steering-along-the-gradient could not. The column still emerges:
-                // front elk commit to the same far patch and the rest hold cohesion behind them.
                 let to_target = arrive(pos, target, hp.slow_radius, hp.arrive_radius, hp.max_speed);
                 let follow = coh_dir * (hp.max_speed * hp.cohesion * (1.0 - conf));
                 desired = to_target + follow + align + sep;
@@ -734,70 +581,5 @@ mod tests {
         assert!(hungry < fed, "hungry elk has a lower bar: {hungry} !< {fed}");
         assert_eq!(leave_intake_threshold(0.0, 1.0, drain), 0.0, "starving elk tolerates anything");
         assert_eq!(leave_intake_threshold(-0.5, 1.0, drain), 0.0, "energy clamps at 0");
-    }
-
-    #[test]
-    fn rand_unit_is_unit_length() {
-        for seed in [0u32, 1, 42, 0xDEAD_BEEF, u32::MAX] {
-            assert!((rand_unit(seed).length() - 1.0).abs() < 1e-5, "seed {seed} not unit");
-        }
-    }
-
-    #[test]
-    fn wander_turn_stays_in_band_and_is_deterministic() {
-        for seed in [1u32, 7, 99, 0xABCD] {
-            for dwell in 0..50u32 {
-                let t = wander_turn(seed, dwell);
-                assert!(t.abs() <= WANDER_MAX_TURN, "turn {t} exceeds band for ({seed},{dwell})");
-                assert_eq!(t, wander_turn(seed, dwell), "wander must be reproducible");
-            }
-        }
-    }
-
-    #[test]
-    fn wander_decorrelates_across_elk() {
-        // Two elk with different seeds must not turn identically every tick (no re-synchronisation).
-        let differ = (0..50u32).any(|d| wander_turn(11, d) != wander_turn(22, d));
-        assert!(differ, "distinct seeds produced identical wander streams");
-    }
-
-    #[test]
-    fn is_stuck_needs_both_no_progress_and_hunger() {
-        let bar = 0.001;
-        assert!(is_stuck(1.0, 4.0, 0.0005, bar), "no ground + under-fed → stuck");
-        assert!(!is_stuck(10.0, 4.0, 0.0005, bar), "covered ground → migrating, not stuck");
-        assert!(!is_stuck(1.0, 4.0, 0.01, bar), "well-fed in place → grazing, not stuck");
-        assert!(!is_stuck(4.0, 4.0, 0.0005, bar), "exactly at the bar is not below it");
-    }
-
-    fn discount_grid(near_val: f32, far_val: f32) -> (Grid, usize, ElkParams) {
-        use crate::grid::MAX_SHRUBS;
-        let mut grid = Grid::new(60, 5);
-        let row = 2usize;
-        let mut put = |g: &mut Grid, col: usize, v: f32| {
-            let i = row * 60 + col;
-            g.set_shrub_cap(i, MAX_SHRUBS);
-            g.set_shrubs(i, v);
-        };
-        put(&mut grid, 9, near_val); // 4 cells east of `here`
-        put(&mut grid, 35, far_val); // 30 cells east
-        let ep = ElkParams { sightline_range: 40.0, sightline_discount: 0.012, ..Default::default() };
-        (grid, row * 60 + 5, ep)
-    }
-
-    #[test]
-    fn richest_discounted_prefers_rich_near_over_far() {
-        // Near 0.9 (net 0.85) beats far 1.0 (net 0.64) — exploit the patch remainder first.
-        let (grid, here, ep) = discount_grid(0.9, 1.0);
-        let (cell, _) = richest_discounted(here, &grid, &ep, ep.sightline_range, ep.sightline_discount);
-        assert_eq!(cell, 2 * 60 + 9, "rich near cell wins across the distance discount");
-    }
-
-    #[test]
-    fn richest_discounted_jumps_far_when_local_is_floor() {
-        // Near stripped to floor 0.05 (net ~0) → far 1.0 (net 0.64) wins: jump across the void.
-        let (grid, here, ep) = discount_grid(0.05, 1.0);
-        let (cell, _) = richest_discounted(here, &grid, &ep, ep.sightline_range, ep.sightline_discount);
-        assert_eq!(cell, 2 * 60 + 35, "with local at floor, the far patch wins");
     }
 }

@@ -12,15 +12,18 @@
       background: #11140f; color: #e6e6dc;
     }
     .topbar { max-width: 72rem; margin-inline: auto; padding: 1rem 1.5rem 0.75rem; }
-    a.back { color: #6b9; text-decoration: none; font-size: 0.9rem; }
-    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0.5rem 0 0; }
+    .nav { display: flex; align-items: center; gap: 1rem; }
+    .nav a { color: #6b9; text-decoration: none; font-size: 0.9rem; }
+    .nav a:hover { text-decoration: underline; }
+    .nav .right { margin-left: auto; display: flex; gap: 1rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0; padding: 0.75rem 1.5rem; max-width: 46rem; margin-inline: auto; }
     /* Full-bleed stage: the canvas spans the whole viewport width and a tall
        slice of its height. The fullscreen button expands it to the whole screen. */
     #stage {
       position: relative;
       width: 100%; height: clamp(360px, 72vh, 1000px);
       background: #0a0c08; border-block: 1px solid #2c3322;
-      overflow: hidden;
+      overflow: hidden; resize: vertical; min-height: 260px;
       /* Touch gestures stay with the canvas, not the page. */
       touch-action: none;
     }
@@ -49,8 +52,13 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="back" href="../../">← all demos</a>
-    <h1>Elk herding</h1>
+    <nav class="nav">
+      <a href="../../">Menu</a>
+      <span class="right">
+        <a href="../../">← Previous</a>
+        <a href="../demo3/">Next →</a>
+      </span>
+    </nav>
   </header>
 
   <div id="stage">
@@ -59,18 +67,12 @@
     <canvas id="game-canvas"></canvas>
   </div>
 
+  <h1>Elk herding</h1>
+
   <div class="desc">
-    <h2>About</h2>
     <p>
-      Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
-      tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim
-      veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea
-      commodo consequat.
-    </p>
-    <p>
-      Duis aute irure dolor in reprehenderit in voluptate velit esse cillum
-      dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non
-      proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
+      An ecological simulation of elk herds grazing, migrating, and crossing a
+      river valley. Tune the economy with the sliders and watch the herds adapt.
     </p>
     <p class="controls">
       Drag (middle/right mouse) to pan · scroll to zoom · click ⛶ for fullscreen

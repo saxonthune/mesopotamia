@@ -12,28 +12,34 @@ use bevy_egui::input::egui_wants_any_pointer_input;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
 use crate::elk::{Elk, elk_color};
-use crate::grass_tile::{rasterize_grass, GrassTileParams};
-use crate::flower_tile::{rasterize_flower_patch, FlowerPatchParams};
-use crate::shrub_tile::{rasterize_shrub, ShrubTileParams};
 use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_ROUGH, MAX_WATER};
 
 pub const TILE_SIZE: f32 = 16.0;
 
-const TILE_INSET: f32 = 0.0;
+#[derive(Resource, Default)]
+pub struct PerfStats {
+    pub visible_sprites: u32,
+    pub hidden_sprites: u32,
+    pub sync_runs: u32,
+    sync_counter: u32,
+    last_reset: f64,
+}
 
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraSettings>()
+            .init_resource::<PerfStats>()
             .add_systems(Startup, setup)
             .add_systems(
                 Update,
                 (
                         (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
                     release_buttons_on_focus_loss,
-                    (sync_tiles, sync_poop, sync_shrubs, sync_flower_patches, sync_grass_tiles)
+                    (sync_tiles, sync_overlays, count_sync_run)
                         .run_if(resource_changed::<Grid>),
+                    gather_perf_stats,
                     apply_camera,
                     sync_elk_transform,
                     sync_elk_color,
@@ -51,7 +57,7 @@ pub struct CameraSettings {
 
 impl Default for CameraSettings {
     fn default() -> Self {
-        Self { zoom: 1.0, pan: Vec2::ZERO }
+        Self { zoom: 2.5, pan: Vec2::ZERO }
     }
 }
 
@@ -59,67 +65,18 @@ impl Default for CameraSettings {
 #[derive(Component)]
 pub struct WorldCamera;
 
-#[derive(Component)]
-struct CellTile {
-    index: usize,
-}
+#[derive(Resource)]
+struct TerrainTexture(Handle<Image>);
 
-#[derive(Component)]
-struct PoopDot {
-    index: usize,
-}
-
-#[derive(Component)]
-struct ShrubDot {
-    index: usize,
-}
-
-#[derive(Component)]
-struct GrassTile {
-    index: usize,
+#[derive(Resource)]
+struct OverlayTextures {
+    poop: Handle<Image>,
+    shrub: Handle<Image>,
+    grass: Handle<Image>,
+    flower: Handle<Image>,
 }
 
 const GRASS_LEVELS: usize = 5;
-const GRASS_VARIANTS: usize = 4;
-
-// Indexed [level-1][variant]; built once at startup, handles swapped per-tick.
-#[derive(Resource)]
-struct GrassPalette {
-    tiles: Vec<Vec<Handle<Image>>>,
-}
-
-fn grass_image(images: &mut Assets<Image>, rho: f32, seed: u64) -> Handle<Image> {
-    let p = GrassTileParams::default();
-    let data = rasterize_grass(&p, rho, seed);
-    let mut image = Image::new(
-        Extent3d {
-            width: p.canvas as u32,
-            height: (p.canvas + p.overflow) as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = ImageSampler::nearest();
-    images.add(image)
-}
-
-fn build_grass_palette(images: &mut Assets<Image>) -> GrassPalette {
-    let mut tiles = Vec::with_capacity(GRASS_LEVELS);
-    for level in 1..=GRASS_LEVELS {
-        let rho = level as f32 / GRASS_LEVELS as f32;
-        let mut variants = Vec::with_capacity(GRASS_VARIANTS);
-        for v in 0..GRASS_VARIANTS {
-            // Mix level into the seed so each (level, variant) is its own layout.
-            let seed = (level as u64) << 32 | v as u64;
-            variants.push(grass_image(images, rho, seed));
-        }
-        tiles.push(variants);
-    }
-    GrassPalette { tiles }
-}
 
 fn grass_level(frac: f32) -> usize {
     let frac = frac.clamp(0.0, 1.0);
@@ -129,102 +86,8 @@ fn grass_level(frac: f32) -> usize {
     ((frac * GRASS_LEVELS as f32).ceil() as usize).clamp(1, GRASS_LEVELS)
 }
 
-const FLOWER_LEVELS: usize = 5;
-const FLOWER_VARIANTS: usize = 4;
-
-// Indexed [level][variant], level = river-distance colour band.
-#[derive(Resource)]
-struct FlowerPalette {
-    tiles: Vec<Vec<Handle<Image>>>,
-}
-
-fn vec3_to_rgb8(c: Vec3) -> [u8; 3] {
-    let ch = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    [ch(c.x), ch(c.y), ch(c.z)]
-}
-
-fn flower_image(images: &mut Assets<Image>, color: [u8; 3], seed: u64) -> Handle<Image> {
-    let p = FlowerPatchParams::default();
-    let data = rasterize_flower_patch(&p, color, seed);
-    let mut image = Image::new(
-        Extent3d {
-            width: p.canvas as u32,
-            height: p.canvas as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = ImageSampler::nearest();
-    images.add(image)
-}
-
-fn build_flower_palette(images: &mut Assets<Image>) -> FlowerPalette {
-    let mut tiles = Vec::with_capacity(FLOWER_LEVELS);
-    for level in 0..FLOWER_LEVELS {
-        let river_dist = level as f32 / (FLOWER_LEVELS - 1) as f32;
-        let color = vec3_to_rgb8(flower_color(river_dist));
-        let mut variants = Vec::with_capacity(FLOWER_VARIANTS);
-        for v in 0..FLOWER_VARIANTS {
-            // Distinct seed space from the grass palette.
-            let seed = ((level as u64) << 32 | v as u64) ^ 0xF10_0000;
-            variants.push(flower_image(images, color, seed));
-        }
-        tiles.push(variants);
-    }
-    FlowerPalette { tiles }
-}
-
-fn flower_level(river_dist: f32) -> usize {
-    let rd = river_dist.clamp(0.0, 1.0);
-    (rd * (FLOWER_LEVELS - 1) as f32).round() as usize
-}
-
 const SHRUB_GREEN: [u8; 3] = [32, 73, 26];
 const SHRUB_OLIVE: [u8; 3] = [85, 96, 26];
-const SHRUB_VARIANTS: usize = 4;
-
-struct ShrubPalette {
-    west: Vec<Handle<Image>>, // riparian: green fill, olive rims
-    east: Vec<Handle<Image>>, // steppe: olive fill, green rims
-}
-
-// lean_left mirrors trunk grain so the two sides of the divide lean opposite ways.
-fn shrub_image(images: &mut Assets<Image>, fill: [u8; 3], detail: [u8; 3], seed: u64, lean_left: bool) -> Handle<Image> {
-    let p = ShrubTileParams { lean_left, ..ShrubTileParams::default() };
-    let data = rasterize_shrub(&p, fill, detail, seed);
-    let mut image = Image::new(
-        Extent3d {
-            width: p.canvas as u32,
-            height: p.canvas as u32,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        data,
-        TextureFormat::Rgba8UnormSrgb,
-        RenderAssetUsages::RENDER_WORLD,
-    );
-    image.sampler = ImageSampler::nearest();
-    images.add(image)
-}
-
-fn build_shrub_palette(images: &mut Assets<Image>) -> ShrubPalette {
-    let mut west = Vec::with_capacity(SHRUB_VARIANTS);
-    let mut east = Vec::with_capacity(SHRUB_VARIANTS);
-    for v in 0..SHRUB_VARIANTS {
-        let seed = (v as u64) ^ 0x5_8B00;
-        west.push(shrub_image(images, SHRUB_GREEN, SHRUB_OLIVE, seed, false));
-        east.push(shrub_image(images, SHRUB_OLIVE, SHRUB_GREEN, seed ^ 0xE57, true));
-    }
-    ShrubPalette { west, east }
-}
-
-#[derive(Component)]
-struct FlowerPatch {
-    index: usize,
-}
 
 pub fn cell_world_pos(grid: &Grid, index: usize) -> Vec2 {
     let (col, row) = grid.col_row(index);
@@ -233,32 +96,28 @@ pub fn cell_world_pos(grid: &Grid, index: usize) -> Vec2 {
     Vec2::new(x, y)
 }
 
+fn make_overlay(images: &mut Assets<Image>, w: usize, h: usize) -> Handle<Image> {
+    let mut img = Image::new(
+        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![0u8; w * h * 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    img.sampler = ImageSampler::nearest();
+    images.add(img)
+}
+
 fn setup(
     mut commands: Commands,
     mut egui_settings: ResMut<EguiGlobalSettings>,
     mut images: ResMut<Assets<Image>>,
     grid: Res<Grid>,
 ) {
-    let palette = build_grass_palette(&mut images);
-    let grass_start = palette.tiles[0][0].clone();
-    commands.insert_resource(palette);
-    // Grass sprites are taller than TILE_SIZE: overflow rows spill above; shift y up by half the overflow.
-    let grass_p = GrassTileParams::default();
-    let grass_h = (TILE_SIZE - TILE_INSET) * (grass_p.canvas + grass_p.overflow) as f32
-        / grass_p.canvas as f32;
-    let grass_size = Vec2::new(TILE_SIZE - TILE_INSET, grass_h);
-    let grass_y_off = (grass_h - (TILE_SIZE - TILE_INSET)) / 2.0;
-    let flowers = build_flower_palette(&mut images);
-    let flower_start = flowers.tiles[0][0].clone();
-    commands.insert_resource(flowers);
-    let shrubs = build_shrub_palette(&mut images);
-    // Separate cameras: world camera fills the window, egui camera composites the UI on top.
-    // Every UI surface is a screen-space overlay, so neither camera's viewport reflows with the panels.
     egui_settings.auto_create_primary_context = false;
 
     commands.spawn((Camera2d, WorldCamera));
 
-    // egui camera: full window, order 1, alpha-composites over the world camera.
     commands.spawn((
         PrimaryEguiContext,
         Camera2d,
@@ -274,59 +133,54 @@ fn setup(
         },
     ));
 
-    for index in 0..grid.len() {
-        let pos = cell_world_pos(&grid, index);
+    let w = grid.width();
+    let h = grid.height();
+    let full_size = Vec2::new(w as f32 * TILE_SIZE, h as f32 * TILE_SIZE);
 
-        commands.spawn((
-            Sprite::from_color(Color::srgb(0.3, 0.2, 0.1),
-                Vec2::splat(TILE_SIZE - TILE_INSET)),
-            Transform::from_xyz(pos.x, pos.y, 0.0),
-            CellTile { index }
-        ));
+    let mut terrain_image = Image::new(
+        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![255u8; w * h * 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    terrain_image.sampler = ImageSampler::nearest();
+    let terrain_handle = images.add(terrain_image);
+    commands.insert_resource(TerrainTexture(terrain_handle.clone()));
 
-        commands.spawn((
-            Sprite::from_color(Color::srgb(0.25, 0.15, 0.05),
-                Vec2::splat(TILE_SIZE * 0.3)),
-            Transform::from_xyz(pos.x, pos.y, 0.5)
-                .with_scale(Vec3::ZERO),
-            PoopDot { index }
-        ));
+    commands.spawn((
+        Sprite { image: terrain_handle, custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
 
-        let shrub_variant = index % SHRUB_VARIANTS;
-        let shrub_side = if grid.east_of_river(index) { &shrubs.east } else { &shrubs.west };
-        commands.spawn((
-            Sprite {
-                image: shrub_side[shrub_variant].clone(),
-                custom_size: Some(Vec2::splat(TILE_SIZE * 0.8)),
-                ..default()
-            },
-            Transform::from_xyz(pos.x, pos.y, 0.4)
-                .with_scale(Vec3::ZERO),
-            ShrubDot { index }
-        ));
+    let grass_h = make_overlay(&mut images, w, h);
+    let shrub_h = make_overlay(&mut images, w, h);
+    let poop_h = make_overlay(&mut images, w, h);
+    let flower_h = make_overlay(&mut images, w, h);
 
-        commands.spawn((
-            Sprite {
-                image: grass_start.clone(),
-                custom_size: Some(grass_size),
-                ..default()
-            },
-            Transform::from_xyz(pos.x, pos.y + grass_y_off, 0.3)
-                .with_scale(Vec3::ZERO),
-            GrassTile { index }
-        ));
+    commands.spawn((
+        Sprite { image: grass_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.3),
+    ));
+    commands.spawn((
+        Sprite { image: shrub_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.4),
+    ));
+    commands.spawn((
+        Sprite { image: poop_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.5),
+    ));
+    commands.spawn((
+        Sprite { image: flower_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.7),
+    ));
 
-        commands.spawn((
-            Sprite {
-                image: flower_start.clone(),
-                custom_size: Some(Vec2::splat(TILE_SIZE - TILE_INSET)),
-                ..default()
-            },
-            Transform::from_xyz(pos.x, pos.y, 0.7)
-                .with_scale(Vec3::ZERO),
-            FlowerPatch { index }
-        ));
-    }
+    commands.insert_resource(OverlayTextures {
+        poop: poop_h,
+        shrub: shrub_h,
+        grass: grass_h,
+        flower: flower_h,
+    });
 }
 
 // Mouse wheel (Line units) → zoom; trackpad two-finger (Pixel units) → pan. Web: always zoom.
@@ -413,30 +267,36 @@ fn apply_camera(
     }
 }
 
-fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
-    for (tile, mut sprite) in &mut tiles {
-        let tan = Vec3::new(0.80, 0.72, 0.52);       // water_prox = 0, pale tan
-        let mahogany = Vec3::new(0.40, 0.18, 0.12);  // muted reddish-brown
-        let dry = match grid.soil_tint(tile.index) {
+fn sync_tiles(grid: Res<Grid>, terrain: Res<TerrainTexture>, mut images: ResMut<Assets<Image>>) {
+    let Some(image) = images.get_mut(&terrain.0) else { return };
+    let Some(data) = image.data.as_mut() else { return };
+    let width = grid.width();
+    let height = grid.height();
+    for index in 0..grid.len() {
+        let (col, row) = grid.col_row(index);
+        let tan = Vec3::new(0.80, 0.72, 0.52);
+        let mahogany = Vec3::new(0.40, 0.18, 0.12);
+        let dry = match grid.soil_tint(index) {
             1 => tan.lerp(mahogany, 0.09),
             2 => tan.lerp(mahogany, 0.18),
             _ => tan,
         };
-        let hydrated = Vec3::new(0.40, 0.30, 0.18);  // water_prox = 1, dark brown
-        // water_prox is 0 on flooded cells (they ARE water), so force moist=1.0 to keep the river bed dark.
-        let moist = if grid.water(tile.index) > 0.0 { 1.0 } else { grid.water_prox(tile.index) };
+        let hydrated = Vec3::new(0.40, 0.30, 0.18);
+        let moist = if grid.water(index) > 0.0 { 1.0 } else { grid.water_prox(index) };
         let c = dry.lerp(hydrated, moist);
 
-        let r = grid.rough(tile.index) / MAX_ROUGH;
-        let rough = Vec3::new(0.42, 0.38, 0.33); // dull grey-brown
+        let r = grid.rough(index) / MAX_ROUGH;
+        let rough = Vec3::new(0.42, 0.38, 0.33);
         let c = c.lerp(rough, r);
 
-        let c = flood_color(c, grid.water(tile.index) / MAX_WATER);
+        let c = flood_color(c, grid.water(index) / MAX_WATER);
 
-        let color = Color::srgb(c.x, c.y, c.z);
-        if sprite.color != color {
-            sprite.color = color;
-        }
+        let tex_row = height - 1 - row;
+        let pixel = (tex_row * width + col) * 4;
+        data[pixel] = (c.x.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 1] = (c.y.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 2] = (c.z.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 3] = 255;
     }
 }
 
@@ -459,24 +319,6 @@ fn flood_color(land: Vec3, water_frac: f32) -> Vec3 {
     }
 }
 
-fn sync_poop(grid: Res<Grid>, mut dots: Query<(&PoopDot, &mut Transform)>) {
-    for (dot, mut transform) in &mut dots {
-        let s = Vec3::splat(grid.poop(dot.index) / MAX_POOP);
-        if transform.scale != s {
-            transform.scale = s;
-        }
-    }
-}
-
-fn sync_shrubs(grid: Res<Grid>, mut dots: Query<(&ShrubDot, &mut Transform)>) {
-    for (dot, mut transform) in &mut dots {
-        let s = Vec3::splat(grid.shrubs(dot.index) / MAX_SHRUBS);
-        if transform.scale != s {
-            transform.scale = s;
-        }
-    }
-}
-
 const FLOWER_BLOOM_FRAC: f32 = 0.95;
 
 fn flower_bloomed(grid: &Grid, index: usize) -> bool {
@@ -492,52 +334,75 @@ fn flower_color(river_dist: f32) -> Vec3 {
     white.lerp(cyan, river_dist.clamp(0.0, 1.0) * FLOWER_CYAN_MAX)
 }
 
-fn sync_flower_patches(
-    grid: Res<Grid>,
-    palette: Res<FlowerPalette>,
-    mut patches: Query<(&FlowerPatch, &mut Transform, &mut Sprite)>,
-) {
-    for (patch, mut transform, mut sprite) in &mut patches {
-        if !flower_bloomed(&grid, patch.index) {
-            if transform.scale != Vec3::ZERO {
-                transform.scale = Vec3::ZERO;
-            }
-            continue;
-        }
-        if transform.scale != Vec3::ONE {
-            transform.scale = Vec3::ONE;
-        }
-        let level = flower_level(grid.river_dist(patch.index));
-        let variant = patch.index % FLOWER_VARIANTS;
-        let handle = &palette.tiles[level][variant];
-        if sprite.image != *handle {
-            sprite.image = handle.clone();
-        }
+const GRASS_BASE: Vec3 = Vec3::new(40.0 / 255.0, 95.0 / 255.0, 30.0 / 255.0);
+const GRASS_TIP: Vec3 = Vec3::new(120.0 / 255.0, 180.0 / 255.0, 70.0 / 255.0);
+const POOP_COLOR: [u8; 3] = [64, 38, 13];
+
+fn sync_overlay(grid: &Grid, data: &mut [u8], writer: impl Fn(&Grid, usize) -> [u8; 4]) {
+    let width = grid.width();
+    let height = grid.height();
+    for index in 0..grid.len() {
+        let (col, row) = grid.col_row(index);
+        let tex_row = height - 1 - row;
+        let pixel = (tex_row * width + col) * 4;
+        let rgba = writer(grid, index);
+        data[pixel] = rgba[0];
+        data[pixel + 1] = rgba[1];
+        data[pixel + 2] = rgba[2];
+        data[pixel + 3] = rgba[3];
     }
 }
 
-fn sync_grass_tiles(
+fn sync_overlays(
     grid: Res<Grid>,
-    palette: Res<GrassPalette>,
-    mut tiles: Query<(&GrassTile, &mut Transform, &mut Sprite)>,
+    overlays: Res<OverlayTextures>,
+    mut images: ResMut<Assets<Image>>,
 ) {
-    for (tile, mut transform, mut sprite) in &mut tiles {
-        let level = grass_level(grid.grass(tile.index) / MAX_GRASS);
-        if level == 0 {
-            if transform.scale != Vec3::ZERO {
-                transform.scale = Vec3::ZERO;
+    if let Some(data) = images.get_mut(&overlays.poop).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let a = (g.poop(i) / MAX_POOP).clamp(0.0, 1.0);
+            [POOP_COLOR[0], POOP_COLOR[1], POOP_COLOR[2], (a * 255.0) as u8]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.shrub).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let frac = (g.shrubs(i) / MAX_SHRUBS).clamp(0.0, 1.0);
+            let fill = if g.east_of_river(i) { SHRUB_OLIVE } else { SHRUB_GREEN };
+            [fill[0], fill[1], fill[2], (frac * 255.0) as u8]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.grass).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let level = grass_level(g.grass(i) / MAX_GRASS);
+            if level == 0 {
+                return [0, 0, 0, 0];
             }
-            continue;
-        }
-        if transform.scale != Vec3::ONE {
-            transform.scale = Vec3::ONE;
-        }
-        // Cell-stable variant so the layout doesn't flicker as grass grows.
-        let variant = tile.index % GRASS_VARIANTS;
-        let handle = &palette.tiles[level - 1][variant];
-        if sprite.image != *handle {
-            sprite.image = handle.clone();
-        }
+            let t = level as f32 / GRASS_LEVELS as f32;
+            let c = GRASS_BASE.lerp(GRASS_TIP, t);
+            [
+                (c.x.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.y.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.z.clamp(0.0, 1.0) * 255.0) as u8,
+                (t * 0.7 * 255.0) as u8,
+            ]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.flower).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            if !flower_bloomed(g, i) {
+                return [0, 0, 0, 0];
+            }
+            let c = flower_color(g.river_dist(i));
+            [
+                (c.x.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.y.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.z.clamp(0.0, 1.0) * 255.0) as u8,
+                220,
+            ]
+        });
     }
 }
 
@@ -559,9 +424,45 @@ fn sync_elk_color(mut elk: Query<(&Elk, &mut Sprite)>) {
     }
 }
 
+fn count_sync_run(mut stats: ResMut<PerfStats>) {
+    stats.sync_counter += 1;
+}
+
+fn gather_perf_stats(
+    time: Res<Time>,
+    mut stats: ResMut<PerfStats>,
+    sprites: Query<&Visibility, With<Sprite>>,
+) {
+    let mut visible = 0u32;
+    let mut hidden = 0u32;
+    for vis in &sprites {
+        if *vis == Visibility::Hidden {
+            hidden += 1;
+        } else {
+            visible += 1;
+        }
+    }
+    stats.visible_sprites = visible;
+    stats.hidden_sprites = hidden;
+
+    let now = time.elapsed_secs_f64();
+    if now - stats.last_reset >= 1.0 {
+        stats.sync_runs = stats.sync_counter;
+        stats.sync_counter = 0;
+        stats.last_reset = now;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const FLOWER_LEVELS: usize = 5;
+
+    fn flower_level(river_dist: f32) -> usize {
+        let rd = river_dist.clamp(0.0, 1.0);
+        (rd * (FLOWER_LEVELS - 1) as f32).round() as usize
+    }
 
     #[test]
     fn grass_level_bands() {

@@ -52,7 +52,7 @@ pub const PRESETS: [Preset; 3] = [
         name: "Optimized",
         description: "The same natural-drive crossing under leaner scarcity — a stage-3 \
                       score target where the model must hold together as food thins.",
-        ratios: RatioControls { feed_ratio: 6.0, grass_regrow: 0.014, shrub_regrow: 0.0025, cross_ratio: 0.0 },
+        ratios: RatioControls { feed_ratio: 8.0, grass_regrow: 0.025, shrub_regrow: 0.0025, cross_ratio: 0.0 },
         apply_params: optimized_params,
     },
 ];

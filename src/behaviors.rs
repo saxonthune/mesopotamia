@@ -74,27 +74,6 @@ pub mod series {
         }
         count
     }
-
-    /// Direction reversals in the series' step-to-step change — sign flips of the first difference,
-    /// ignoring steps within `eps` so micro-jitter isn't counted. The spatial counterpart to
-    /// `mean_crossings`: on a centroid coordinate, a directed migration trends one way (≈ 0) while a
-    /// herd sloshing back and forth reverses every half-cycle (high) — phase-lock that a
-    /// fraction-grazing series, which carries no position, cannot reveal.
-    pub fn reversals(s: &[f32], eps: f32) -> usize {
-        let mut count = 0;
-        let mut prev_sign = 0i8;
-        for w in s.windows(2) {
-            let d = w[1] - w[0];
-            let sign = if d > eps { 1 } else if d < -eps { -1 } else { 0 };
-            if sign != 0 {
-                if prev_sign != 0 && sign != prev_sign {
-                    count += 1;
-                }
-                prev_sign = sign;
-            }
-        }
-        count
-    }
 }
 
 /// Net displacement along the east axis; positive ⇒ moved east.
@@ -157,16 +136,6 @@ mod tests {
         // a run sitting exactly at the mean must not count as crossings
         assert_eq!(series::mean_crossings(&[1.0, 1.0, 1.0, 1.0]), 0, "plateau at mean → none");
         assert_eq!(series::mean_crossings(&[0.0, 2.0]), 1, "one rise past the mean → one crossing");
-    }
-
-    #[test]
-    fn reversals_separate_migration_from_sloshing() {
-        // Monotone trend (directed migration) → no direction reversals.
-        assert_eq!(series::reversals(&[0.0, 1.0, 2.0, 3.0, 4.0], 0.01), 0, "steady climb → no reversals");
-        // Back-and-forth (sloshing) → a reversal on every turn.
-        assert_eq!(series::reversals(&[0.0, 1.0, 0.0, 1.0, 0.0], 0.01), 3, "0↑1↓0↑1↓0 → 3 reversals");
-        // Steps within eps are jitter, not reversals.
-        assert_eq!(series::reversals(&[0.0, 0.005, 0.0, 0.005], 0.01), 0, "sub-eps wiggle ignored");
     }
 
     #[test]

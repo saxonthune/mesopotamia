@@ -1,10 +1,13 @@
 //! Demo 1 binary: the sole web/native entry point. It assembles the game from the `mesopotamia`
 //! library crate; on web it binds the page's `<canvas>`, and wasm-bindgen targets this binary.
 
+use bevy::diagnostic::{EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin};
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
 use bevy_egui::EguiPlugin;
 
+use mesopotamia::elk::presets;
+use mesopotamia::elk::{ElkParams, RatioControls};
 use mesopotamia::death_marker::DeathMarkerPlugin;
 use mesopotamia::elk::ElkSimPlugin;
 use mesopotamia::grid::GridPlugin;
@@ -36,8 +39,9 @@ fn main() {
             ..default()
         }))
         .add_plugins(EguiPlugin::default())
-        // DroppingsPlugin intentionally omitted; add it to re-enable the nutrient cycle.
+        .add_plugins((FrameTimeDiagnosticsPlugin::default(), EntityCountDiagnosticsPlugin::default()))
         .add_plugins((RenderPlugin, UiPlugin, UnitSelectPlugin, GridPlugin, ElkSimPlugin, WorldgenPlugin, SimStatePlugin, OverlayPlugin, DeathMarkerPlugin, InstrumentPlugin::default()))
+        .add_systems(Startup, apply_optimized_preset)
         .insert_resource(settings);
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -61,4 +65,8 @@ fn main() {
     }
 
     app.run();
+}
+
+fn apply_optimized_preset(mut ratios: ResMut<RatioControls>, mut params: ResMut<ElkParams>) {
+    presets::apply(&presets::PRESETS[2], &mut ratios, &mut params);
 }

@@ -14,6 +14,8 @@
     }
     h1 { font-weight: 600; letter-spacing: -0.02em; }
     p.lede { color: #9aa08c; }
+    p.lede a { color: #6b9; text-decoration: none; }
+    p.lede a:hover { text-decoration: underline; }
     ul.demos { list-style: none; padding: 0; }
     ul.demos li { margin: 1rem 0; }
     a.demo {
@@ -29,16 +31,20 @@
 <body>
   <h1>Mesopotamia</h1>
   <p class="lede">
-    An artistic visualization of debt-bubble and ecological-flow dynamics,
-    built in Rust + Bevy and compiled to WebAssembly.
+      Visualizations and simulations written in <a href="https://www.rust-lang.org/">Rust</a> and <a href="https://bevyengine.org/">Bevy</a>. Source on <a href="https://github.com/saxonthune/mesopotamia">Github</a>.
   </p>
   <ul class="demos">
     <li>
       <a class="demo" href="demos/demo1/">
         <div class="title">Elk herding</div>
         <div class="desc">
-          A procedurally generated river feeds grass; elk herds migrate, graze,
-          and fertilize the land they cross.
+        </div>
+      </a>
+    </li>
+    <li>
+      <a class="demo" href="demos/demo3/">
+        <div class="title">Planets</div>
+        <div class="desc">
         </div>
       </a>
     </li>

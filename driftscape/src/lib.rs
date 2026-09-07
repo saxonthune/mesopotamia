@@ -5,11 +5,14 @@
 //! same flow-past-a-frame motion the Bevy sim renders, here sampled onto a grid
 //! of colored ASCII glyphs chosen by brightness.
 //!
-//! These modules are std-only and hold no terminal I/O. The crossterm shell —
-//! raw mode, alternate screen, sizing, input, the frame loop — lives in the
-//! native-only `demo3` binary, so everything here stays pure and testable.
+//! The scene modules are std-only and hold no terminal I/O. The crossterm shell
+//! lives in the native `demo3` binary; on wasm, a small adapter exposes ANSI
+//! frames to the browser's xterm.js frontend.
 
 pub mod canvas;
 pub mod color;
 pub mod scene;
 pub mod starliner;
+
+#[cfg(target_arch = "wasm32")]
+mod web;

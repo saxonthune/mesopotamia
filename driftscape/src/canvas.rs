@@ -110,16 +110,35 @@ impl Canvas {
                 let top = self.buf[(2 * r) * self.cols + c];
                 let bot = self.buf[(2 * r + 1) * self.cols + c];
                 let (glyph, fg) = cell(top, bot);
-                // A blank cell needs no color — skip the escape and let it ride.
                 if glyph != ' ' && last_fg != Some(fg) {
                     let _ = write!(out, "\x1b[38;2;{};{};{}m", fg.0, fg.1, fg.2);
                     last_fg = Some(fg);
                 }
                 out.push(glyph);
             }
-            out.push_str("\x1b[0m"); // reset so color doesn't bleed past the row
+            out.push_str("\x1b[0m");
             if r + 1 < self.rows {
                 out.push_str("\r\n");
+            }
+        }
+    }
+
+    /// Write the resolved cell grid into `out` as a flat array of 4-byte records:
+    /// `[glyph_ascii, red, green, blue]` for each cell, row-major. The web
+    /// frontend paints this directly onto an HTML canvas, bypassing the ANSI
+    /// encode/decode round-trip that a terminal emulator would require.
+    pub fn render_cells(&self, out: &mut Vec<u8>) {
+        out.clear();
+        out.reserve(self.cols * self.rows * 4);
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                let top = self.buf[(2 * r) * self.cols + c];
+                let bot = self.buf[(2 * r + 1) * self.cols + c];
+                let (glyph, fg) = cell(top, bot);
+                out.push(glyph as u8);
+                out.push(fg.0);
+                out.push(fg.1);
+                out.push(fg.2);
             }
         }
     }
