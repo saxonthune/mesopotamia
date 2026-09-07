@@ -1,0 +1,30 @@
+[package]
+name = "driftscape"
+version = "0.1.0"
+edition = "2024"
+description = "A suite of terminal screensavers — drift fields rendered as colored ASCII glyphs."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Standalone crate. Intentionally NOT part of the game's build: the screensavers
+# are pure drift math plus a thin crossterm shell, so they stay clear of Bevy and
+# the game's Bevy dependency tree. Build and run the native version with
+# `--manifest-path driftscape/Cargo.toml`.
+[dependencies]
+rand = "0.9"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Terminal control for the native demo binary: raw mode, the alternate screen,
+# sizing, and input. The browser uses xterm.js instead.
+crossterm = "0.28"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+wasm-bindgen = "=0.2.125"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,24 @@
+pub mod field;
+pub mod grid;
+pub mod grass_tile;
+pub mod flower_tile;
+pub mod shrub_tile;
+pub mod droppings;
+pub mod death_marker;
+pub mod elk;
+pub mod diagnostics;
+pub mod events;
+pub mod metrics;
+pub mod render;
+pub mod overlay;
+pub mod settings;
+pub mod sim;
+pub mod ui;
+pub mod ui_kit;
+pub mod unit_select;
+pub mod river;
+pub mod worldgen;
+// Native/test-only headless harness (pulls ScheduleRunnerPlugin); kept out of the wasm bundle.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sim_harness;
+pub mod behaviors;

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planets - Mesopotamia</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 0 0 3rem;
+      font: 16px/1.6 system-ui, sans-serif;
+      background: #11140f; color: #e6e6dc;
+    }
+    .topbar, .desc { max-width: 72rem; margin-inline: auto; padding-inline: 1.5rem; }
+    .topbar { padding-top: 1rem; padding-bottom: 0.75rem; }
+    .nav { display: flex; align-items: center; gap: 1rem; }
+    .nav a { color: #6b9; text-decoration: none; font-size: 0.9rem; }
+    .nav a:hover { text-decoration: underline; }
+    .nav .right { margin-left: auto; display: flex; gap: 1rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0; padding: 0.75rem 1.5rem; max-width: 46rem; margin-inline: auto; }
+    .stage {
+      display: grid; place-items: center;
+      position: relative;
+      min-height: min(72vh, 780px); padding: 1.5rem;
+      background: #0a0c08; border-block: 1px solid #2c3322;
+    }
+    .viewport {
+      display: flex; flex-direction: column;
+      width: min(88vw, 1000px); height: min(62vh, 640px);
+      min-width: 320px; min-height: 260px;
+      max-width: calc(100vw - 3rem); max-height: 80vh;
+      overflow: hidden; resize: both;
+      border: 1px solid #34372f; border-radius: 10px;
+      background: #04030c;
+      box-shadow: 0 22px 70px rgb(0 0 0 / 45%);
+    }
+    #canvas-host {
+      flex: 1 1 auto; min-height: 0; min-width: 0;
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    #loading {
+      position: absolute; color: #92968a; font-size: 0.9rem;
+      pointer-events: none;
+    }
+    .desc { max-width: 46rem; padding-top: 1.5rem; }
+    .desc h2 { font-weight: 600; font-size: 1.05rem; }
+    .desc p { color: #c9ccc0; }
+    .hint { color: #92968a; font-size: 0.9rem; }
+    @media (max-width: 520px) {
+      .stage { padding: 0.75rem; }
+      .viewport { width: 100%; min-width: 0; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <nav class="nav">
+      <a href="../../">Menu</a>
+      <span class="right">
+        <a href="../demo1/">← Previous</a>
+        <a href="../../">Next →</a>
+      </span>
+    </nav>
+  </header>
+
+  <main>
+    <div class="stage">
+      <div id="loading">Loading simulation…</div>
+      <section class="viewport" aria-label="Animated planets">
+        <div id="canvas-host">
+          <canvas id="render-canvas"></canvas>
+        </div>
+      </section>
+    </div>
+
+    <h1>Planets</h1>
+
+    <div class="desc">
+      <h2>About</h2>
+      <p>
+        Yup, these are planets.
+      </p>
+      <p class="hint">Drag the lower-right corner to resize the viewport.</p>
+    </div>
+  </main>
+
+  <script type="module">
+    import init, { Planets } from './demo3.js';
+
+    const FONT = '14px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+    const BG = '#04030c';
+    const FRAME_MS = 1000 / 30;
+
+    const host = document.getElementById('canvas-host');
+    const canvas = document.getElementById('render-canvas');
+    const ctx = canvas.getContext('2d');
+    const loading = document.getElementById('loading');
+
+    let cellW = 0;
+    let cellH = 0;
+    let cols = 0;
+    let rows = 0;
+    let planets = null;
+    let wasmMemory = null;
+    let animationFrame = 0;
+    let lastTime = 0;
+
+    function measureCell() {
+      ctx.font = FONT;
+      const m = ctx.measureText('@');
+      cellW = Math.ceil(m.width);
+      cellH = Math.ceil(14 * 1.2);
+    }
+
+    function fitGrid() {
+      const rect = host.getBoundingClientRect();
+      const dpr = devicePixelRatio;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      ctx.scale(dpr, dpr);
+      measureCell();
+      cols = Math.max(1, Math.floor(rect.width / cellW));
+      rows = Math.max(1, Math.floor(rect.height / cellH));
+      planets?.resize(cols, rows);
+    }
+
+    function paint(ptr, cols, rows) {
+      const len = cols * rows * 4;
+      const buf = new Uint8Array(wasmMemory.buffer, ptr, len);
+
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, canvas.width / devicePixelRatio, canvas.height / devicePixelRatio);
+      ctx.font = FONT;
+      ctx.textBaseline = 'top';
+
+      for (let r = 0; r < rows; r++) {
+        const y = r * cellH;
+        for (let c = 0; c < cols; c++) {
+          const off = (r * cols + c) * 4;
+          const glyph = buf[off];
+          if (glyph === 0x20) continue;
+          ctx.fillStyle = `rgb(${buf[off + 1]},${buf[off + 2]},${buf[off + 3]})`;
+          ctx.fillText(String.fromCharCode(glyph), c * cellW, y);
+        }
+      }
+    }
+
+    function animate(now) {
+      animationFrame = requestAnimationFrame(animate);
+      if (!planets || now - lastTime < FRAME_MS) return;
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+      const ptr = planets.render(dt);
+      paint(ptr, planets.get_cols(), planets.get_rows());
+    }
+
+    const resizeObserver = new ResizeObserver(fitGrid);
+    resizeObserver.observe(host);
+
+    try {
+      const wasm = await init();
+      wasmMemory = wasm.memory;
+      measureCell();
+      fitGrid();
+      const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+      planets = new Planets(cols, rows, seed);
+      loading.remove();
+      lastTime = performance.now();
+      animationFrame = requestAnimationFrame(animate);
+    } catch (err) {
+      loading.textContent = 'Failed to load: ' + err;
+      console.error(err);
+    }
+
+    window.addEventListener('pagehide', () => {
+      cancelAnimationFrame(animationFrame);
+      resizeObserver.disconnect();
+      planets?.free();
+    }, { once: true });
+  </script>
+</body>
+</html>

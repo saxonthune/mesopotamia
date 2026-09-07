@@ -227,15 +227,20 @@ render_overview() {
 
   if (( N_RUNNING > 0 || N_CHAINS > 0 )); then
     printf ' %sActive%s%s\n' "$BOLD" "$RESET" "$EL"
-    local e slug commits branch worktree age live
+    # One compact line per task: spinner, slug (fixed width so the right-side
+    # items sit close in, not at the screen edge), elapsed, commits, branch —
+    # the branch is clipped to whatever space is left so the line never wraps.
+    local e slug commits branch worktree age live aslugw bw
+    aslugw=32; (( aslugw > COLS - 24 )) && aslugw=$(( COLS - 24 )); (( aslugw < 8 )) && aslugw=8
     for e in "${RUN_TASKS[@]}"; do
       IFS=$'\t' read -r slug commits branch worktree age <<< "$e"
       live=$(( age + delta ))
-      printf '  %s%s%s %-*s %s%8s%s  %s%2sc %s%s%s\n' \
+      bw=$(( COLS - 4 - aslugw - 1 - 7 - 2 - ${#commits} - 1 - 2 )); (( bw < 0 )) && bw=0
+      printf '  %s%s%s %-*s %s%7s%s  %s%sc  %s%s%s\n' \
         "$YELLOW" "$spin" "$RESET" \
-        "$sw" "$(truncate "$slug" "$sw")" \
+        "$aslugw" "$(truncate "$slug" "$aslugw")" \
         "$CYAN" "$(elapsed_str "$live")" "$RESET" \
-        "$DIM" "$commits" "$(truncate "$branch" 18)" "$RESET" "$EL"
+        "$DIM" "$commits" "$(truncate "$branch" "$bw")" "$RESET" "$EL"
     done
     local name cstatus done_n total current cw cb bar col mark
     for e in "${CHAINS[@]}"; do
@@ -285,6 +290,17 @@ render_overview() {
       printf '  %s%s%s %s%s%s %d/%d%s\n' \
         "$CYAN" "$(truncate "$name" "$sw")" "$RESET" "$GREEN" "$bar" "$RESET" "$done_n" "$total" "$EL"
     done
+    printf '%s\n' "$EL"
+  fi
+
+  if (( N_PENDING > 0 )); then
+    printf ' %sPending%s%s\n' "$BOLD" "$RESET" "$EL"
+    local s pending_line=""
+    for s in "${PENDING[@]}"; do
+      [[ -n "$pending_line" ]] && pending_line+=" · "
+      pending_line+="$s"
+    done
+    printf '  %s%s%s%s\n' "$DIM" "$(truncate "$pending_line" $((COLS-4)))" "$RESET" "$EL"
     printf '%s\n' "$EL"
   fi
 

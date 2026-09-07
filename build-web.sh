@@ -15,12 +15,22 @@
 #   cargo install wasm-opt           # (binaryen) optional but strongly advised
 set -euo pipefail
 
-# --- the demo list. One entry per binary in src/bin/. Add demos here. ---
+# Build mode: `release` (default, optimized + wasm-opt, the deploy artifact) or
+# `dev` (debug, no wasm-opt — compiles far faster for the tweak/refresh loop).
+MODE="${1:-release}"
+
+# --- Bevy demos. Standalone WASM demos are built below. ---
 DEMOS=(demo1)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIST="$ROOT/dist"
-TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/release"
+if [[ "$MODE" == "dev" ]]; then
+    CARGO_PROFILE_FLAGS=()
+    TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/debug"
+else
+    CARGO_PROFILE_FLAGS=(--release)
+    TARGET_DIR="$ROOT/target/wasm32-unknown-unknown/release"
+fi
 
 echo "==> cleaning dist/"
 rm -rf "$DIST"
@@ -30,8 +40,8 @@ mkdir -p "$DIST/demos"
 cp "$ROOT/web/index.html" "$DIST/index.html"
 
 for demo in "${DEMOS[@]}"; do
-    echo "==> building $demo (release, wasm32)"
-    cargo build --release --bin "$demo" --target wasm32-unknown-unknown
+    echo "==> building $demo ($MODE, wasm32)"
+    cargo build "${CARGO_PROFILE_FLAGS[@]}" --bin "$demo" --target wasm32-unknown-unknown
 
     out="$DIST/demos/$demo"
     mkdir -p "$out"
@@ -41,7 +51,9 @@ for demo in "${DEMOS[@]}"; do
         --out-dir "$out" --out-name "$demo" \
         "$TARGET_DIR/$demo.wasm"
 
-    if command -v wasm-opt >/dev/null 2>&1; then
+    if [[ "$MODE" == "dev" ]]; then
+        echo "    (dev build — skipping wasm-opt)"
+    elif command -v wasm-opt >/dev/null 2>&1; then
         echo "==> wasm-opt -Oz $demo"
         # Rust's wasm32 output uses post-MVP features (bulk memory, sign
         # extension, etc.). wasm-opt must be told to accept them or it rejects
@@ -60,8 +72,62 @@ for demo in "${DEMOS[@]}"; do
     # Copy the demo's page (canvas + description).
     cp "$ROOT/web/demos/$demo/index.html" "$out/index.html"
 
-    size=$(du -h "$out/${demo}_bg.wasm" | cut -f1)
-    echo "==> $demo done — wasm is $size"
+    # Cloudflare Pages rejects any single file over 25 MiB. Fail here, before
+    # the upload, so an over-budget wasm is caught with a clear message.
+    bytes=$(stat -c%s "$out/${demo}_bg.wasm")
+    limit=$((25 * 1024 * 1024))
+    printf '==> %s done - wasm is %s (%d bytes)\n' "$demo" "$(du -h "$out/${demo}_bg.wasm" | cut -f1)" "$bytes"
+    if (( bytes > limit )); then
+        echo "ERROR: ${demo}_bg.wasm exceeds the Cloudflare Pages 25 MiB per-file limit." >&2
+        exit 1
+    fi
 done
+
+# Driftscape is deliberately a standalone crate: only its pure scene/canvas
+# library is compiled to WASM. The native crossterm shell remains native-only;
+# the page paints the cell grid directly onto an HTML canvas.
+demo="demo3"
+echo "==> building $demo ($MODE, wasm32)"
+cargo build --manifest-path "$ROOT/driftscape/Cargo.toml" \
+    "${CARGO_PROFILE_FLAGS[@]}" --lib --target wasm32-unknown-unknown
+
+out="$DIST/demos/$demo"
+mkdir -p "$out"
+
+if [[ "$MODE" == "dev" ]]; then
+    DRIFT_TARGET="$ROOT/driftscape/target/wasm32-unknown-unknown/debug"
+else
+    DRIFT_TARGET="$ROOT/driftscape/target/wasm32-unknown-unknown/release"
+fi
+
+echo "==> wasm-bindgen $demo"
+wasm-bindgen --target web --no-typescript \
+    --out-dir "$out" --out-name "$demo" \
+    "$DRIFT_TARGET/driftscape.wasm"
+
+if [[ "$MODE" == "dev" ]]; then
+    echo "    (dev build — skipping wasm-opt)"
+elif command -v wasm-opt >/dev/null 2>&1; then
+    echo "==> wasm-opt -Oz $demo"
+    wasm-opt -Oz \
+        --enable-bulk-memory \
+        --enable-sign-ext \
+        --enable-mutable-globals \
+        --enable-nontrapping-float-to-int \
+        --enable-reference-types \
+        -o "$out/${demo}_bg.wasm" "$out/${demo}_bg.wasm"
+else
+    echo "    (wasm-opt not found — skipping size optimization)"
+fi
+
+cp "$ROOT/web/demos/$demo/index.html" "$out/index.html"
+
+bytes=$(stat -c%s "$out/${demo}_bg.wasm")
+limit=$((25 * 1024 * 1024))
+printf '==> %s done - wasm is %s (%d bytes)\n' "$demo" "$(du -h "$out/${demo}_bg.wasm" | cut -f1)" "$bytes"
+if (( bytes > limit )); then
+    echo "ERROR: ${demo}_bg.wasm exceeds the Cloudflare Pages 25 MiB per-file limit." >&2
+    exit 1
+fi
 
 echo "==> site assembled in dist/. Preview: (cd dist && python3 -m http.server)"

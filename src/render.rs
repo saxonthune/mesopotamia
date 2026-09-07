@@ -1,40 +1,54 @@
 use bevy::prelude::*;
+use bevy::asset::RenderAssetUsages;
+use bevy::image::{Image, ImageSampler};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::camera::{visibility::RenderLayers, CameraOutputMode};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::input::gestures::PinchGesture;
+use bevy::window::{CursorLeft, WindowFocused};
 use bevy::ecs::schedule::common_conditions::not;
 use bevy::render::render_resource::BlendState;
 use bevy_egui::input::egui_wants_any_pointer_input;
 use bevy_egui::{EguiGlobalSettings, PrimaryEguiContext};
 
-use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_BROWSE, MAX_GRASS, MAX_POOP, MAX_WATER};
+use crate::elk::{Elk, elk_color};
+use crate::grid::{Grid, GRID_HEIGHT, GRID_WIDTH, MAX_SHRUBS, MAX_GRASS, MAX_POOP, MAX_ROUGH, MAX_WATER};
 
-const TILE_SIZE: f32 = 16.0;
+pub const TILE_SIZE: f32 = 16.0;
+
+#[derive(Resource, Default)]
+pub struct PerfStats {
+    pub visible_sprites: u32,
+    pub hidden_sprites: u32,
+    pub sync_runs: u32,
+    sync_counter: u32,
+    last_reset: f64,
+}
 
 pub struct RenderPlugin;
 
 impl Plugin for RenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CameraSettings>()
+            .init_resource::<PerfStats>()
             .add_systems(Startup, setup)
             .add_systems(
                 Update,
                 (
-                    // World-view input is ignored while the pointer is over egui,
-                    // so scrolling/zooming inside the panel doesn't also move the
-                    // world behind it.
-                    (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
-                    sync_tiles,
-                    sync_poop,
-                    sync_browse,
+                        (scroll_input, pinch_zoom, pan).run_if(not(egui_wants_any_pointer_input)),
+                    release_buttons_on_focus_loss,
+                    (sync_tiles, sync_overlays, count_sync_run)
+                        .run_if(resource_changed::<Grid>),
+                    gather_perf_stats,
                     apply_camera,
+                    sync_elk_transform,
+                    sync_elk_color,
                 ),
             );
     }
 }
 
-/// View state for the camera. Both the mouse (scroll/drag) and the UI sliders
-/// write here; `apply_camera` is the single place that pushes it to the camera.
+// zoom + pan target; `apply_camera` is the sole writer.
 #[derive(Resource)]
 pub struct CameraSettings {
     pub zoom: f32,
@@ -43,30 +57,37 @@ pub struct CameraSettings {
 
 impl Default for CameraSettings {
     fn default() -> Self {
-        Self { zoom: 1.0, pan: Vec2::ZERO }
+        Self { zoom: 2.5, pan: Vec2::ZERO }
     }
 }
 
-/// Marks the camera that renders the simulation world, as opposed to the egui
-/// overlay camera. Systems that move or clip the world view query this so they
-/// don't accidentally grab the UI camera.
+/// Marks the world camera; distinguishes it from the egui overlay camera.
 #[derive(Component)]
 pub struct WorldCamera;
 
-#[derive(Component)]
-struct CellTile {
-    index: usize,
+#[derive(Resource)]
+struct TerrainTexture(Handle<Image>);
+
+#[derive(Resource)]
+struct OverlayTextures {
+    poop: Handle<Image>,
+    shrub: Handle<Image>,
+    grass: Handle<Image>,
+    flower: Handle<Image>,
 }
 
-#[derive(Component)]
-struct PoopDot {
-    index: usize,
+const GRASS_LEVELS: usize = 5;
+
+fn grass_level(frac: f32) -> usize {
+    let frac = frac.clamp(0.0, 1.0);
+    if frac <= 1e-4 {
+        return 0;
+    }
+    ((frac * GRASS_LEVELS as f32).ceil() as usize).clamp(1, GRASS_LEVELS)
 }
 
-#[derive(Component)]
-struct BrowseDot {
-    index: usize,
-}
+const SHRUB_GREEN: [u8; 3] = [32, 73, 26];
+const SHRUB_OLIVE: [u8; 3] = [85, 96, 26];
 
 pub fn cell_world_pos(grid: &Grid, index: usize) -> Vec2 {
     let (col, row) = grid.col_row(index);
@@ -75,25 +96,28 @@ pub fn cell_world_pos(grid: &Grid, index: usize) -> Vec2 {
     Vec2::new(x, y)
 }
 
+fn make_overlay(images: &mut Assets<Image>, w: usize, h: usize) -> Handle<Image> {
+    let mut img = Image::new(
+        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![0u8; w * h * 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    img.sampler = ImageSampler::nearest();
+    images.add(img)
+}
+
 fn setup(
     mut commands: Commands,
     mut egui_settings: ResMut<EguiGlobalSettings>,
+    mut images: ResMut<Assets<Image>>,
     grid: Res<Grid>,
 ) {
-    // egui and the world need *separate* cameras. Confining the world camera's
-    // viewport to the area above the dock must not also confine egui — if they
-    // share a camera, shrinking the viewport shrinks the UI too and the two
-    // feed back on each other. So we disable bevy_egui's auto primary context
-    // and render egui through its own full-window camera composited on top.
-    // (Pattern from the bevy_egui 0.39 `side_panel` example.)
     egui_settings.auto_create_primary_context = false;
 
-    // World camera — `set_camera_viewport` clips this one to sit above the dock.
     commands.spawn((Camera2d, WorldCamera));
 
-    // egui camera — full window, renders none of the world (RenderLayers::none),
-    // draws after it (order 1), and alpha-composites the UI over the world
-    // without clearing what the world camera drew.
     commands.spawn((
         PrimaryEguiContext,
         Camera2d,
@@ -109,51 +133,80 @@ fn setup(
         },
     ));
 
-    for index in 0..grid.len() {
-        let pos = cell_world_pos(&grid, index);
+    let w = grid.width();
+    let h = grid.height();
+    let full_size = Vec2::new(w as f32 * TILE_SIZE, h as f32 * TILE_SIZE);
 
-        commands.spawn((
-            Sprite::from_color(Color::srgb(0.3, 0.2, 0.1),
-                Vec2::splat(TILE_SIZE - 1.0)),
-            Transform::from_xyz(pos.x, pos.y, 0.0),
-            CellTile { index }
-        ));
+    let mut terrain_image = Image::new(
+        Extent3d { width: w as u32, height: h as u32, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        vec![255u8; w * h * 4],
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
+    );
+    terrain_image.sampler = ImageSampler::nearest();
+    let terrain_handle = images.add(terrain_image);
+    commands.insert_resource(TerrainTexture(terrain_handle.clone()));
 
-        commands.spawn((
-            Sprite::from_color(Color::srgb(0.25, 0.15, 0.05),
-                Vec2::splat(TILE_SIZE * 0.3)),
-            Transform::from_xyz(pos.x, pos.y, 0.5)
-                .with_scale(Vec3::ZERO),
-            PoopDot { index }
-        ));
+    commands.spawn((
+        Sprite { image: terrain_handle, custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
 
-        // Browse shrub — a fat dark-green clump that grows in from zero scale, set
-        // below the poop/elk layers so bodies read on top of it.
-        commands.spawn((
-            Sprite::from_color(Color::srgb(0.16, 0.30, 0.10),
-                Vec2::splat(TILE_SIZE * 0.8)),
-            Transform::from_xyz(pos.x, pos.y, 0.4)
-                .with_scale(Vec3::ZERO),
-            BrowseDot { index }
-        ));
-    }
+    let grass_h = make_overlay(&mut images, w, h);
+    let shrub_h = make_overlay(&mut images, w, h);
+    let poop_h = make_overlay(&mut images, w, h);
+    let flower_h = make_overlay(&mut images, w, h);
+
+    commands.spawn((
+        Sprite { image: grass_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.3),
+    ));
+    commands.spawn((
+        Sprite { image: shrub_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.4),
+    ));
+    commands.spawn((
+        Sprite { image: poop_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.5),
+    ));
+    commands.spawn((
+        Sprite { image: flower_h.clone(), custom_size: Some(full_size), ..default() },
+        Transform::from_xyz(0.0, 0.0, 0.7),
+    ));
+
+    commands.insert_resource(OverlayTextures {
+        poop: poop_h,
+        shrub: shrub_h,
+        grass: grass_h,
+        flower: flower_h,
+    });
 }
 
-/// Scroll input means different things per device. A mouse wheel reports in
-/// `Line` units → zoom. A trackpad two-finger drag reports in `Pixel` units →
-/// pan. Telling them apart by `unit` is what lets one event source do both.
+// Mouse wheel (Line units) → zoom; trackpad two-finger (Pixel units) → pan. Web: always zoom.
 fn scroll_input(scroll: Res<AccumulatedMouseScroll>, mut settings: ResMut<CameraSettings>) {
     if scroll.delta == Vec2::ZERO {
         return;
     }
+
+    // Web: Line/Pixel units are unreliable per-browser; 0.01 normalises Pixel (~100/notch) to Line (~1/notch).
+    #[cfg(target_arch = "wasm32")]
+    {
+        let step = match scroll.unit {
+            MouseScrollUnit::Line => scroll.delta.y,
+            MouseScrollUnit::Pixel => scroll.delta.y * 0.01,
+        };
+        let factor = 1.0 - step * 0.1;
+        settings.zoom = (settings.zoom * factor).clamp(0.1, 10.0);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     match scroll.unit {
         MouseScrollUnit::Line => {
             let factor = 1.0 - scroll.delta.y * 0.1;
             settings.zoom = (settings.zoom * factor).clamp(0.1, 10.0);
         }
         MouseScrollUnit::Pixel => {
-            // Same scaling/sign logic as the drag-pan below: scale by zoom so the
-            // world tracks the fingers, flip y because screen-y points down.
             let zoom = settings.zoom;
             settings.pan.x -= scroll.delta.x * zoom;
             settings.pan.y += scroll.delta.y * zoom;
@@ -161,8 +214,7 @@ fn scroll_input(scroll: Res<AccumulatedMouseScroll>, mut settings: ResMut<Camera
     }
 }
 
-/// Trackpad pinch (macOS): positive delta = zoom in, which is a *smaller*
-/// orthographic scale.
+// Positive pinch delta = zoom in = smaller ortho scale.
 fn pinch_zoom(mut pinch: MessageReader<PinchGesture>, mut settings: ResMut<CameraSettings>) {
     for ev in pinch.read() {
         let factor = 1.0 - ev.0 * 3.0;
@@ -178,22 +230,30 @@ fn pan(
     if !(buttons.pressed(MouseButton::Middle) || buttons.pressed(MouseButton::Right)) {
         return;
     }
-    // Scale by zoom so one screen pixel of drag moves a constant amount of
-    // *screen* regardless of zoom. Screen-y points down, world-y points up,
-    // hence the flipped sign on y.
+    // Flip y: screen-y points down, world-y points up.
     let delta = motion.delta;
     let zoom = settings.zoom;
     settings.pan.x -= delta.x * zoom;
     settings.pan.y += delta.y * zoom;
 }
 
+// Clears phantom held buttons when focus is lost mid-drag (browser eats the button-up).
+fn release_buttons_on_focus_loss(
+    mut focus: MessageReader<WindowFocused>,
+    mut cursor_left: MessageReader<CursorLeft>,
+    mut buttons: ResMut<ButtonInput<MouseButton>>,
+) {
+    let lost_focus = focus.read().any(|e| !e.focused);
+    let cursor_left = cursor_left.read().count() > 0;
+    if lost_focus || cursor_left {
+        buttons.release_all();
+    }
+}
+
 fn apply_camera(
     mut settings: ResMut<CameraSettings>,
     camera: Single<(&mut Transform, &mut Projection), With<WorldCamera>>,
 ) {
-    // The camera's translation is the world point at the viewport centre, so
-    // keeping it inside the map guarantees no map corner can be panned past the
-    // centre — the world always covers the middle of the view.
     let half_w = GRID_WIDTH as f32 * TILE_SIZE / 2.0;
     let half_h = GRID_HEIGHT as f32 * TILE_SIZE / 2.0;
     settings.pan.x = settings.pan.x.clamp(-half_w, half_w);
@@ -207,32 +267,246 @@ fn apply_camera(
     }
 }
 
-fn sync_tiles(grid: Res<Grid>, mut tiles: Query<(&CellTile, &mut Sprite)>) {
-    for (tile, mut sprite) in &mut tiles {
-        let h = grid.grass(tile.index) / MAX_GRASS;
-        let dirt = Vec3::new(0.76, 0.68, 0.48); // tan bare ground
-        let green = Vec3::new(0.2, 0.7, 0.3);
-        let c = dirt.lerp(green, h);
+fn sync_tiles(grid: Res<Grid>, terrain: Res<TerrainTexture>, mut images: ResMut<Assets<Image>>) {
+    let Some(image) = images.get_mut(&terrain.0) else { return };
+    let Some(data) = image.data.as_mut() else { return };
+    let width = grid.width();
+    let height = grid.height();
+    for index in 0..grid.len() {
+        let (col, row) = grid.col_row(index);
+        let tan = Vec3::new(0.80, 0.72, 0.52);
+        let mahogany = Vec3::new(0.40, 0.18, 0.12);
+        let dry = match grid.soil_tint(index) {
+            1 => tan.lerp(mahogany, 0.09),
+            2 => tan.lerp(mahogany, 0.18),
+            _ => tan,
+        };
+        let hydrated = Vec3::new(0.40, 0.30, 0.18);
+        let moist = if grid.water(index) > 0.0 { 1.0 } else { grid.water_prox(index) };
+        let c = dry.lerp(hydrated, moist);
 
-        let w = grid.water(tile.index) / MAX_WATER;
-        let water = Vec3::new(0.1, 0.3, 0.7);
-        let c = c.lerp(water, w);
+        let r = grid.rough(index) / MAX_ROUGH;
+        let rough = Vec3::new(0.42, 0.38, 0.33);
+        let c = c.lerp(rough, r);
 
-        sprite.color = Color::srgb(c.x, c.y, c.z);
+        let c = flood_color(c, grid.water(index) / MAX_WATER);
+
+        let tex_row = height - 1 - row;
+        let pixel = (tex_row * width + col) * 4;
+        data[pixel] = (c.x.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 1] = (c.y.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 2] = (c.z.clamp(0.0, 1.0) * 255.0) as u8;
+        data[pixel + 3] = 255;
     }
 }
 
-fn sync_poop(grid: Res<Grid>, mut dots: Query<(&PoopDot, &mut Transform)>) {
-    for (dot, mut transform) in &mut dots {
-        let p = grid.poop(dot.index) / MAX_POOP;
-        transform.scale = Vec3::splat(p);
+const WATER_BANK: Vec3 = Vec3::new(0.34, 0.26, 0.16);    // muddy edge
+const WATER_SHALLOW: Vec3 = Vec3::new(0.27, 0.37, 0.50); // silty blue — fords
+const WATER_DEEP: Vec3 = Vec3::new(0.07, 0.22, 0.55);    // deep channel
+
+// Below this depth the cell shows as dark bank; above it the cell is blue.
+const WATER_BANK_EDGE: f32 = 0.12;
+
+fn flood_color(land: Vec3, water_frac: f32) -> Vec3 {
+    let w = water_frac.clamp(0.0, 1.0);
+    let blue = WATER_SHALLOW.lerp(WATER_DEEP, w);
+    if w <= WATER_BANK_EDGE {
+        land.lerp(WATER_BANK, w / WATER_BANK_EDGE)
+    } else {
+        // Short ramp out of the bank so the river body reads blue, not mud.
+        let u = ((w - WATER_BANK_EDGE) / 0.12).clamp(0.0, 1.0);
+        WATER_BANK.lerp(blue, u)
     }
 }
 
-fn sync_browse(grid: Res<Grid>, mut dots: Query<(&BrowseDot, &mut Transform)>) {
-    for (dot, mut transform) in &mut dots {
-        let b = grid.browse(dot.index) / MAX_BROWSE;
-        transform.scale = Vec3::splat(b);
+const FLOWER_BLOOM_FRAC: f32 = 0.95;
+
+fn flower_bloomed(grid: &Grid, index: usize) -> bool {
+    let cap = grid.shrub_cap(index);
+    grid.flower(index) && cap > 0.0 && grid.shrubs(index) >= FLOWER_BLOOM_FRAC * cap
+}
+
+const FLOWER_CYAN_MAX: f32 = 0.8;
+
+fn flower_color(river_dist: f32) -> Vec3 {
+    let white = Vec3::ONE;
+    let cyan = Vec3::new(0.0, 1.0, 1.0);
+    white.lerp(cyan, river_dist.clamp(0.0, 1.0) * FLOWER_CYAN_MAX)
+}
+
+const GRASS_BASE: Vec3 = Vec3::new(40.0 / 255.0, 95.0 / 255.0, 30.0 / 255.0);
+const GRASS_TIP: Vec3 = Vec3::new(120.0 / 255.0, 180.0 / 255.0, 70.0 / 255.0);
+const POOP_COLOR: [u8; 3] = [64, 38, 13];
+
+fn sync_overlay(grid: &Grid, data: &mut [u8], writer: impl Fn(&Grid, usize) -> [u8; 4]) {
+    let width = grid.width();
+    let height = grid.height();
+    for index in 0..grid.len() {
+        let (col, row) = grid.col_row(index);
+        let tex_row = height - 1 - row;
+        let pixel = (tex_row * width + col) * 4;
+        let rgba = writer(grid, index);
+        data[pixel] = rgba[0];
+        data[pixel + 1] = rgba[1];
+        data[pixel + 2] = rgba[2];
+        data[pixel + 3] = rgba[3];
+    }
+}
+
+fn sync_overlays(
+    grid: Res<Grid>,
+    overlays: Res<OverlayTextures>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    if let Some(data) = images.get_mut(&overlays.poop).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let a = (g.poop(i) / MAX_POOP).clamp(0.0, 1.0);
+            [POOP_COLOR[0], POOP_COLOR[1], POOP_COLOR[2], (a * 255.0) as u8]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.shrub).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let frac = (g.shrubs(i) / MAX_SHRUBS).clamp(0.0, 1.0);
+            let fill = if g.east_of_river(i) { SHRUB_OLIVE } else { SHRUB_GREEN };
+            [fill[0], fill[1], fill[2], (frac * 255.0) as u8]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.grass).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            let level = grass_level(g.grass(i) / MAX_GRASS);
+            if level == 0 {
+                return [0, 0, 0, 0];
+            }
+            let t = level as f32 / GRASS_LEVELS as f32;
+            let c = GRASS_BASE.lerp(GRASS_TIP, t);
+            [
+                (c.x.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.y.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.z.clamp(0.0, 1.0) * 255.0) as u8,
+                (t * 0.7 * 255.0) as u8,
+            ]
+        });
+    }
+
+    if let Some(data) = images.get_mut(&overlays.flower).and_then(|i| i.data.as_mut()) {
+        sync_overlay(&grid, data, |g, i| {
+            if !flower_bloomed(g, i) {
+                return [0, 0, 0, 0];
+            }
+            let c = flower_color(g.river_dist(i));
+            [
+                (c.x.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.y.clamp(0.0, 1.0) * 255.0) as u8,
+                (c.z.clamp(0.0, 1.0) * 255.0) as u8,
+                220,
+            ]
+        });
+    }
+}
+
+// Lerps prev_cell→cell using the fixed-step overstep fraction for smooth render-rate motion.
+fn sync_elk_transform(time: Res<Time<Fixed>>, grid: Res<Grid>, mut elk: Query<(&Elk, &mut Transform)>) {
+    let over = time.overstep_fraction();
+    for (elk, mut transform) in &mut elk {
+        let t_start = (elk.move_t - elk.move_rate).max(0.0);
+        let t = (t_start + elk.move_rate * over).clamp(0.0, 1.0);
+        let p = cell_world_pos(&grid, elk.prev_cell).lerp(cell_world_pos(&grid, elk.cell), t);
+        transform.translation.x = p.x;
+        transform.translation.y = p.y;
+    }
+}
+
+fn sync_elk_color(mut elk: Query<(&Elk, &mut Sprite)>) {
+    for (elk, mut sprite) in &mut elk {
+        sprite.color = elk_color(elk.slot as usize, elk.grazing);
+    }
+}
+
+fn count_sync_run(mut stats: ResMut<PerfStats>) {
+    stats.sync_counter += 1;
+}
+
+fn gather_perf_stats(
+    time: Res<Time>,
+    mut stats: ResMut<PerfStats>,
+    sprites: Query<&Visibility, With<Sprite>>,
+) {
+    let mut visible = 0u32;
+    let mut hidden = 0u32;
+    for vis in &sprites {
+        if *vis == Visibility::Hidden {
+            hidden += 1;
+        } else {
+            visible += 1;
+        }
+    }
+    stats.visible_sprites = visible;
+    stats.hidden_sprites = hidden;
+
+    let now = time.elapsed_secs_f64();
+    if now - stats.last_reset >= 1.0 {
+        stats.sync_runs = stats.sync_counter;
+        stats.sync_counter = 0;
+        stats.last_reset = now;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FLOWER_LEVELS: usize = 5;
+
+    fn flower_level(river_dist: f32) -> usize {
+        let rd = river_dist.clamp(0.0, 1.0);
+        (rd * (FLOWER_LEVELS - 1) as f32).round() as usize
+    }
+
+    #[test]
+    fn grass_level_bands() {
+        assert_eq!(grass_level(0.0), 0);
+        assert_eq!(grass_level(0.01), 1); // tiny positive lands in level 1
+        assert_eq!(grass_level(0.2), 1);
+        assert_eq!(grass_level(0.21), 2);
+        assert_eq!(grass_level(0.6), 3);
+        assert_eq!(grass_level(1.0), GRASS_LEVELS);
+        assert_eq!(grass_level(2.0), GRASS_LEVELS, "clamps over 1.0");
+    }
+
+    #[test]
+    fn flower_level_bands() {
+        assert_eq!(flower_level(0.0), 0);
+        assert_eq!(flower_level(1.0), FLOWER_LEVELS - 1);
+        // Nearest sample: just over the first half-band rounds up to band 1.
+        assert_eq!(flower_level(0.5 / (FLOWER_LEVELS - 1) as f32 + 0.01), 1);
+        assert_eq!(flower_level(2.0), FLOWER_LEVELS - 1, "clamps over 1.0");
+    }
+
+    #[test]
+    fn river_reads_blue_with_a_hairline_dark_bank() {
+        let land = Vec3::new(0.5, 0.4, 0.25);
+        let brightness = |c: Vec3| c.x + c.y + c.z;
+        assert_eq!(flood_color(land, 0.0), land);
+        let deep = flood_color(land, 1.0);
+        assert!((deep - WATER_DEEP).length() < 1e-6, "deep water is the deep blue");
+        let ford = flood_color(land, 0.35);
+        assert!(ford.z > ford.x && ford.z > ford.y, "ford is blue, blue dominant");
+        assert!(brightness(ford) > brightness(deep), "the ford is a lighter blue");
+        let bank = flood_color(land, 0.05);
+        assert!(brightness(bank) < brightness(ford), "the bank edge is darker than the river");
+    }
+
+    #[test]
+    fn flower_color_ramps_white_to_softened_cyan() {
+        assert_eq!(flower_color(0.0), Vec3::ONE);
+        let divide = flower_color(1.0);
+        assert!((divide.x - 0.2).abs() < 1e-6, "red softens to 0.2, not full cyan");
+        assert!((divide.y - 1.0).abs() < 1e-6, "green stays full");
+        assert!((divide.z - 1.0).abs() < 1e-6, "blue stays full");
+        let mid = flower_color(0.5);
+        assert!((mid.x - 0.6).abs() < 1e-6, "midpoint is linear, red = 1 - 0.5*0.8");
     }
 }
 

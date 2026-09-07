@@ -3,70 +3,107 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Demo 1 — Grazing on the river</title>
+  <title>Elk herding - Mesopotamia</title>
   <style>
     :root { color-scheme: dark; }
     body {
-      margin: 0; padding: 1.5rem;
+      margin: 0; padding: 0;
       font: 16px/1.6 system-ui, sans-serif;
       background: #11140f; color: #e6e6dc;
     }
-    .wrap { max-width: 72rem; margin-inline: auto; }
-    a.back { color: #6b9; text-decoration: none; font-size: 0.9rem; }
-    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0.5rem 0 1rem; }
+    .topbar { max-width: 72rem; margin-inline: auto; padding: 1rem 1.5rem 0.75rem; }
+    .nav { display: flex; align-items: center; gap: 1rem; }
+    .nav a { color: #6b9; text-decoration: none; font-size: 0.9rem; }
+    .nav a:hover { text-decoration: underline; }
+    .nav .right { margin-left: auto; display: flex; gap: 1rem; }
+    h1 { font-weight: 600; letter-spacing: -0.02em; margin: 0; padding: 0.75rem 1.5rem; max-width: 46rem; margin-inline: auto; }
+    /* Full-bleed stage: the canvas spans the whole viewport width and a tall
+       slice of its height. The fullscreen button expands it to the whole screen. */
     #stage {
       position: relative;
-      width: 100%; aspect-ratio: 8 / 3;
-      background: #0a0c08; border: 1px solid #2c3322; border-radius: 8px;
-      overflow: hidden;
+      width: 100%; height: clamp(360px, 72vh, 1000px);
+      background: #0a0c08; border-block: 1px solid #2c3322;
+      overflow: hidden; resize: vertical; min-height: 260px;
+      /* Touch gestures stay with the canvas, not the page. */
+      touch-action: none;
     }
+    /* In the browser's fullscreen mode the stage fills the screen; drop the
+       height cap and border so the canvas is edge-to-edge. */
+    #stage:fullscreen { height: 100%; border: 0; }
     canvas { width: 100%; height: 100%; display: block; }
     #loading {
       position: absolute; inset: 0;
       display: flex; align-items: center; justify-content: center;
       color: #9aa08c; font-size: 0.95rem;
     }
-    .desc { max-width: 46rem; }
+    #fs-btn {
+      position: absolute; top: 0.6rem; right: 0.6rem; z-index: 2;
+      padding: 0.35rem 0.6rem;
+      font: inherit; font-size: 0.8rem; line-height: 1;
+      color: #e6e6dc; background: rgba(10, 12, 8, 0.7);
+      border: 1px solid #2c3322; border-radius: 6px; cursor: pointer;
+    }
+    #fs-btn:hover { background: rgba(20, 24, 16, 0.9); }
+    .desc { max-width: 46rem; margin-inline: auto; padding: 1.5rem; }
     .desc h2 { font-weight: 600; font-size: 1.05rem; }
     .desc p { color: #c9ccc0; }
     .controls { color: #9aa08c; font-size: 0.9rem; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <a class="back" href="../../">← all demos</a>
-    <h1>Demo 1 — Grazing on the river</h1>
+  <header class="topbar">
+    <nav class="nav">
+      <a href="../../">Menu</a>
+      <span class="right">
+        <a href="../../">← Previous</a>
+        <a href="../demo3/">Next →</a>
+      </span>
+    </nav>
+  </header>
 
-    <div id="stage">
-      <div id="loading">Loading simulation…</div>
-      <canvas id="game-canvas"></canvas>
-    </div>
+  <div id="stage">
+    <div id="loading">Loading simulation…</div>
+    <button id="fs-btn" type="button" title="Toggle fullscreen">⛶ Fullscreen</button>
+    <canvas id="game-canvas"></canvas>
+  </div>
 
-    <div class="desc">
-      <h2>What's going on</h2>
-      <p>
-        A river is generated procedurally: white noise is smoothed into a cost
-        field, then a least-cost path is carved bank-to-bank, giving a meandering
-        channel of substantial width. Distance from the water sets each tile's
-        grass carrying capacity — lush at the banks, barren far away.
-      </p>
-      <p>
-        Elk spawn in packs on the left and migrate rightward under a pressure
-        that grows over time. They steer by a boids-like blend of separation,
-        cohesion, and the grass gradient. Grazing converts grass into energy and,
-        after digestion, into poop that fertilizes wherever the elk has wandered —
-        closing an ecological loop between water, grass, and herd.
-      </p>
-      <p class="controls">
-        Drag (middle/right mouse) or two-finger trackpad to pan · scroll or pinch
-        to zoom · use the on-screen panels to tune growth, herd behavior, and
-        simulation speed.
-      </p>
-    </div>
+  <h1>Elk herding</h1>
+
+  <div class="desc">
+    <p>
+      An ecological simulation of elk herds grazing, migrating, and crossing a
+      river valley. Tune the economy with the sliders and watch the herds adapt.
+    </p>
+    <p class="controls">
+      Drag (middle/right mouse) to pan · scroll to zoom · click ⛶ for fullscreen
+      · use the on-screen panels to tune growth, herd behavior, and simulation
+      speed.
+    </p>
   </div>
 
   <script type="module">
     import init from './demo1.js';
+
+    const stage = document.getElementById('stage');
+    const canvas = document.getElementById('game-canvas');
+
+    // Keep wheel events over the canvas from scrolling the page. preventDefault
+    // stops only the browser's default scroll - propagation still reaches Bevy,
+    // so the in-game zoom handler sees the event.
+    canvas.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+
+    // Right-drag pans the camera, so suppress the browser context menu over the
+    // canvas - otherwise a right-click pops a menu that swallows the mouseup,
+    // leaving Bevy convinced the button is still held (a stuck pan).
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // Fullscreen toggle. fit_canvas_to_parent (set on the Bevy window) resizes
+    // the canvas to the stage, so entering fullscreen fills the screen.
+    document.getElementById('fs-btn').addEventListener('click', () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else stage.requestFullscreen();
+    });
+
     init()
       .then(() => { document.getElementById('loading')?.remove(); })
       .catch((err) => {
